@@ -1,0 +1,50 @@
+{
+  "name": "cargo-care",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "prisma generate && react-router build",
+    "dev": "react-router dev",
+    "start": "react-router-serve ./build/server/index.js",
+    "typecheck": "react-router typegen && tsc",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.15.0",
+    "@radix-ui/react-tabs": "^1.1.13",
+    "@react-router/node": "^7.5.3",
+    "@react-router/serve": "^7.5.3",
+    "@remix-run/node": "^2.17.0",
+    "@types/bcryptjs": "^2.4.6",
+    "bcryptjs": "^3.0.2",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "fs": "^0.0.1-security",
+    "isbot": "^5.1.27",
+    "lucide-react": "^0.514.0",
+    "path": "^0.12.7",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router": "^7.5.3",
+    "remix-auth": "^4.2.0",
+    "remix-auth-form": "^3.0.0",
+    "tailwind-merge": "^3.3.1"
+  },
+  "devDependencies": {
+    "@react-router/dev": "^7.5.3",
+    "@tailwindcss/vite": "^4.1.4",
+    "@types/node": "^20",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "glob": "^11.0.3",
+    "prisma": "^6.15.0",
+    "tailwindcss": "^4.1.4",
+    "tsx": "^4.20.1",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.3",
+    "vite-tsconfig-paths": "^5.1.4"
+  }
+}

@@ -1,0 +1,12 @@
+.DS_Store
+/node_modules/
+uploads/
+
+# React Router
+/.react-router/
+/build/
+
+/app/generated/prisma
+
+.vercel
+nul

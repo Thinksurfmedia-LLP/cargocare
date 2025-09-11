@@ -1,0 +1,192 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Role {
+  id          String   @id @default(cuid())
+  name        RoleType @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  users       User[]
+
+  @@map("roles")
+}
+
+model User {
+  id                  String               @id @default(cuid())
+  email               String               @unique
+  passwordHash        String
+  name                String
+  firstName           String?
+  lastName            String?
+  phone               String?
+  isActive            Boolean              @default(true)
+  lastLoginAt         DateTime?
+  resetToken          String?
+  resetTokenExpiresAt DateTime?
+  emailVerified       Boolean              @default(false)
+  verificationToken   String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  roleId              String
+  branchId            String?
+  linerBookings       LinerBooking[]
+  shipmentAssignments ShipmentAssignment[]
+  shipmentPlans       ShipmentPlan[]
+  businessBranch      BusinessBranch?      @relation(fields: [branchId], references: [id])
+  role                Role                 @relation(fields: [roleId], references: [id])
+
+  @@map("users")
+}
+
+model ShipmentPlan {
+  id                   String              @id @default(cuid())
+  data                 Json
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  userId               String
+  linerBookingId       String?             @unique
+  linkedStatus         Int                 @default(0)
+  shipmentAssignmentId String?             @unique
+  linerBooking         LinerBooking?       @relation(fields: [linerBookingId], references: [id])
+  shipmentAssignment   ShipmentAssignment? @relation(fields: [shipmentAssignmentId], references: [id])
+  user                 User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("shipment_plans")
+}
+
+model LinerBooking {
+  id              String        @id @default(cuid())
+  data            Json
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  userId          String
+  assignBookingId String?
+  shipmentPlanId  String?
+  pdfFilePath     String?
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shipmentPlan    ShipmentPlan?
+
+  @@map("liner_bookings")
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  orgTypes  String[] @map("org_types")
+
+  @@map("organizations")
+}
+
+model BusinessBranch {
+  id        String   @id @default(cuid())
+  name      String
+  code      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  users     User[]
+
+  @@map("business_branches")
+}
+
+model Commodity {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("commodities")
+}
+
+model Equipment {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("equipment")
+}
+
+model LoadingPort {
+  id        String   @id @default(cuid())
+  name      String
+  country   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([name, country])
+  @@map("loading_ports")
+}
+
+model PortOfDischarge {
+  id        String   @id @default(cuid())
+  name      String
+  country   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([name, country])
+  @@map("ports_of_discharge")
+}
+
+model DestinationCountry {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("destination_countries")
+}
+
+model Vessel {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("vessels")
+}
+
+model Carrier {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("carriers")
+}
+
+model ShipmentAssignment {
+  id              String        @id @default(cuid())
+  data            Json
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  userId          String
+  assignBookingId String?
+  shipmentPlanId  String?
+  pdfFilePath     String?
+  isOrphaned      Boolean       @default(false)
+  isViewOnly      Boolean       @default(false)
+  orphanedAt      DateTime?
+  orphanedReason  String?
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shipmentPlan    ShipmentPlan?
+
+  @@map("shipment_assignments")
+}
+
+enum RoleType {
+  ADMIN
+  LINER_BOOKING_TEAM
+  SHIPMENT_PLAN_TEAM
+  INACTIVE
+  MD
+}

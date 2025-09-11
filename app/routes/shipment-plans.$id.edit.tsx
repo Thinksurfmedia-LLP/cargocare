@@ -1,0 +1,812 @@
+import type { LoaderFunctionArgs, ActionFunctionArgs, MetaFunction } from "react-router"
+import { useLoaderData, useNavigation, redirect, useActionData, Link } from "react-router"
+import { requireAuth } from "~/lib/auth.server"
+import { prisma } from "~/lib/prisma.server"
+import { AdminLayout } from "~/components/AdminLayout"
+import { ShipmentPlanForm } from "~/components/ShipmentPlanForm"
+import { Button } from "~/components/ui/button"
+
+export const meta: MetaFunction = () => {
+  return [{ title: "Edit Shipment Plan - Cargo Care" }, { name: "description", content: "Edit shipment plan" }]
+}
+
+export async function loader({ request, params }: LoaderFunctionArgs) {
+  try {
+    const user = await requireAuth(request)
+
+    // Only allow SHIPMENT_PLAN_TEAM and ADMIN
+    if (user.role.name !== "SHIPMENT_PLAN_TEAM" && user.role.name !== "ADMIN" && user.role.name !== "MD") {
+      return redirect("/dashboard")
+    }
+
+    const planId = params.id
+    if (!planId) {
+      return redirect("/shipment-plans")
+    }
+    const shipmentPlan = await prisma.shipmentPlan.findUnique({
+      where: { id: planId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        linerBooking: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+        shipmentAssignment: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
+      },
+    })
+
+    if (!shipmentPlan) {
+      return redirect("/shipment-plans")
+    } // Check permissions
+    if (user.role.name !== "ADMIN" && user.role.name !== "MD" && shipmentPlan.userId !== user.id) {
+      return redirect("/shipment-plans")
+    }
+
+    // Fetch data points for dropdowns
+    const [
+      businessBranches,
+      commodities,
+      equipment,
+      loadingPorts,
+      portsOfDischarge,
+      destinationCountries,
+      vessels,
+      carriers,
+      organizations,
+      linerBookingUsers,
+    ] = await Promise.all([
+      prisma.businessBranch.findMany({ orderBy: { name: "asc" } }),
+      prisma.commodity.findMany({ orderBy: { name: "asc" } }),
+      prisma.equipment.findMany({ orderBy: { name: "asc" } }),
+      prisma.loadingPort.findMany({ orderBy: { name: "asc" } }),
+      prisma.portOfDischarge.findMany({ orderBy: { name: "asc" } }),
+      prisma.destinationCountry.findMany({ orderBy: { name: "asc" } }),
+      prisma.vessel.findMany({ orderBy: { name: "asc" } }),
+      prisma.carrier.findMany({ orderBy: { name: "asc" } }),
+      prisma.organization.findMany({ orderBy: { name: "asc" } }),
+      prisma.user.findMany({
+        where: {
+          role: {
+            name: "LINER_BOOKING_TEAM",
+          },
+        },
+        include: {
+          role: true,
+          businessBranch: true, // include business branch info
+        },
+        orderBy: {
+          name: "asc",
+        },
+      }),
+    ])
+
+    return {
+      user,
+      shipmentPlan,
+      dataPoints: {
+        businessBranches,
+        commodities,
+        equipment,
+        loadingPorts,
+        portsOfDischarge,
+        destinationCountries,
+        vessels,
+        carriers,
+        organizations,
+        linerBookingUsers,
+      },
+    }
+  } catch (error) {
+    return redirect("/login")
+  }
+}
+
+// Helper function to generate equipment code based on equipment type - Updated with your specifications
+function generateEquipmentCode(equipmentType: string) {
+  if (!equipmentType) return "EQP"
+
+  const type = equipmentType.toLowerCase()
+
+  // Standard containers
+  if (type.includes("20ft standard container") || type.includes("20' standard container")) return "20SC"
+  if (type.includes("40ft standard container") || type.includes("40' standard container")) return "40SC"
+
+  // High Cube containers
+  if (type.includes("40ft high cube container") || type.includes("40' high cube container")) return "40HCC"
+  if (type.includes("45ft high cube container") || type.includes("45' high cube container")) return "45HCC"
+
+  // Refrigerated containers
+  if (type.includes("20ft refrigerated container") || type.includes("20' refrigerated container")) return "20RC"
+  if (type.includes("40ft refrigerated container") || type.includes("40' refrigerated container")) return "40RC"
+
+  // Open Top containers
+  if (type.includes("20ft open top container") || type.includes("20' open top container")) return "20OTC"
+  if (type.includes("40ft open top container") || type.includes("40' open top container")) return "40OTC"
+
+  // Flat Rack containers
+  if (type.includes("20ft flat rack container") || type.includes("20' flat rack container")) return "20FRC"
+  if (type.includes("40ft flat rack container") || type.includes("40' flat rack container")) return "40FRC"
+
+  // Tank containers
+  if (type.includes("20ft tank container") || type.includes("20' tank container")) return "20TC"
+  if (type.includes("40ft tank container") || type.includes("40' tank container")) return "40TC"
+
+  // Special containers
+  if (type.includes("platform container")) return "PC"
+  if (type.includes("bulk container")) return "BC"
+  if (type.includes("ventilated container")) return "VC"
+  if (type.includes("insulated container")) return "IC"
+  if (type.includes("hard top container")) return "HTC"
+  if (type.includes("side door container")) return "SDC"
+  if (type.includes("double door container")) return "DDC"
+  if (type.includes("thermal container")) return "TC"
+
+  // Generic 20ft containers (fallback)
+  if (type.includes("20ft") || type.includes("20'")) {
+    if (type.includes("dry")) return "20SC"
+    if (type.includes("reefer")) return "20RC"
+    return "20SC" // Default 20ft to Standard Container
+  }
+
+  // Generic 40ft containers (fallback)
+  if (type.includes("40ft") || type.includes("40'")) {
+    if (type.includes("dry")) return "40SC"
+    if (type.includes("reefer")) return "40RC"
+    if (type.includes("high cube") || type.includes("hc")) return "40HCC"
+    return "40SC" // Default 40ft to Standard Container
+  }
+
+  // Generic 45ft containers (fallback)
+  if (type.includes("45ft") || type.includes("45'")) {
+    return "45HCC" // Default 45ft to High Cube Container
+  }
+
+  // Special equipment (fallback)
+  if (type.includes("lcl")) return "LCL"
+  if (type.includes("break bulk")) return "BB"
+  if (type.includes("roro")) return "RORO"
+
+  // Ultimate fallback - use first 3-5 characters, uppercase, alphanumeric only
+  return equipmentType
+    .substring(0, 5)
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .padEnd(3, "X")
+}
+
+export async function action({ request, params }: ActionFunctionArgs) {
+  try {
+    const user = await requireAuth(request)
+
+    // Only allow SHIPMENT_PLAN_TEAM and ADMIN
+    if (user.role.name !== "SHIPMENT_PLAN_TEAM" && user.role.name !== "ADMIN" && user.role.name !== "MD") {
+      return redirect("/dashboard")
+    }
+
+    const planId = params.id
+    if (!planId) {
+      return redirect("/shipment-plans")
+    }
+
+    // Check if the plan exists and user has permission
+    const existingPlan = await prisma.shipmentPlan.findUnique({
+      where: { id: planId },
+    })
+
+    if (!existingPlan) {
+      return { error: "Shipment plan not found" }
+    }
+
+    if (user.role.name !== "ADMIN" && user.role.name !== "MD" && existingPlan.userId !== user.id) {
+      return { error: "You don't have permission to edit this shipment plan" }
+    }
+    const formData = await request.formData()
+
+    // Check if unmapping approval or rejection was requested
+    const approveUnmapping = formData.get("approve_unmapping") === "true"
+    const rejectUnmapping = formData.get("reject_unmapping") === "true"
+
+    if (approveUnmapping) {
+      const currentPlan = await prisma.shipmentPlan.findUnique({
+        where: { id: planId },
+        include: { linerBooking: true, shipmentAssignment: true },
+      })
+
+      if (!currentPlan) {
+        return redirect("/shipment-plans")
+      }
+
+      const planData = currentPlan.data as any
+      const linkedType = currentPlan.linerBooking
+        ? "linerBooking"
+        : currentPlan.shipmentAssignment
+          ? "shipmentAssignment"
+          : null
+
+      console.log("[v0] approve_unmapping", {
+        planId,
+        linkedType,
+        hasEquipments: Array.isArray(planData?.equipment_details) ? planData.equipment_details.length : 0,
+      })
+
+      if (!linkedType) {
+        return redirect("/shipment-plans")
+      }
+
+      const original = linkedType === "linerBooking" ? currentPlan.linerBooking! : currentPlan.shipmentAssignment!
+      const originalData = (original.data as any) || {}
+
+      if (planData.equipment_details && Array.isArray(planData.equipment_details)) {
+        for (let i = 0; i < planData.equipment_details.length; i++) {
+          const equipment = planData.equipment_details[i]
+
+          // Find the corresponding liner booking detail for this equipment
+          let correspondingLinerBookingDetail = null
+          if (originalData.liner_booking_details && Array.isArray(originalData.liner_booking_details)) {
+            correspondingLinerBookingDetail =
+              originalData.liner_booking_details.find(
+                (detail: any) => detail.trackingNumber === equipment.trackingNumber,
+              ) ||
+              originalData.liner_booking_details[i] ||
+              originalData.liner_booking_details[0]
+          }
+
+          // Ensure the liner booking detail has all necessary fields from shipment plan
+          const enrichedLinerBookingDetail = {
+            ...correspondingLinerBookingDetail,
+            // Populate missing fields from shipment plan data
+            carrier: correspondingLinerBookingDetail?.carrier || planData.container_movement?.carrier_and_vessel_preference?.carrier || "",
+            original_planned_vessel: correspondingLinerBookingDetail?.original_planned_vessel || planData.container_movement?.carrier_and_vessel_preference?.vessel || "",
+            etd: correspondingLinerBookingDetail?.etd || planData.container_movement?.carrier_and_vessel_preference?.preferred_etd || "",
+            e_t_d_of_original_planned_vessel: correspondingLinerBookingDetail?.e_t_d_of_original_planned_vessel || planData.container_movement?.carrier_and_vessel_preference?.preferred_etd || "",
+            trackingNumber: equipment.trackingNumber,
+            temporaryBookingNumber: correspondingLinerBookingDetail?.temporaryBookingNumber || `TEMP-${equipment.trackingNumber}`,
+            mbl_number: correspondingLinerBookingDetail?.mbl_number || "",
+            contact: correspondingLinerBookingDetail?.contact || "",
+            equipment_type: correspondingLinerBookingDetail?.equipment_type || equipment.equipment_type || "",
+            equipment_quantity: correspondingLinerBookingDetail?.equipment_quantity || 1,
+            liner_booking_number: correspondingLinerBookingDetail?.liner_booking_number || "",
+          }
+
+          // Create an individual AVAILABLE liner booking per equipment
+          await prisma.linerBooking.create({
+            data: {
+              data: {
+                ...originalData,
+                carrier_booking_status: "Ready for Re-linking",
+                equipment_details: [equipment],
+                liner_booking_details: [enrichedLinerBookingDetail],
+                unmapping_request: false,
+                unmapping_reason: "",
+                // Preserve shipment plan reference data
+                reference_number: planData.reference_number,
+                bussiness_branch: planData.bussiness_branch,
+                shipment_type: planData.shipment_type,
+              },
+              userId: original.userId,
+              assignBookingId: original.assignBookingId || null,
+              shipmentPlanId: null, // available, not linked to any plan
+            },
+          })
+        }
+      }
+
+      // Delete the original linked bookings since we've created individual ones
+      if (linkedType === "linerBooking") {
+        // Find and delete ALL liner bookings linked to this shipment plan
+        // This includes the main booking and any others created during "All Booking Assigned"
+        const allLinkedBookings = await prisma.linerBooking.findMany({
+          where: { shipmentPlanId: currentPlan.id },
+          select: { id: true }
+        })
+
+        console.log("[v0] approve_unmapping: found all linked bookings to delete", {
+          count: allLinkedBookings.length,
+          bookingIds: allLinkedBookings.map(b => b.id)
+        })
+
+        // Delete all linked bookings since we've created individual ones above
+        if (allLinkedBookings.length > 0) {
+          await prisma.linerBooking.deleteMany({
+            where: { shipmentPlanId: currentPlan.id },
+          })
+
+          console.log("[v0] approve_unmapping: deleted all linked bookings")
+        }
+      } else {
+        const clearedAssignmentData = {
+          ...originalData,
+          carrier_booking_status: "Awaiting Booking",
+          unmapping_request: false,
+          unmapping_reason: "",
+          equipment_details: [], // clear linked equipments
+          liner_booking_details: [], // clear booking detail groupings, they'll exist on split records
+        }
+
+        await prisma.shipmentAssignment.update({
+          where: { id: currentPlan.shipmentAssignment!.id },
+          data: {
+            data: clearedAssignmentData,
+            // keep relation as-is; plan will be marked unlinked for UI
+            shipmentPlanId: currentPlan.id,
+          },
+        })
+
+        console.log("[v0] approve_unmapping: cleared assignment equipment_details/liner_booking_details", {
+          assignmentId: currentPlan.shipmentAssignment!.id,
+          planId,
+        })
+
+        // Delete any liner bookings that were linked to this shipment plan during assignment
+        // since we've already created individual ones above
+        const linkedBookings = await prisma.linerBooking.findMany({
+          where: { shipmentPlanId: currentPlan.id },
+          select: { id: true }
+        })
+
+        console.log("[v0] approve_unmapping: found linked bookings for assignment to delete", {
+          count: linkedBookings.length,
+          bookingIds: linkedBookings.map(b => b.id)
+        })
+
+        // Delete all linked bookings since we've created individual ones above
+        if (linkedBookings.length > 0) {
+          await prisma.linerBooking.deleteMany({
+            where: { shipmentPlanId: currentPlan.id },
+          })
+
+          console.log("[v0] approve_unmapping: deleted linked bookings for assignment")
+        }
+      }
+
+      // Update shipment plan status and unlink marker
+      await prisma.shipmentPlan.update({
+        where: { id: planId },
+        data: {
+          data: {
+            ...planData,
+            booking_status: "Awaiting Booking",
+          },
+          linkedStatus: 0,
+        },
+      })
+
+      return redirect("/shipment-plans")
+    }
+
+    if (rejectUnmapping) {
+      const currentPlan = await prisma.shipmentPlan.findUnique({
+        where: { id: planId },
+        include: { linerBooking: true, shipmentAssignment: true },
+      })
+
+      if (!currentPlan) {
+        return redirect("/shipment-plans")
+      }
+
+      const linkedType = currentPlan.linerBooking
+        ? "linerBooking"
+        : currentPlan.shipmentAssignment
+          ? "shipmentAssignment"
+          : null
+
+      console.log("[v0] reject_unmapping", { planId, linkedType })
+
+      if (!linkedType) {
+        return redirect("/shipment-plans")
+      }
+
+      const originalData =
+        linkedType === "linerBooking"
+          ? (currentPlan.linerBooking!.data as any) || {}
+          : (currentPlan.shipmentAssignment!.data as any) || {}
+
+      if (linkedType === "linerBooking") {
+        await prisma.linerBooking.update({
+          where: { id: currentPlan.linerBooking!.id },
+          data: {
+            data: {
+              ...originalData,
+              carrier_booking_status: "Booked",
+              unmapping_request: false,
+              unmapping_reason: "",
+            },
+          },
+        })
+      } else {
+        await prisma.shipmentAssignment.update({
+          where: { id: currentPlan.shipmentAssignment!.id },
+          data: {
+            data: {
+              ...originalData,
+              carrier_booking_status: "Booked",
+              unmapping_request: false,
+              unmapping_reason: "",
+            },
+          },
+        })
+      }
+
+      return redirect("/shipment-plans")
+    }
+
+    // Get form values and preserve existing values if form fields are empty
+    const bussiness_branch = (formData.get("bussiness_branch") as string) || (existingPlan.data as any).bussiness_branch
+    const shipment_type = (formData.get("shipment_type") as string) || (existingPlan.data as any).shipment_type
+    const booking_status = formData.get("booking_status") as string
+    const loading_port = formData.get("loading_port") as string
+    const destination_country = formData.get("destination_country") as string
+    const customer = formData.get("customer") as string
+
+    // Parse package details from form data
+    const packageDetails: any[] = []
+    let packageIndex = 0
+    while (formData.get(`package_details[${packageIndex}][shipper]`) !== null) {
+      packageDetails.push({
+        shipper: formData.get(`package_details[${packageIndex}][shipper]`) as string,
+        invoice_number: formData.get(`package_details[${packageIndex}][invoice_number]`) as string,
+        volume: Number.parseFloat(formData.get(`package_details[${packageIndex}][volume]`) as string) || 0,
+        gross_weight: Number.parseFloat(formData.get(`package_details[${packageIndex}][gross_weight]`) as string) || 0,
+        number_of_packages:
+          Number.parseInt(formData.get(`package_details[${packageIndex}][number_of_packages]`) as string) || 0,
+        projected_cargo_ready_date: formData.get(
+          `package_details[${packageIndex}][projected_cargo_ready_date]`,
+        ) as string,
+        commodity: formData.get(`package_details[${packageIndex}][commodity]`) as string,
+        is_haz: formData.get(`package_details[${packageIndex}][is_haz]`) === "true",
+        p_o_number: formData.get(`package_details[${packageIndex}][p_o_number]`) as string,
+        C_H_A: formData.get(`package_details[${packageIndex}][C_H_A]`) === "true",
+      })
+      packageIndex++
+    }
+
+    // Parse equipment details from form data with new structure and TEMP replacement
+    const equipmentDetails: any[] = []
+    let equipmentIndex = 0
+    const existingPlanData = existingPlan.data as any
+    const reference_number = existingPlanData.reference_number
+
+    while (formData.get(`equipment_details[${equipmentIndex}][equipment_type]`) !== null) {
+      const equipmentType = formData.get(`equipment_details[${equipmentIndex}][equipment_type]`) as string
+      const trackingNumber = formData.get(`equipment_details[${equipmentIndex}][trackingNumber]`) as string
+      const equipmentSequence =
+        Number.parseInt(formData.get(`equipment_details[${equipmentIndex}][equipmentSequence]`) as string) ||
+        equipmentIndex + 1
+
+      // Generate proper tracking number with actual reference number (replace TEMP if needed)
+      const equipmentCode = generateEquipmentCode(equipmentType)
+      const finalTrackingNumber =
+        trackingNumber && trackingNumber.startsWith("TEMP-")
+          ? trackingNumber.replace("TEMP", reference_number)
+          : trackingNumber || `${reference_number}-${equipmentCode}-${String(equipmentSequence).padStart(3, "0")}`
+
+      // Get and validate container number
+      const containerNumber = formData.get(`equipment_details[${equipmentIndex}][container_number]`) as string
+      let validatedContainerNumber = ""
+      
+      if (containerNumber && containerNumber.trim()) {
+        const cleanedContainerNumber = containerNumber.trim().toUpperCase()
+        // Validate container number format: 4 letters + 7 digits
+        const containerPattern = /^[A-Z]{4}[0-9]{7}$/
+        if (containerPattern.test(cleanedContainerNumber)) {
+          validatedContainerNumber = cleanedContainerNumber
+        } else {
+          console.warn(`Invalid container number format: ${cleanedContainerNumber}. Expected format: 4 letters + 7 digits (e.g., ABCD1234567)`)
+        }
+      }
+
+      equipmentDetails.push({
+        equipment_type: equipmentType,
+        trackingNumber: finalTrackingNumber,
+        equipmentSequence: equipmentSequence,
+        number_of_equipment: 1, // Always 1 in new structure
+        container_number: validatedContainerNumber,
+        stuffing_point: formData.get(`equipment_details[${equipmentIndex}][stuffing_point]`) as string,
+        empty_container_pick_up_from: formData.get(
+          `equipment_details[${equipmentIndex}][empty_container_pick_up_from]`,
+        ) as string,
+        container_handover_location: formData.get(
+          `equipment_details[${equipmentIndex}][container_handover_location]`,
+        ) as string,
+        empty_container_pick_up_location: formData.get(
+          `equipment_details[${equipmentIndex}][empty_container_pick_up_location]`,
+        ) as string,
+        container_handover_at: formData.get(`equipment_details[${equipmentIndex}][container_handover_at]`) as string,
+        // Individual status fields
+        status: (formData.get(`equipment_details[${equipmentIndex}][status]`) as string) || "Pending",
+        emptyPickupStatus: formData.get(`equipment_details[${equipmentIndex}][emptyPickupStatus]`) === "true",
+        stuffingStatus: formData.get(`equipment_details[${equipmentIndex}][stuffingStatus]`) === "true",
+        gateInStatus: formData.get(`equipment_details[${equipmentIndex}][gateInStatus]`) === "true",
+        loadedStatus: formData.get(`equipment_details[${equipmentIndex}][loadedStatus]`) === "true",
+        emptyPickupDate: (formData.get(`equipment_details[${equipmentIndex}][emptyPickupDate]`) as string) || "",
+        stuffingDate: (formData.get(`equipment_details[${equipmentIndex}][stuffingDate]`) as string) || "",
+        gateInDate: (formData.get(`equipment_details[${equipmentIndex}][gateInDate]`) as string) || "",
+        loadedDate: (formData.get(`equipment_details[${equipmentIndex}][loadedDate]`) as string) || "",
+      })
+      equipmentIndex++
+    }
+
+    // Get container tracking fields
+    const container_stuffing_completed_date = formData.get("container_stuffing_completed_date") as string
+    const empty_container_picked_up_date = formData.get("empty_container_picked_up_date") as string
+    const gated_in_date = formData.get("gated_in_date") as string
+    const loaded_on_board_date = formData.get("loaded_on_board_date") as string
+    const md_approval_status = formData.get("md_approval") as string
+    const md_approval_rejection = (formData.get("md_approval_rejection") as string) || ""
+
+    let bookingStatus
+    let shouldCreateShipmentAssignment = false
+    let linerBrokerId = null
+
+    //If already booked
+    if (existingPlan?.data?.booking_status === "Booked") {
+      bookingStatus = "Booked"
+    } else {
+      //update booking status
+      if (md_approval_status === "approved" && md_approval_rejection === "") {
+        bookingStatus = "Awaiting Booking"
+        shouldCreateShipmentAssignment = true
+        linerBrokerId = formData.get("liner_broker_approval") as string
+
+        // Check if the plan is in "Awaiting MD Approval" status
+        const planData = existingPlan.data as any
+        if (planData.booking_status !== "Awaiting MD Approval") {
+          return {
+            error: "Only plans with 'Awaiting MD Approval' status can be approved",
+          }
+        }
+      } else if (md_approval_status === "rejected" && md_approval_rejection === "") {
+        bookingStatus = "MD Approval Rejected"
+      } else if (md_approval_rejection != "") {
+        bookingStatus = "Awaiting MD Approval"
+      } else {
+        bookingStatus = booking_status
+      }
+    }
+
+    const shipmentData = {
+      reference_number: (existingPlan.data as any).reference_number, // Keep existing reference number
+      bussiness_branch,
+      shipment_type,
+      booking_status: bookingStatus,
+      package_details: packageDetails,
+      equipment_details: equipmentDetails,
+      md_approval_status: md_approval_status || null,
+      liner_broker_approval: linerBrokerId || null,
+      rejection_comment: (formData.get("rejection_comment") as string) || null,
+      remarks: (formData.get("remarks") as string) || null,
+      container_movement: {
+        loading_port,
+        destination_country,
+        delivery_till: formData.get("delivery_till") as string,
+        port_of_discharge: formData.get("port_of_discharge") as string,
+        final_place_of_delivery: formData.get("final_place_of_delivery") as string,
+        required_free_time_at_destination: formData.get("required_free_time_at_destination") as string,
+        carrier_and_vessel_preference: {
+          carrier: formData.get("carrier") as string,
+          vessel: formData.get("vessel") as string,
+          preferred_etd: formData.get("preferred_etd") as string,
+        },
+        customer,
+        consignee: formData.get("consignee") as string,
+        selling_price: formData.get("selling_price") as string,
+        rebate: formData.get("rebate") as string,
+        credit_period: Number.parseInt(formData.get("credit_period") as string) || 0,
+        buying_price: Number.parseFloat(formData.get("buying_price") as string) || 0,
+        specific_stuffing_requirement: formData.get("specific_stuffing_requirement") === "true",
+        stuffing_instructions: formData.get("stuffing_instructions") as string,
+        specific_instructions: formData.get("specific_instructions") as string,
+        liner_booking_details: formData.get("liner_booking_details") as string,
+      },
+      container_tracking: {
+        container_current_status: (formData.get("container_current_status") as string) || "Pending",
+        container_stuffing_completed: formData.get("container_stuffing_completed") === "true",
+        container_stuffing_completed_date: container_stuffing_completed_date
+          ? new Date(container_stuffing_completed_date).toISOString()
+          : null,
+        empty_container_picked_up_status: formData.get("empty_container_picked_up_status") === "true",
+        empty_container_picked_up_date: empty_container_picked_up_date
+          ? new Date(empty_container_picked_up_date).toISOString()
+          : null,
+        gated_in_status: formData.get("gated_in_status") === "true",
+        gated_in_date: gated_in_date ? new Date(gated_in_date).toISOString() : null,
+        loaded_on_board_status: formData.get("loaded_on_board_status") === "true",
+        loaded_on_board_date: loaded_on_board_date ? new Date(loaded_on_board_date).toISOString() : null,
+      },
+    }
+
+    try {
+      if (shouldCreateShipmentAssignment) {
+        await prisma.$transaction(async (tx) => {
+          // Create a new shipment assignment with shipment plan data
+          const assignmentData = {
+            carrier_booking_status: "Awaiting Booking",
+            reference_number: shipmentData.reference_number,
+            bussiness_branch: shipmentData.bussiness_branch,
+            shipment_type: shipmentData.shipment_type,
+            container_movement: shipmentData.container_movement,
+            equipment_details: shipmentData.equipment_details,
+            package_details: shipmentData.package_details,
+          }
+
+          const assignment = await tx.shipmentAssignment.create({
+            data: {
+              data: assignmentData,
+              userId: user.id,
+              assignBookingId: (linerBrokerId as string) || null,
+            },
+          })
+
+          await tx.shipmentPlan.update({
+            where: { id: planId },
+            data: {
+              data: shipmentData,
+              shipmentAssignmentId: assignment.id,
+              linkedStatus: 1, // Set linked status
+            },
+          })
+        })
+      } else {
+        await prisma.shipmentPlan.update({
+          where: { id: planId },
+          data: {
+            data: shipmentData,
+          },
+        })
+      }
+
+      console.log("Shipment plan updated successfully")
+    } catch (error) {
+      console.error("Failed to update shipment plan:", error)
+      return {
+        error: "Failed to update shipment plan. Please try again.",
+      }
+    }
+
+    return redirect("/shipment-plans")
+  } catch (error) {
+    console.error("Edit shipment plan action error:", error)
+    return { error: "An error occurred while processing your request" }
+  }
+}
+
+export default function EditShipmentPlan() {
+  const { user, shipmentPlan, dataPoints } = useLoaderData<typeof loader>()
+  const actionData = useActionData<typeof action>()
+  const navigation = useNavigation()
+
+  const planData = shipmentPlan.data as any
+  const isSubmitting = navigation.state === "submitting"
+
+  const unmappingRequested =
+    Boolean((shipmentPlan.linerBooking?.data as any)?.unmapping_request) ||
+    Boolean((shipmentPlan.shipmentAssignment?.data as any)?.unmapping_request)
+
+  return (
+    <AdminLayout user={user}>
+      {/* Page Header */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="px-6 py-6">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                <span className="text-blue-600 text-sm">✏️</span>
+              </div>
+              <div>
+                <h1 className="text-2xl font-semibold text-gray-900">Edit Shipment Plan</h1>
+                <p className="text-sm text-gray-600 mt-1">Modify shipment plan details - {planData.reference_number}</p>
+              </div>
+            </div>
+            <div className="flex items-center space-x-3">
+              <Link
+                to={`/shipment-plans/${shipmentPlan.id}`}
+                className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-500 hover:bg-gray-50 rounded-lg transition-all duration-200"
+              >
+                👁️ View Details
+              </Link>
+              <Link
+                to="/shipment-plans"
+                className="inline-flex items-center px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-500 hover:bg-blue-50 rounded-lg transition-all duration-200"
+              >
+                <span className="mr-1">←</span>
+                Back to List
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="flex-1 overflow-auto p-6 bg-gray-50">
+        {actionData?.error && (
+          <div className="mb-8 bg-red-50 border-l-4 border-red-400 p-4 rounded-lg">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <span className="text-red-400 text-xl">⚠️</span>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-red-700 font-medium">Error updating shipment plan</p>
+                <p className="text-sm text-red-600 mt-1">{actionData.error}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Success Message */}
+        {actionData?.success && (
+          <div className="mb-8 bg-green-50 border-l-4 border-green-400 p-4 rounded-lg">
+            <div className="flex">
+              <div className="flex-shrink-0">
+                <span className="text-green-400 text-xl">✅</span>
+              </div>
+              <div className="ml-3">
+                <p className="text-sm text-green-700 font-medium">Shipment plan updated successfully</p>
+                <p className="text-sm text-green-600 mt-1">{actionData.success}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {unmappingRequested && (
+          <div className="max-w-5xl mx-auto mb-6">
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-center justify-between">
+              <div className="text-amber-800 text-sm">
+                Unmapping has been requested for this plan. Approve to unlink and split into individual available liner
+                bookings, or reject to keep the current linkage.
+              </div>
+              <div className="flex items-center gap-3">
+                <form method="post">
+                  <input type="hidden" name="approve_unmapping" value="true" />
+                  <Button type="submit" className="bg-green-600 hover:bg-green-700 text-white">
+                    Approve Unmapping
+                  </Button>
+                </form>
+                <form method="post">
+                  <input type="hidden" name="reject_unmapping" value="true" />
+                  <Button type="submit" variant="outline" className="border-red-300 text-red-700 bg-transparent">
+                    Reject Unmapping
+                  </Button>
+                </form>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="max-w-5xl mx-auto">
+          <ShipmentPlanForm
+            mode="edit"
+            dataPoints={dataPoints}
+            actionData={actionData}
+            isSubmitting={isSubmitting}
+            planData={planData}
+            shipmentPlan={shipmentPlan}
+            user={user}
+          />
+        </div>
+      </div>
+    </AdminLayout>
+  )
+}
