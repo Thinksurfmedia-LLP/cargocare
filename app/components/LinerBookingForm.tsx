@@ -206,8 +206,9 @@ export function LinerBookingForm({
     const unallocated: any[] = [];
 
     // Get already selected tracking numbers to exclude them
-    const selectedTrackingNumbers = linerBookingDetails
-      .map((detail: any) => {
+    const selectedTrackingNumbers = [
+      // From linked bookings
+      ...linerBookingDetails.map((detail: any) => {
         // Try to get tracking number from multiple sources
         if (detail.booking_for && detail.booking_for.includes("|")) {
           return detail.booking_for.split("|")[1]; // from booking_for field
@@ -217,9 +218,22 @@ export function LinerBookingForm({
           return detail.trackingNumber; // from direct trackingNumber field
         }
         return null;
-      })
-      .filter(Boolean);
+      }),
+      // From allocated requested bookings in assignment mode
+      ...requestedBookingDetails
+        .filter((detail: any, index: number) => allocatedBookingDetails.has(index))
+        .map((detail: any) => {
+          if (detail.trackingNumber) {
+            return detail.trackingNumber;
+          } else if (detail.equipment_type && detail.equipment_type.includes("|")) {
+            return detail.equipment_type.split("|")[1];
+          }
+          return null;
+        })
+    ].filter(Boolean);
 
+    console.log("[DEBUG] getUnallocatedEquipmentTypes - allocatedBookingDetails:", Array.from(allocatedBookingDetails));
+    console.log("[DEBUG] getUnallocatedEquipmentTypes - requestedBookingDetails:", requestedBookingDetails.map((d, i) => ({index: i, trackingNumber: d.trackingNumber, allocated: allocatedBookingDetails.has(i)})));
     console.log("[DEBUG] getUnallocatedEquipmentTypes - selectedTrackingNumbers:", selectedTrackingNumbers);
     console.log("[DEBUG] getUnallocatedEquipmentTypes - allEquipment count:", allEquipment.length);
     console.log("[DEBUG] getUnallocatedEquipmentTypes - allEquipment:", allEquipment.map(eq => `${eq.equipment_type}|${eq.trackingNumber}`));
@@ -592,31 +606,97 @@ export function LinerBookingForm({
         d.temporary_booking_number.startsWith(`${code}-`)
     ).length;
 
-    const newItems = Array.from({ length: qty }).map((_, i) => {
-      const seq = String(existingCount + i + 1).padStart(3, "0");
-      return {
-        temporary_booking_number: `${code}-${seq}`,
-        liner_booking_number: "",
-        mbl_number: bulkMblNumber || "",
-        carrier: bulkCarrier || "",
-        contract: "",
-        original_planned_vessel: "",
-        e_t_d_of_original_planned_vessel: "",
-        change_in_original_vessel: false,
-        revised_vessel: "",
-        etd_of_revised_vessel: "",
-        empty_pickup_validity_from: "",
-        empty_pickup_validity_till: "",
-        estimate_gate_opening_date: "",
-        estimated_gate_cutoff_date: "",
-        s_i_cut_off_date: "",
-        booking_received_from_carrier_on: "",
-        additional_remarks: "",
-        line_booking_copy: "",
-        equipment_type: bulkEquipmentType,
-        booking_for: bulkEquipmentType, // read-only mirror
-      };
-    });
+    let newItems: any[] = [];
+
+    if (isAssignment && availableEquipment.length > 0) {
+      // In assignment mode, map to specific available equipment pieces
+      const availableEquipmentOfType = availableEquipment.filter(
+        (eq: any) => eq.equipmentType === bulkEquipmentType
+      );
+
+      const actualQty = Math.min(qty, availableEquipmentOfType.length);
+      
+      if (actualQty === 0) {
+        console.warn(`No available equipment for type: ${bulkEquipmentType}`);
+        return;
+      }
+
+      console.log(`[DEBUG] Assignment mode - Bulk adding ${actualQty} booking details for equipment type: ${bulkEquipmentType}`);
+      console.log(`[DEBUG] Assignment mode - Available equipment:`, availableEquipmentOfType.map((eq: any) => eq.displayName));
+
+      newItems = availableEquipmentOfType.slice(0, actualQty).map((equipment: any, i: number) => {
+        const seq = String(existingCount + i + 1).padStart(3, "0");
+        
+        return {
+          temporary_booking_number: `${code}-${seq}`,
+          liner_booking_number: "",
+          mbl_number: bulkMblNumber || "",
+          carrier: bulkCarrier || "",
+          contract: "",
+          original_planned_vessel: "",
+          e_t_d_of_original_planned_vessel: "",
+          change_in_original_vessel: false,
+          revised_vessel: "",
+          etd_of_revised_vessel: "",
+          empty_pickup_validity_from: "",
+          empty_pickup_validity_till: "",
+          estimate_gate_opening_date: "",
+          estimated_gate_cutoff_date: "",
+          s_i_cut_off_date: "",
+          booking_received_from_carrier_on: "",
+          additional_remarks: "",
+          line_booking_copy: "",
+          equipment_type: equipment.equipmentType, // Set the equipment type
+          trackingNumber: equipment.trackingNumber, // Set the tracking number
+          displayName: equipment.displayName, // Set the display name
+          booking_for: equipment.displayName, // Set booking_for to display name
+        };
+      });
+    } else {
+      // For non-assignment mode or when no available equipment, use unallocated equipment
+      const unallocatedEquipment = getUnallocatedEquipmentTypes();
+      const availableEquipmentOfType = unallocatedEquipment.filter(
+        (equipment: any) => equipment.equipment_type === bulkEquipmentType
+      );
+
+      const actualQty = Math.min(qty, availableEquipmentOfType.length);
+      
+      if (actualQty === 0) {
+        console.warn(`No unallocated equipment available for type: ${bulkEquipmentType}`);
+        return;
+      }
+
+      console.log(`[DEBUG] Bulk adding ${actualQty} booking details for equipment type: ${bulkEquipmentType}`);
+      console.log(`[DEBUG] Available equipment:`, availableEquipmentOfType.map((eq: any) => `${eq.equipment_type}|${eq.trackingNumber}`));
+
+      newItems = availableEquipmentOfType.slice(0, actualQty).map((equipment: any, i: number) => {
+        const seq = String(existingCount + i + 1).padStart(3, "0");
+        const equipmentWithTracking = `${equipment.equipment_type}|${equipment.trackingNumber}`;
+        
+        return {
+          temporary_booking_number: `${code}-${seq}`,
+          liner_booking_number: "",
+          mbl_number: bulkMblNumber || "",
+          carrier: bulkCarrier || "",
+          contract: "",
+          original_planned_vessel: "",
+          e_t_d_of_original_planned_vessel: "",
+          change_in_original_vessel: false,
+          revised_vessel: "",
+          etd_of_revised_vessel: "",
+          empty_pickup_validity_from: "",
+          empty_pickup_validity_till: "",
+          estimate_gate_opening_date: "",
+          estimated_gate_cutoff_date: "",
+          s_i_cut_off_date: "",
+          booking_received_from_carrier_on: "",
+          additional_remarks: "",
+          line_booking_copy: "",
+          equipment_type: equipmentWithTracking, // Include tracking number
+          booking_for: equipmentWithTracking, // Mirror with tracking number
+        };
+      });
+    }
 
     if (isAssignment) {
       setRequestedBookingDetails((prev: any[]) => [...prev, ...newItems]);
@@ -2047,12 +2127,18 @@ export function LinerBookingForm({
                                           </Label>
                                           <Select
                                             name={`liner_booking_details[${index}][equipment_type]`}
-                                            value={
-                                              isAssignment &&
-                                              availableEquipment.length > 0
+                                            value={(() => {
+                                              console.log(`[DEBUG] Dropdown value calculation:`, {
+                                                isAssignment,
+                                                availableEquipmentLength: availableEquipment.length,
+                                                detailTrackingNumber: detail.trackingNumber,
+                                                detailEquipmentType: detail.equipment_type,
+                                                willUseTrackingNumber: isAssignment && availableEquipment.length > 0
+                                              });
+                                              return isAssignment && availableEquipment.length > 0
                                                 ? detail.trackingNumber || ""
-                                                : detail.equipment_type || ""
-                                            }
+                                                : detail.equipment_type || "";
+                                            })()}
                                             onChange={(e) => {
                                               // If in assignment mode, the value is the tracking number
                                               if (
@@ -2100,9 +2186,42 @@ export function LinerBookingForm({
                                             <option value="">
                                               -- Select Equipment --
                                             </option>
-                                            {isAssignment &&
-                                            availableEquipment.length > 0
-                                              ? availableEquipment.map((eq) => (
+                                            {(() => {
+                                              console.log(`[DEBUG] Assignment dropdown check:`, {
+                                                isAssignment,
+                                                availableEquipmentLength: availableEquipment.length,
+                                                availableEquipment: availableEquipment.slice(0, 3),
+                                                willUseAssignmentMode: isAssignment && availableEquipment.length > 0
+                                              });
+                                              return isAssignment && availableEquipment.length > 0;
+                                            })()
+                                              ? availableEquipment
+                                                  .filter((eq) => {
+                                                    // Filter out already selected equipment from requested bookings
+                                                    const selectedInRequested = requestedBookingDetails.some(
+                                                      (detail, detailIndex) => 
+                                                        detailIndex !== index && 
+                                                        detail.trackingNumber === eq.trackingNumber
+                                                    );
+                                                    
+                                                    // Filter out already selected equipment from linked bookings
+                                                    const selectedInLinked = linerBookingDetails.some(
+                                                      (detail) => 
+                                                        detail.trackingNumber === eq.trackingNumber ||
+                                                        detail.booking_for === eq.displayName
+                                                    );
+                                                    
+                                                    console.log(`[DEBUG] Equipment filter for ${eq.displayName}:`, {
+                                                      selectedInRequested,
+                                                      selectedInLinked,
+                                                      include: !selectedInRequested && !selectedInLinked,
+                                                      requestedBookingDetails: requestedBookingDetails.map(d => d.trackingNumber).filter(Boolean),
+                                                      linerBookingDetails: linerBookingDetails.map(d => d.booking_for).filter(Boolean)
+                                                    });
+                                                    
+                                                    return !selectedInRequested && !selectedInLinked;
+                                                  })
+                                                  .map((eq) => (
                                                   <option
                                                     key={eq.trackingNumber}
                                                     value={eq.trackingNumber}

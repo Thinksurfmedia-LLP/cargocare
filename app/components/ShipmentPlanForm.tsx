@@ -2437,10 +2437,12 @@ export function ShipmentPlanForm({
                                           />
                                         </div>
 
-                                        <div>
-                                          <Label
-                                            htmlFor={`container_number_${index}`}
-                                          >
+                                        {/* Container Number field - only visible if booking status is "Booked" and "Empty Container Picked Up" is checked */}
+                                        {(bookingStatus === "Booked" && equipment.emptyPickupStatus) && (
+                                          <div>
+                                            <Label
+                                              htmlFor={`container_number_${index}`}
+                                            >
                                             Container Number
                                             <span className="text-xs text-gray-500 ml-1">
                                               (4 letters + 7 digits)
@@ -2599,7 +2601,8 @@ export function ShipmentPlanForm({
                                           <p className="text-xs text-gray-500 mt-1">
                                             Format: 4 uppercase letters followed by 7 digits (e.g., ABCD1234567)
                                           </p>
-                                        </div>
+                                          </div>
+                                        )}
 
                                         <div>
                                           <Label
