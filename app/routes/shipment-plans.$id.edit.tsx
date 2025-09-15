@@ -382,12 +382,38 @@ export async function action({ request, params }: ActionFunctionArgs) {
         }
       }
 
-      // Update shipment plan status and unlink marker
+      // Revert equipment tracking numbers back to original temporary numbers
+      console.log("[DEBUG] approve_unmapping - Starting equipment tracking number reversion")
+      const revertedPlanData = { ...planData }
+
+      if (revertedPlanData.equipment_details && Array.isArray(revertedPlanData.equipment_details)) {
+        console.log("[DEBUG] approve_unmapping - Equipment details count:", revertedPlanData.equipment_details.length)
+
+        revertedPlanData.equipment_details = revertedPlanData.equipment_details.map((equipment: any, idx: number) => {
+          const currentTracking = equipment.trackingNumber
+          const originalTracking = equipment.originalTrackingNumber || currentTracking
+
+          console.log(`[DEBUG] approve_unmapping - Equipment ${idx}: reverting "${currentTracking}" -> "${originalTracking}"`)
+
+          return {
+            ...equipment,
+            trackingNumber: originalTracking,
+            // Clear the originalTrackingNumber since we've reverted
+            originalTrackingNumber: undefined
+          }
+        })
+
+        console.log("[DEBUG] approve_unmapping - ✅ Equipment tracking numbers reverted to original temporary numbers")
+      } else {
+        console.log("[DEBUG] approve_unmapping - ❌ No equipment_details found to revert")
+      }
+
+      // Update shipment plan status and unlink marker with reverted equipment tracking numbers
       await prisma.shipmentPlan.update({
         where: { id: planId },
         data: {
           data: {
-            ...planData,
+            ...revertedPlanData,
             booking_status: "Awaiting Booking",
           },
           linkedStatus: 0,
@@ -705,6 +731,12 @@ export default function EditShipmentPlan() {
     Boolean((shipmentPlan.linerBooking?.data as any)?.unmapping_request) ||
     Boolean((shipmentPlan.shipmentAssignment?.data as any)?.unmapping_request)
 
+  // Get unmapping reason from either liner booking or shipment assignment
+  const unmappingReason =
+    (shipmentPlan.linerBooking?.data as any)?.unmapping_reason ||
+    (shipmentPlan.shipmentAssignment?.data as any)?.unmapping_reason ||
+    ''
+
   return (
     <AdminLayout user={user}>
       {/* Page Header */}
@@ -772,22 +804,55 @@ export default function EditShipmentPlan() {
 
         {unmappingRequested && (
           <div className="max-w-5xl mx-auto mb-6">
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-center justify-between">
-              <div className="text-amber-800 text-sm">
-                Unmapping has been requested for this plan. Approve to unlink and split into individual available liner
-                bookings, or reject to keep the current linkage.
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-6 h-6 bg-amber-500 rounded-full flex items-center justify-center">
+                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-lg font-semibold text-amber-800">
+                      Unmapping Request Pending
+                    </h3>
+                  </div>
+                  <p className="text-amber-800 text-sm mb-3">
+                    The liner booking team has requested to unmap this shipment plan.
+                  </p>
+
+                  <div className="bg-white/60 border border-amber-300 rounded-md p-3 mb-3">
+                    <h4 className="text-sm font-medium text-amber-800 mb-2">What happens when approved:</h4>
+                    <ul className="text-amber-700 text-sm space-y-1">
+                      <li>• Equipment tracking numbers will be reverted to original temporary numbers</li>
+                      <li>• Shipment plan status will change to "Awaiting Booking"</li>
+                      <li>• Linked bookings will be split into individual available liner bookings</li>
+                      <li>• Plan will be unlinked and available for new bookings</li>
+                    </ul>
+                  </div>
+
+                  {unmappingReason && (
+                    <div className="bg-white/60 border border-amber-300 rounded-md p-3">
+                      <h4 className="text-sm font-medium text-amber-800 mb-2">Unmapping Reason:</h4>
+                      <p className="text-amber-700 text-sm italic">
+                        "{unmappingReason}"
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center gap-3">
-                <form method="post">
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-amber-200">
+                <form method="post" className="inline">
+                  <input type="hidden" name="reject_unmapping" value="true" />
+                  <Button type="submit" variant="outline" className="border-red-300 text-red-700 hover:bg-red-50 bg-white">
+                    Reject Unmapping
+                  </Button>
+                </form>
+                <form method="post" className="inline">
                   <input type="hidden" name="approve_unmapping" value="true" />
                   <Button type="submit" className="bg-green-600 hover:bg-green-700 text-white">
                     Approve Unmapping
-                  </Button>
-                </form>
-                <form method="post">
-                  <input type="hidden" name="reject_unmapping" value="true" />
-                  <Button type="submit" variant="outline" className="border-red-300 text-red-700 bg-transparent">
-                    Reject Unmapping
                   </Button>
                 </form>
               </div>

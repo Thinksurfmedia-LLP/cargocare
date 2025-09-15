@@ -373,7 +373,17 @@ export async function action({ request, params }: ActionFunctionArgs) {
         line_booking_copy_file: await handleFileUpload(
           formData.get(`liner_booking_details[${detailIndex}][line_booking_copy_file]`),
         ),
-        equipment_type: (formData.get(`liner_booking_details[${detailIndex}][equipment_type]`) as string) || "",
+        equipment_type: (() => {
+          const equipmentType = (formData.get(`liner_booking_details[${detailIndex}][equipment_type]`) as string) || ""
+          const bookingFor = (formData.get(`liner_booking_details[${detailIndex}][booking_for]`) as string) || ""
+
+          // If equipment_type is empty but booking_for contains "type|trackingNumber", extract the type
+          if (!equipmentType && bookingFor && bookingFor.includes("|")) {
+            return bookingFor.split("|")[0].trim()
+          }
+
+          return equipmentType
+        })(),
         equipment_quantity: (formData.get(`liner_booking_details[${detailIndex}][equipment_quantity]`) as string) || "",
         booking_for: (formData.get(`liner_booking_details[${detailIndex}][booking_for]`) as string) || "",
       })
@@ -545,8 +555,8 @@ await prisma.$transaction(async (tx) => {
         data: {
           ...data,
           // Keep existing status unless it's "Ready for Re-linking"
-          carrier_booking_status: data.carrier_booking_status === "Ready for Re-linking" 
-            ? "Awaiting MD Approval" 
+          carrier_booking_status: data.carrier_booking_status === "Ready for Re-linking"
+            ? "Awaiting MD Approval"
             : (data.carrier_booking_status || "Awaiting MD Approval")
         },
       },
@@ -564,10 +574,146 @@ await prisma.$transaction(async (tx) => {
           },
         })
 
+        // Update equipment tracking numbers in linked shipment plan
+        console.log("[DEBUG] link_available - Starting equipment tracking update process")
+        console.log("[DEBUG] link_available - mergedDetails count:", mergedDetails.length)
+        console.log("[DEBUG] link_available - mergedDetails with booking numbers:", mergedDetails.filter(d => d.liner_booking_number).length)
+
+        // Initialize shipmentPlanData with current data
+        let shipmentPlanData = current.shipmentPlan?.data as any
+
+        if (current.shipmentPlan && mergedDetails.some(detail => detail.liner_booking_number)) {
+          console.log("[DEBUG] link_available - Conditions met, proceeding with update")
+
+          console.log("[DEBUG] link_available - Current shipment plan ID:", current.shipmentPlan.id)
+          console.log("[DEBUG] link_available - Equipment details count:", shipmentPlanData.equipment_details?.length || 0)
+
+          // Log current equipment details
+          if (shipmentPlanData.equipment_details) {
+            console.log("[DEBUG] link_available - Current equipment details:")
+            shipmentPlanData.equipment_details.forEach((eq: any, idx: number) => {
+              console.log(`[DEBUG]   Equipment ${idx}: ${eq.equipment_type} | ${eq.trackingNumber}`)
+            })
+          }
+
+          // Log liner booking details
+          console.log("[DEBUG] link_available - Merged liner booking details:")
+          mergedDetails.forEach((detail: any, idx: number) => {
+            console.log(`[DEBUG]   Detail ${idx}:`)
+            console.log(`[DEBUG]     - booking_for: "${detail.booking_for}"`)
+            console.log(`[DEBUG]     - equipment_type: "${detail.equipment_type}"`)
+            console.log(`[DEBUG]     - trackingNumber: "${detail.trackingNumber}"`)
+            console.log(`[DEBUG]     - liner_booking_number: "${detail.liner_booking_number}"`)
+          })
+
+          // Update equipment tracking numbers with liner booking numbers
+          if (shipmentPlanData.equipment_details && Array.isArray(shipmentPlanData.equipment_details)) {
+            // Create a map of equipmentType -> liner_booking_number
+            const equipmentTypeToBookingMap = new Map()
+
+            for (const detail of mergedDetails) {
+              if (detail.liner_booking_number && detail.liner_booking_number.trim()) {
+                // Get equipment type from the detail
+                let equipmentType = null
+
+                console.log(`[DEBUG] link_available - Processing detail:`)
+                console.log(`[DEBUG] link_available - equipment_type: "${detail.equipment_type}"`)
+                console.log(`[DEBUG] link_available - booking_for: "${detail.booking_for}"`)
+                console.log(`[DEBUG] link_available - liner_booking_number: "${detail.liner_booking_number}"`)
+
+                // Try to extract equipment type from various fields
+                if (detail.equipment_type && detail.equipment_type.includes("|")) {
+                  equipmentType = detail.equipment_type.split("|")[0].trim()
+                  console.log(`[DEBUG] link_available - Extracted from equipment_type: "${equipmentType}"`)
+                } else if (detail.equipment_type && !detail.equipment_type.includes("|")) {
+                  equipmentType = detail.equipment_type.trim()
+                  console.log(`[DEBUG] link_available - Using equipment_type directly: "${equipmentType}"`)
+                } else if (detail.booking_for && detail.booking_for.includes("|")) {
+                  equipmentType = detail.booking_for.split("|")[0].trim()
+                  console.log(`[DEBUG] link_available - Extracted from booking_for: "${equipmentType}"`)
+                }
+
+                if (equipmentType) {
+                  // If we don't have a booking number for this equipment type yet, or if we have multiple bookings for same type,
+                  // collect all booking numbers for this equipment type
+                  if (!equipmentTypeToBookingMap.has(equipmentType)) {
+                    equipmentTypeToBookingMap.set(equipmentType, [])
+                  }
+                  equipmentTypeToBookingMap.get(equipmentType).push(detail.liner_booking_number)
+                  console.log(`[DEBUG] link_available - MAPPED equipment type: ${equipmentType} -> ${detail.liner_booking_number}`)
+                } else {
+                  console.log(`[DEBUG] link_available - WARNING: Could not extract equipment type from detail`)
+                }
+              } else {
+                console.log(`[DEBUG] link_available - Skipping detail without liner_booking_number`)
+              }
+            }
+
+            console.log(`[DEBUG] link_available - Final mapping has ${equipmentTypeToBookingMap.size} equipment types`)
+            for (const [type, bookings] of equipmentTypeToBookingMap.entries()) {
+              console.log(`[DEBUG] link_available - Equipment type "${type}" has booking numbers:`, bookings)
+            }
+
+            // Update equipment details with liner booking numbers
+            let hasUpdates = false
+            let bookingNumberIndex = new Map() // Track which booking number to use for each equipment type
+
+            shipmentPlanData.equipment_details = shipmentPlanData.equipment_details.map((equipment: any, idx: number) => {
+              const originalTracking = equipment.trackingNumber
+              const equipmentType = equipment.equipment_type
+
+              console.log(`[DEBUG] link_available - Equipment ${idx}: type="${equipmentType}", tracking="${originalTracking}"`)
+
+              // Check if we have booking numbers for this equipment type
+              const bookingNumbers = equipmentTypeToBookingMap.get(equipmentType)
+              if (bookingNumbers && bookingNumbers.length > 0) {
+                // Get the next booking number for this equipment type
+                if (!bookingNumberIndex.has(equipmentType)) {
+                  bookingNumberIndex.set(equipmentType, 0)
+                }
+                const currentIndex = bookingNumberIndex.get(equipmentType)
+                const newBookingNumber = bookingNumbers[currentIndex % bookingNumbers.length]
+
+                // Move to next booking number for this equipment type
+                bookingNumberIndex.set(equipmentType, currentIndex + 1)
+
+                if (originalTracking !== newBookingNumber) {
+                  hasUpdates = true
+                  console.log(`[DEBUG] link_available - UPDATING equipment ${idx}: ${originalTracking} -> ${newBookingNumber}`)
+                  return {
+                    ...equipment,
+                    trackingNumber: newBookingNumber,
+                    originalTrackingNumber: originalTracking // Keep reference to original
+                  }
+                }
+              } else {
+                console.log(`[DEBUG] link_available - No booking numbers found for equipment type "${equipmentType}"`)
+              }
+
+              return equipment
+            })
+
+            console.log(`[DEBUG] link_available - hasUpdates: ${hasUpdates}`)
+
+            // Update the shipment plan data if there were changes
+            if (hasUpdates) {
+              console.log("[DEBUG] link_available - ✅ Equipment tracking numbers updated in shipment plan data")
+            } else {
+              console.log("[DEBUG] link_available - ❌ No equipment tracking number updates made")
+            }
+          } else {
+            console.log("[DEBUG] link_available - ❌ No equipment_details array found in shipment plan")
+          }
+        } else {
+          console.log("[DEBUG] link_available - ❌ Conditions not met for equipment update")
+          console.log("[DEBUG] link_available - Missing shipmentPlan or no booking numbers found")
+        }
+
         // Ensure plan is marked as linked so loader doesn't clear details
         await tx.shipmentPlan.update({
           where: { id: current.shipmentPlan!.id },
           data: {
+            data: shipmentPlanData,
             linkedStatus: 1,
           },
         })

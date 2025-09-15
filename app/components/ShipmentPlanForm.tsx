@@ -261,6 +261,22 @@ export function ShipmentPlanForm({
   // Bulk equipment modal state
   const [showBulkEquipmentModal, setShowBulkEquipmentModal] = useState(false);
 
+  // State to track which equipment cards show liner booking details
+  const [expandedLinerBookingDetails, setExpandedLinerBookingDetails] = useState<Set<number>>(new Set());
+
+  // Function to toggle liner booking details visibility
+  const toggleLinerBookingDetails = (equipmentIndex: number) => {
+    setExpandedLinerBookingDetails(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(equipmentIndex)) {
+        newSet.delete(equipmentIndex);
+      } else {
+        newSet.add(equipmentIndex);
+      }
+      return newSet;
+    });
+  };
+
   // New state for MD Approval tabs
   const [activeApprovalTab, setActiveApprovalTab] = useState<
     "approved" | "rejected"
@@ -2901,6 +2917,325 @@ export function ShipmentPlanForm({
                                           </div>
                                         </div>
                                       )}
+
+                                      {/* Liner Booking Details Button - Only show when there are linked liner booking details */}
+                                      {(() => {
+                                        // Get liner booking detail for this equipment
+                                        const linkedBookingData = shipmentPlan?.linerBooking?.data || shipmentPlan?.shipmentAssignment?.data;
+
+                                        const matchingDetail = linkedBookingData && (linkedBookingData as any).liner_booking_details ?
+                                          (() => {
+                                            const details = (linkedBookingData as any).liner_booking_details;
+                                            // First try to match by trackingNumber
+                                            let match = details.find((detail: any) => detail.trackingNumber === equipment.trackingNumber);
+
+                                            // If no match by trackingNumber, try to match by equipment type
+                                            if (!match) {
+                                              match = details.find((detail: any) =>
+                                                detail.equipment_type === equipment.equipment_type ||
+                                                detail.booking_for === equipment.equipment_type
+                                              );
+                                            }
+
+                                            // If still no match and there's only one detail and one equipment, show it
+                                            if (!match && details.length === 1) {
+                                              match = details[0];
+                                            }
+
+                                            return match;
+                                          })() : null;
+
+                                        return matchingDetail ? (
+                                          <div className="mt-4 pt-4 border-t border-gray-200">
+                                            <Button
+                                              type="button"
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={() => toggleLinerBookingDetails(index)}
+                                              className="w-full text-sm flex items-center justify-center gap-2"
+                                            >
+                                              {expandedLinerBookingDetails.has(index) ? (
+                                                <>
+                                                  📋 Hide Liner Booking Details
+                                                  <span className="text-xs">↑</span>
+                                                </>
+                                              ) : (
+                                                <>
+                                                  📋 View Liner Booking Details
+                                                  <span className="text-xs">↓</span>
+                                                </>
+                                              )}
+                                            </Button>
+
+                                            {/* Liner Booking Details Summary */}
+                                            {expandedLinerBookingDetails.has(index) && (
+                                              <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                                                <h6 className="text-sm font-semibold text-blue-800 mb-3">
+                                                  Allocated Liner Booking Details
+                                                </h6>
+
+                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                                  {/* Equipment Type */}
+                                                  {matchingDetail.equipment_type && (
+                                                    <div className="space-y-1">
+                                                      <div className="text-xs font-medium text-gray-600">
+                                                        Equipment Type
+                                                      </div>
+                                                      <div className="p-2 bg-white border border-gray-200 rounded text-xs text-gray-800">
+                                                        {matchingDetail.equipment_type}
+                                                      </div>
+                                                    </div>
+                                                  )}
+
+                                                  {/* Booking Numbers */}
+                                                  {matchingDetail.temporary_booking_number && (
+                                                    <div className="space-y-1">
+                                                      <div className="text-xs font-medium text-gray-600">
+                                                        Temporary Booking Number
+                                                      </div>
+                                                      <div className="p-2 bg-white border border-gray-200 rounded text-xs text-gray-800">
+                                                        {matchingDetail.temporary_booking_number}
+                                                      </div>
+                                                    </div>
+                                                  )}
+
+                                                  {matchingDetail.suffix_for_anticipatory_temporary_booking_number && (
+                                                    <div className="space-y-1">
+                                                      <div className="text-xs font-medium text-gray-600">
+                                                        Suffix for Anticipatory Temp Booking Number
+                                                      </div>
+                                                      <div className="p-2 bg-white border border-gray-200 rounded text-xs text-gray-800">
+                                                        {matchingDetail.suffix_for_anticipatory_temporary_booking_number}
+                                                      </div>
+                                                    </div>
+                                                  )}
+
+                                                  {matchingDetail.liner_booking_number && (
+                                                    <div className="space-y-1">
+                                                      <div className="text-xs font-medium text-gray-600">
+                                                        Liner Booking Number
+                                                      </div>
+                                                      <div className="p-2 bg-white border border-gray-200 rounded text-xs text-gray-800 font-medium text-blue-700">
+                                                        {matchingDetail.liner_booking_number}
+                                                      </div>
+                                                    </div>
+                                                  )}
+
+                                                  {matchingDetail.mbl_number && (
+                                                    <div className="space-y-1">
+                                                      <div className="text-xs font-medium text-gray-600">
+                                                        MBL Number
+                                                      </div>
+                                                      <div className="p-2 bg-white border border-gray-200 rounded text-xs text-gray-800">
+                                                        {matchingDetail.mbl_number}
+                                                      </div>
+                                                    </div>
+                                                  )}
+
+                                                  {matchingDetail.carrier && (
+                                                    <div className="space-y-1">
+                                                      <div className="text-xs font-medium text-gray-600">
+                                                        Carrier
+                                                      </div>
+                                                      <div className="p-2 bg-white border border-gray-200 rounded text-xs text-gray-800">
+                                                        {matchingDetail.carrier}
+                                                      </div>
+                                                    </div>
+                                                  )}
+
+                                                  {matchingDetail.contract && (
+                                                    <div className="space-y-1">
+                                                      <div className="text-xs font-medium text-gray-600">
+                                                        Contract
+                                                      </div>
+                                                      <div className="p-2 bg-white border border-gray-200 rounded text-xs text-gray-800">
+                                                        {matchingDetail.contract}
+                                                      </div>
+                                                    </div>
+                                                  )}
+
+                                                  {matchingDetail.original_planned_vessel && (
+                                                    <div className="space-y-1">
+                                                      <div className="text-xs font-medium text-gray-600">
+                                                        Original Planned Vessel
+                                                      </div>
+                                                      <div className="p-2 bg-white border border-gray-200 rounded text-xs text-gray-800">
+                                                        {matchingDetail.original_planned_vessel}
+                                                      </div>
+                                                    </div>
+                                                  )}
+
+                                                  {matchingDetail.e_t_d_of_original_planned_vessel && (
+                                                    <div className="space-y-1">
+                                                      <div className="text-xs font-medium text-gray-600">
+                                                        ETD of Original Planned Vessel
+                                                      </div>
+                                                      <div className="p-2 bg-white border border-gray-200 rounded text-xs text-gray-800">
+                                                        {formatDateForDisplay(matchingDetail.e_t_d_of_original_planned_vessel)}
+                                                      </div>
+                                                    </div>
+                                                  )}
+
+                                                  {matchingDetail.change_in_original_vessel && (
+                                                    <div className="space-y-1">
+                                                      <div className="text-xs font-medium text-gray-600">
+                                                        Change in Original Vessel
+                                                      </div>
+                                                      <div className="p-2 bg-white border border-gray-200 rounded text-xs text-gray-800">
+                                                        {matchingDetail.change_in_original_vessel ? "Yes" : "No"}
+                                                      </div>
+                                                    </div>
+                                                  )}
+
+                                                  {matchingDetail.revised_vessel && (
+                                                    <div className="space-y-1">
+                                                      <div className="text-xs font-medium text-gray-600">
+                                                        Revised Vessel
+                                                      </div>
+                                                      <div className="p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-gray-800">
+                                                        <div className="flex items-center">
+                                                          <span className="text-yellow-600 mr-1">⚠️</span>
+                                                          {matchingDetail.revised_vessel}
+                                                        </div>
+                                                      </div>
+                                                    </div>
+                                                  )}
+
+                                                  {matchingDetail.etd_of_revised_vessel && (
+                                                    <div className="space-y-1">
+                                                      <div className="text-xs font-medium text-gray-600">
+                                                        ETD of Revised Vessel
+                                                      </div>
+                                                      <div className="p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-gray-800">
+                                                        {formatDateForDisplay(matchingDetail.etd_of_revised_vessel)}
+                                                      </div>
+                                                    </div>
+                                                  )}
+
+                                                  {matchingDetail.empty_pickup_validity_from && (
+                                                    <div className="space-y-1">
+                                                      <div className="text-xs font-medium text-gray-600">
+                                                        Empty Pickup From
+                                                      </div>
+                                                      <div className="p-2 bg-white border border-gray-200 rounded text-xs text-gray-800">
+                                                        {formatDateForDisplay(matchingDetail.empty_pickup_validity_from)}
+                                                      </div>
+                                                    </div>
+                                                  )}
+
+                                                  {matchingDetail.empty_pickup_validity_till && (
+                                                    <div className="space-y-1">
+                                                      <div className="text-xs font-medium text-gray-600">
+                                                        Empty Pickup Till
+                                                      </div>
+                                                      <div className="p-2 bg-white border border-gray-200 rounded text-xs text-gray-800">
+                                                        {formatDateForDisplay(matchingDetail.empty_pickup_validity_till)}
+                                                      </div>
+                                                    </div>
+                                                  )}
+
+                                                  {matchingDetail.estimate_gate_opening_date && (
+                                                    <div className="space-y-1">
+                                                      <div className="text-xs font-medium text-gray-600">
+                                                        Gate Opening Date
+                                                      </div>
+                                                      <div className="p-2 bg-white border border-gray-200 rounded text-xs text-gray-800">
+                                                        {formatDateForDisplay(matchingDetail.estimate_gate_opening_date)}
+                                                      </div>
+                                                    </div>
+                                                  )}
+
+                                                  {matchingDetail.estimated_gate_cutoff_date && (
+                                                    <div className="space-y-1">
+                                                      <div className="text-xs font-medium text-gray-600">
+                                                        Gate Cutoff Date
+                                                      </div>
+                                                      <div className="p-2 bg-white border border-gray-200 rounded text-xs text-gray-800">
+                                                        {formatDateForDisplay(matchingDetail.estimated_gate_cutoff_date)}
+                                                      </div>
+                                                    </div>
+                                                  )}
+
+                                                  {matchingDetail.s_i_cut_off_date && (
+                                                    <div className="space-y-1">
+                                                      <div className="text-xs font-medium text-gray-600">
+                                                        SI Cut Off Date
+                                                      </div>
+                                                      <div className="p-2 bg-white border border-gray-200 rounded text-xs text-gray-800">
+                                                        {formatDateForDisplay(matchingDetail.s_i_cut_off_date)}
+                                                      </div>
+                                                    </div>
+                                                  )}
+
+                                                  {matchingDetail.booking_received_from_carrier_on && (
+                                                    <div className="space-y-1">
+                                                      <div className="text-xs font-medium text-gray-600">
+                                                        Booking Received On
+                                                      </div>
+                                                      <div className="p-2 bg-white border border-gray-200 rounded text-xs text-gray-800">
+                                                        {formatDateForDisplay(matchingDetail.booking_received_from_carrier_on)}
+                                                      </div>
+                                                    </div>
+                                                  )}
+                                                </div>
+
+                                                {/* Additional sections for dates, remarks, etc. */}
+                                                {matchingDetail.additional_remarks && (
+                                                  <div className="mt-3 space-y-1">
+                                                    <div className="text-xs font-medium text-gray-600">
+                                                      Additional Remarks
+                                                    </div>
+                                                    <div className="p-2 bg-white border border-gray-200 rounded text-xs text-gray-800">
+                                                      {matchingDetail.additional_remarks}
+                                                    </div>
+                                                  </div>
+                                                )}
+
+                                                {/* Line Booking Copy Links */}
+                                                <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                  {matchingDetail.line_booking_copy && (
+                                                    <div className="space-y-1">
+                                                      <div className="text-xs font-medium text-gray-600">
+                                                        Line Booking Copy (URL)
+                                                      </div>
+                                                      <div className="p-2 bg-white border border-gray-200 rounded text-xs">
+                                                        <a
+                                                          href={matchingDetail.line_booking_copy}
+                                                          target="_blank"
+                                                          rel="noopener noreferrer"
+                                                          className="text-blue-600 hover:text-blue-800 hover:underline flex items-center text-xs"
+                                                        >
+                                                          🔗 View Booking Copy
+                                                          <span className="ml-1">↗</span>
+                                                        </a>
+                                                      </div>
+                                                    </div>
+                                                  )}
+
+                                                  {matchingDetail.line_booking_copy_file && (
+                                                    <div className="space-y-1">
+                                                      <div className="text-xs font-medium text-gray-600">
+                                                        Line Booking Copy (PDF File)
+                                                      </div>
+                                                      <div className="p-2 bg-white border border-gray-200 rounded text-xs">
+                                                        <a
+                                                          href={matchingDetail.line_booking_copy_file}
+                                                          target="_blank"
+                                                          rel="noopener noreferrer"
+                                                          className="text-blue-600 hover:text-blue-800 hover:underline flex items-center text-xs"
+                                                        >
+                                                          📄 View PDF
+                                                          <span className="ml-1">↗</span>
+                                                        </a>
+                                                      </div>
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            )}
+                                          </div>
+                                        ) : null;
+                                      })()}
                                     </div>
                                   );
                                 }
