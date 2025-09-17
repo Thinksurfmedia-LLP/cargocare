@@ -22,6 +22,9 @@ export interface LinerBookingFormProps {
     vessels: any[];
     organizations: any[];
     equipment?: any[];
+    loadingPorts?: any[];
+    destinationCountries?: any[];
+    portsOfDischarge?: any[];
   };
   actionData?: any;
   user?: any;
@@ -32,6 +35,7 @@ export interface LinerBookingFormProps {
     equipmentType: string;
     displayName: string;
   }>;
+  pendingUnmappingRequests?: any[];
 }
 
 export function LinerBookingForm({
@@ -44,7 +48,10 @@ export function LinerBookingForm({
   availableLinerBookings = [],
   isAssignment = false,
   availableEquipment = [],
+  pendingUnmappingRequests = [],
 }: LinerBookingFormProps) {
+  console.log("[DEBUG] LinerBookingForm render - isAssignment:", isAssignment);
+  console.log("[DEBUG] LinerBookingForm render - mode:", mode);
   const navigation = useNavigation();
   const { addToast } = useToast();
 
@@ -63,15 +70,19 @@ export function LinerBookingForm({
       return [];
     } else if (mode === "edit" && data?.liner_booking_details) {
       return data.liner_booking_details;
+    } else if (mode === "new") {
+      // Initialize new mode with empty array - booking details will be added via "Add Booking Detail" button or bulk add
+      return [];
     }
     return [];
   });
 
   const [requestedBookingDetails, setRequestedBookingDetails] = useState(() => {
-    if (mode === "edit" && data?.requested_booking_details) {
-      return data.requested_booking_details;
-    }
-    return [];
+    const initial = mode === "edit" && data?.requested_booking_details
+      ? data.requested_booking_details
+      : [];
+    console.log("[DEBUG] Initial requestedBookingDetails:", initial);
+    return initial;
   });
 
   // Track which booking details have been allocated
@@ -117,12 +128,24 @@ export function LinerBookingForm({
   const [bulkQuantity, setBulkQuantity] = useState<string>(""); // allow empty while typing
   const [bulkMblNumber, setBulkMblNumber] = useState<string>("");
   const [bulkCarrier, setBulkCarrier] = useState<string>("");
-  const [bulkTempBookingNumber, setBulkTempBookingNumber] =
-    useState<string>("");
-  const [bulkLinerBookingNumber, setBulkLinerBookingNumber] =
-    useState<string>("");
-  const [bulkSuffixTempBookingNumber, setBulkSuffixTempBookingNumber] =
-    useState<string>("");
+  const [bulkTempBookingNumber, setBulkTempBookingNumber] = useState<string>("");
+  const [bulkLinerBookingNumber, setBulkLinerBookingNumber] = useState<string>("");
+  const [bulkSuffixForAnticipatoryTempBookingNumber, setBulkSuffixForAnticipatoryTempBookingNumber] = useState<string>("");
+  const [bulkContract, setBulkContract] = useState<string>("");
+  const [bulkOriginalPlannedVessel, setBulkOriginalPlannedVessel] = useState<string>("");
+  const [bulkEtdOfOriginalPlannedVessel, setBulkEtdOfOriginalPlannedVessel] = useState<string>("");
+  const [bulkLoadingPort, setBulkLoadingPort] = useState<string>("");
+  const [bulkDestinationCountry, setBulkDestinationCountry] = useState<string>("");
+  const [bulkPortOfDischarge, setBulkPortOfDischarge] = useState<string>("");
+
+  // Handle destination country change to reset port of discharge
+  const handleBulkDestinationCountryChange = (value: string) => {
+    setBulkDestinationCountry(value);
+    setBulkPortOfDischarge(""); // Reset port of discharge when country changes
+  };
+
+  // Track destination countries for individual booking details for immediate UI updates
+  const [individualDestinationCountries, setIndividualDestinationCountries] = useState<Record<number, string>>({});
 
   const isSubmitting = navigation.state === "submitting";
 
@@ -137,19 +160,50 @@ export function LinerBookingForm({
 
   // Add this function after the getShipmentPlanEquipment function (around line 85)
   const getAvailableEquipmentForBookingDetail = (currentIndex: number) => {
+    console.log(`[DEBUG] getAvailableEquipmentForBookingDetail called - currentIndex: ${currentIndex}`);
+    console.log("[DEBUG] requestedBookingDetails:", requestedBookingDetails);
     const allEquipment = getShipmentPlanEquipment();
-    const selectedEquipment = linerBookingDetails
-      .map((detail: any, index: number) => {
-        // Don't filter out the current booking detail's selection
-        if (index === currentIndex) return null;
-        return detail.equipment_type
-          ? detail.equipment_type.split("|")[1]
-          : null; // Get tracking number
+
+    // Get all existing liner booking details (same logic as calculateAllocatedEquipment)
+    const allExistingDetails = isAssignment && data?.liner_booking_details
+      ? data.liner_booking_details
+      : linerBookingDetails;
+
+    // Get selected equipment from existing details (filter out unmapped ones)
+    const selectedFromExisting = allExistingDetails
+      .filter((detail: any) => {
+        if (!detail || !detail.equipment_type) return false;
+        // Filter out unmapped equipment
+        if (detail.equipment_type.includes("|")) {
+          const trackingNumber = detail.equipment_type.split("|")[1];
+          const shipmentPlanEquipment = getShipmentPlanEquipment();
+          return !shipmentPlanEquipment.some((eq: any) => eq.trackingNumber === trackingNumber && eq.unmapped);
+        }
+        return true;
       })
+      .map((detail: any) => detail.equipment_type && detail.equipment_type.includes("|")
+        ? detail.equipment_type.split("|")[1]
+        : null)
       .filter(Boolean);
 
+    // Get selected equipment from requested details (excluding current)
+    const selectedFromRequested = isAssignment
+      ? requestedBookingDetails
+          .filter((detail: any, index: number) => {
+            return detail && detail.equipment_type && index !== currentIndex;
+          })
+          .map((detail: any) => detail.equipment_type && detail.equipment_type.includes("|")
+            ? detail.equipment_type.split("|")[1]
+            : null)
+          .filter(Boolean)
+      : [];
+
+    const selectedEquipment = [...selectedFromExisting, ...selectedFromRequested];
+
     return allEquipment.filter(
-      (equipment: any) => !selectedEquipment.includes(equipment.trackingNumber)
+      (equipment: any) =>
+        !selectedEquipment.includes(equipment.trackingNumber) &&
+        !equipment.unmapped // Also exclude unmapped equipment
     );
   };
 
@@ -159,6 +213,7 @@ export function LinerBookingForm({
     const required = {} as Record<string, number>;
 
     equipment.forEach((item: any) => {
+      // Count ALL equipment including unmapped ones, because unmapped equipment still needs to be allocated to new bookings
       if (item.equipment_type && item.number_of_equipment) {
         const key = item.equipment_type;
         required[key] =
@@ -171,26 +226,90 @@ export function LinerBookingForm({
 
   const calculateAllocatedEquipment = () => {
     const allocated = {} as Record<string, number>;
+    const shipmentPlanEquipment = getShipmentPlanEquipment();
 
-    // Count from linked bookings (Link Available tab)
-    linerBookingDetails.forEach((detail: any, index: number) => {
+    // Get all existing liner booking details (both from state and original data)
+    const allExistingDetails = isAssignment && data?.liner_booking_details
+      ? data.liner_booking_details
+      : linerBookingDetails;
+
+    console.log("[DEBUG] calculateAllocatedEquipment - allExistingDetails:", allExistingDetails);
+    console.log("[DEBUG] calculateAllocatedEquipment - shipmentPlanEquipment:", shipmentPlanEquipment.map(eq => ({
+      trackingNumber: eq.trackingNumber,
+      equipmentType: eq.equipment_type,
+      unmapped: eq.unmapped
+    })));
+
+
+    // Count from linked bookings (Link Available tab or existing details)
+    allExistingDetails.forEach((detail: any, index: number) => {
       if (detail.equipment_type) {
         // Handle both cases: "equipment_type|tracking" and just "equipment_type"
         const equipmentType = detail.equipment_type.includes("|")
           ? detail.equipment_type.split("|")[0]
           : detail.equipment_type;
-        allocated[equipmentType] = (allocated[equipmentType] || 0) + 1;
+
+        // Check if this specific allocation corresponds to an unmapped equipment
+        // We need to check if this liner booking number was used for equipment that got unmapped
+        const trackingNumber = detail.equipment_type.includes("|")
+          ? detail.equipment_type.split("|")[1]
+          : detail.booking_for && detail.booking_for.includes("|")
+          ? detail.booking_for.split("|")[1]
+          : null;
+
+        // Check if this specific allocation was for equipment that is now unmapped
+        // by checking if the tracking number or liner booking number matches unmapped equipment
+        const isThisAllocationUnmapped = detail.liner_booking_number &&
+          shipmentPlanEquipment.some((eq: any) =>
+            eq.unmapped &&
+            // Check if this equipment was unmapped and had this liner booking number
+            (eq.originalTrackingNumber === detail.liner_booking_number ||
+             // Also check by tracking number match
+             (trackingNumber && (eq.trackingNumber === trackingNumber || eq.originalTrackingNumber === trackingNumber)))
+          );
+
+        console.log(`[DEBUG] Processing booking detail ${index}:`, {
+          equipmentType,
+          trackingNumber,
+          linerBookingNumber: detail.liner_booking_number,
+          isThisAllocationUnmapped,
+          willCount: !isThisAllocationUnmapped
+        });
+
+        // Only count if this specific allocation is not for unmapped equipment
+        if (!isThisAllocationUnmapped) {
+          allocated[equipmentType] = (allocated[equipmentType] || 0) + 1;
+          console.log(`[DEBUG] Counted booking ${index} - ${equipmentType} total: ${allocated[equipmentType]}`);
+        } else {
+          console.log(`[DEBUG] Skipped unmapped booking ${index} - ${equipmentType}`);
+        }
       }
     });
 
     // Count from allocated requested bookings (Request Booking tab)
     requestedBookingDetails.forEach((detail: any, index: number) => {
-      if (detail.equipment_type && allocatedBookingDetails.has(index)) {
+      if (detail && detail.equipment_type && allocatedBookingDetails.has(index)) {
         // Handle both cases: "equipment_type|tracking" and just "equipment_type"
         const equipmentType = detail.equipment_type.includes("|")
           ? detail.equipment_type.split("|")[0]
           : detail.equipment_type;
-        allocated[equipmentType] = (allocated[equipmentType] || 0) + 1;
+
+        const trackingNumber = detail.equipment_type.includes("|")
+          ? detail.equipment_type.split("|")[1]
+          : detail.booking_for && detail.booking_for.includes("|")
+          ? detail.booking_for.split("|")[1]
+          : null;
+
+        // For requested bookings, we should NOT skip new allocations to unmapped equipment
+        // Requested bookings are NEW allocations, so they should always be counted
+        // We only need to skip old allocations that were for equipment that got unmapped
+        const isThisAllocationUnmapped = false; // Always count new requested bookings
+
+        // Only count if this specific allocation is not for unmapped equipment
+        if (!isThisAllocationUnmapped) {
+          allocated[equipmentType] = (allocated[equipmentType] || 0) + 1;
+        } else {
+        }
       }
     });
 
@@ -198,6 +317,17 @@ export function LinerBookingForm({
   };
 
   const getUnallocatedEquipmentTypes = () => {
+    // In "new" mode, return equipment from dataPoints
+    if (mode === "new") {
+      return (dataPoints?.equipment || []).map((eq: any) => ({
+        equipment_type: eq.name,
+        trackingNumber: `TEMP-${eq.id}`, // Generate temporary tracking number
+        id: eq.id,
+        name: eq.name
+      }));
+    }
+
+    // In "edit" mode, use original logic with shipment plan
     if (mode !== "edit" || !linerBooking?.shipmentPlan) return [];
 
     const required = calculateRequiredEquipment();
@@ -205,28 +335,66 @@ export function LinerBookingForm({
     const allEquipment = getShipmentPlanEquipment();
     const unallocated: any[] = [];
 
+    // Get all existing liner booking details (same as in calculateAllocatedEquipment)
+    const allExistingDetails = isAssignment && data?.liner_booking_details
+      ? data.liner_booking_details
+      : linerBookingDetails;
+
     // Get already selected tracking numbers to exclude them
     const selectedTrackingNumbers = [
-      // From linked bookings
-      ...linerBookingDetails.map((detail: any) => {
-        // Try to get tracking number from multiple sources
-        if (detail.booking_for && detail.booking_for.includes("|")) {
-          return detail.booking_for.split("|")[1]; // from booking_for field
-        } else if (
-          detail.equipment_type &&
-          detail.equipment_type.includes("|")
-        ) {
-          return detail.equipment_type.split("|")[1]; // from equipment_type field
-        } else if (detail.trackingNumber) {
-          return detail.trackingNumber; // from direct trackingNumber field
-        }
-        return null;
-      }),
-      // From allocated requested bookings in assignment mode
+      // From linked bookings - but exclude those that correspond to unmapped equipment
+      ...allExistingDetails
+        .filter((detail: any) => {
+          // Exclude allocations that correspond to unmapped equipment
+          const trackingNumber = detail.equipment_type && detail.equipment_type.includes("|")
+            ? detail.equipment_type.split("|")[1]
+            : detail.booking_for && detail.booking_for.includes("|")
+            ? detail.booking_for.split("|")[1]
+            : detail.trackingNumber;
+
+          // Check if this allocation corresponds to unmapped equipment
+          const isForUnmappedEquipment = detail.liner_booking_number &&
+            allEquipment.some((eq: any) =>
+              eq.unmapped &&
+              (eq.originalTrackingNumber === detail.liner_booking_number ||
+               (trackingNumber && (eq.trackingNumber === trackingNumber || eq.originalTrackingNumber === trackingNumber)))
+            );
+
+          return !isForUnmappedEquipment; // Include only allocations that are NOT for unmapped equipment
+        })
+        .map((detail: any) => {
+          // Try to get tracking number from multiple sources
+          if (detail.booking_for && detail.booking_for.includes("|")) {
+            return detail.booking_for.split("|")[1]; // from booking_for field
+          } else if (
+            detail.equipment_type &&
+            detail.equipment_type.includes("|")
+          ) {
+            return detail.equipment_type.split("|")[1]; // from equipment_type field
+          } else if (detail.trackingNumber) {
+            return detail.trackingNumber; // from direct trackingNumber field
+          }
+          return null;
+        }),
+      // From allocated requested bookings in assignment mode - but exclude those that correspond to unmapped equipment
       ...requestedBookingDetails
-        .filter((detail: any, index: number) =>
-          allocatedBookingDetails.has(index)
-        )
+        .filter((detail: any, index: number) => {
+          if (!allocatedBookingDetails.has(index)) return false;
+
+          // Check if this allocation corresponds to unmapped equipment
+          const trackingNumber = detail.equipment_type && detail.equipment_type.includes("|")
+            ? detail.equipment_type.split("|")[1]
+            : detail.trackingNumber;
+
+          const isForUnmappedEquipment = detail.liner_booking_number &&
+            allEquipment.some((eq: any) =>
+              eq.unmapped &&
+              (eq.originalTrackingNumber === detail.liner_booking_number ||
+               (trackingNumber && (eq.trackingNumber === trackingNumber || eq.originalTrackingNumber === trackingNumber)))
+            );
+
+          return !isForUnmappedEquipment; // Include only allocations that are NOT for unmapped equipment
+        })
         .map((detail: any) => {
           if (detail.trackingNumber) {
             return detail.trackingNumber;
@@ -240,30 +408,6 @@ export function LinerBookingForm({
         }),
     ].filter(Boolean);
 
-    console.log(
-      "[DEBUG] getUnallocatedEquipmentTypes - allocatedBookingDetails:",
-      Array.from(allocatedBookingDetails)
-    );
-    console.log(
-      "[DEBUG] getUnallocatedEquipmentTypes - requestedBookingDetails:",
-      requestedBookingDetails.map((d, i) => ({
-        index: i,
-        trackingNumber: d.trackingNumber,
-        allocated: allocatedBookingDetails.has(i),
-      }))
-    );
-    console.log(
-      "[DEBUG] getUnallocatedEquipmentTypes - selectedTrackingNumbers:",
-      selectedTrackingNumbers
-    );
-    console.log(
-      "[DEBUG] getUnallocatedEquipmentTypes - allEquipment count:",
-      allEquipment.length
-    );
-    console.log(
-      "[DEBUG] getUnallocatedEquipmentTypes - allEquipment:",
-      allEquipment.map((eq) => `${eq.equipment_type}|${eq.trackingNumber}`)
-    );
 
     for (const [equipmentType, requiredQty] of Object.entries(required)) {
       const allocatedQty = allocated[equipmentType] || 0;
@@ -271,11 +415,16 @@ export function LinerBookingForm({
 
       if (remaining > 0) {
         // Find available equipment of this type that hasn't been selected
+        // Note: Unmapped equipment should be AVAILABLE for new allocations, so we don't exclude it
         const availableEquipment = allEquipment.filter(
-          (eq: any) =>
-            eq.equipment_type === equipmentType &&
-            !selectedTrackingNumbers.includes(eq.trackingNumber)
+          (eq: any) => {
+            const isSelected = selectedTrackingNumbers.includes(eq.trackingNumber) ||
+                              (eq.originalTrackingNumber && selectedTrackingNumbers.includes(eq.originalTrackingNumber));
+
+            return eq.equipment_type === equipmentType && !isSelected;
+          }
         );
+
 
         // Add up to the remaining quantity needed
         for (
@@ -288,10 +437,6 @@ export function LinerBookingForm({
       }
     }
 
-    console.log(
-      "[DEBUG] getUnallocatedEquipmentTypes - final unallocated:",
-      unallocated.map((eq) => `${eq.equipment_type}|${eq.trackingNumber}`)
-    );
     return unallocated;
   };
 
@@ -496,6 +641,29 @@ export function LinerBookingForm({
   };
 
   const addLinerBookingDetail = () => {
+    console.log("[DEBUG] addLinerBookingDetail called");
+    console.log("[DEBUG] Current requestedBookingDetails length:", requestedBookingDetails.length);
+
+    // Get route data from shipment plan when in assignment mode
+    let routeData = {
+      loading_port: "",
+      destination_country: "",
+      port_of_discharge: "",
+    };
+
+    if (isAssignment && linerBooking?.shipmentPlan) {
+      const planData = (linerBooking.shipmentPlan.data as any) ?? {};
+      const containerMovement = planData?.container_movement ?? {};
+
+      routeData = {
+        loading_port: containerMovement?.loading_port || "",
+        destination_country: containerMovement?.destination_country || "",
+        port_of_discharge: containerMovement?.port_of_discharge || "",
+      };
+
+      console.log("[DEBUG] Inheriting route data from shipment plan:", routeData);
+    }
+
     const newDetail = {
       original_planned_vessel: "",
       e_t_d_of_original_planned_vessel: "",
@@ -512,6 +680,7 @@ export function LinerBookingForm({
       line_booking_copy: "",
       equipment_type: "",
       booking_for: "",
+      ...routeData, // Inherit route data from shipment plan in assignment mode
     };
 
     if (isAssignment) {
@@ -519,6 +688,107 @@ export function LinerBookingForm({
     } else {
       setLinerBookingDetails([...linerBookingDetails, newDetail]);
     }
+  };
+
+  const duplicateLinerBookingDetail = (originalIndex: number) => {
+    console.log("[DEBUG] duplicateLinerBookingDetail called for index:", originalIndex);
+
+    // Only allow duplication in assignment mode
+    if (!isAssignment) {
+      console.warn("[DEBUG] Duplicate not allowed - not in assignment mode");
+      alert("Duplicate functionality is only available in assignment mode.");
+      return;
+    }
+
+    // Check if the booking detail is allocated first
+    if (!allocatedBookingDetails.has(originalIndex)) {
+      console.warn("[DEBUG] Duplicate not allowed - booking detail not allocated");
+      alert("Please allocate this booking detail first before duplicating.");
+      return;
+    }
+
+    // Get the original booking detail
+    const originalDetail = requestedBookingDetails[originalIndex];
+    if (!originalDetail) {
+      console.warn("[DEBUG] Original detail not found at index:", originalIndex);
+      return;
+    }
+
+    console.log("[DEBUG] Original detail:", originalDetail);
+    console.log("[DEBUG] Original PDF file:", originalDetail.line_booking_copy_file);
+
+    // Get current equipment selection from original detail
+    const currentEquipmentSelection = originalDetail.equipment_type || "";
+    console.log("[DEBUG] Current equipment selection:", currentEquipmentSelection);
+
+    // Get all unallocated equipment (any type, in order)
+    const unallocatedEquipment = getUnallocatedEquipmentTypes();
+    console.log("[DEBUG] All unallocated equipment:", unallocatedEquipment);
+
+    // Find the next available equipment (any type, in order) that is not the current one
+    const nextEquipment = unallocatedEquipment.find(
+      (equipment: any) => {
+        const equipmentSelection = `${equipment.equipment_type}|${equipment.trackingNumber}`;
+        return equipmentSelection !== currentEquipmentSelection;
+      }
+    );
+
+    if (!nextEquipment) {
+      console.warn("[DEBUG] No next equipment available");
+      alert("No more unallocated equipment available.");
+      return;
+    }
+
+    console.log("[DEBUG] Next equipment found:", nextEquipment);
+
+    // Get route data from shipment plan when in assignment mode
+    let routeData = {
+      loading_port: "",
+      destination_country: "",
+      port_of_discharge: "",
+    };
+
+    if (isAssignment && linerBooking?.shipmentPlan) {
+      const planData = (linerBooking.shipmentPlan.data as any) ?? {};
+      const containerMovement = planData?.container_movement ?? {};
+
+      routeData = {
+        loading_port: containerMovement?.loading_port || "",
+        destination_country: containerMovement?.destination_country || "",
+        port_of_discharge: containerMovement?.port_of_discharge || "",
+      };
+    }
+
+    // Create duplicated detail with same values except equipment
+    const duplicatedDetail = {
+      ...originalDetail, // Copy all fields from original
+      equipment_type: `${nextEquipment.equipment_type}|${nextEquipment.trackingNumber}`, // Use next available equipment with tracking
+      booking_for: `${nextEquipment.equipment_type}|${nextEquipment.trackingNumber}`, // Mirror with equipment and tracking
+      ...routeData, // Ensure route data is still inherited from shipment plan
+    };
+
+    // Handle File object copying separately
+    if (originalDetail.line_booking_copy_file) {
+      if (originalDetail.line_booking_copy_file instanceof File) {
+        // For File objects, we need to preserve the reference
+        duplicatedDetail.line_booking_copy_file = originalDetail.line_booking_copy_file;
+        console.log("[DEBUG] Copied File object for PDF:", originalDetail.line_booking_copy_file.name);
+      } else {
+        // For string paths, copy directly
+        duplicatedDetail.line_booking_copy_file = originalDetail.line_booking_copy_file;
+        console.log("[DEBUG] Copied PDF file path:", originalDetail.line_booking_copy_file);
+      }
+    } else {
+      duplicatedDetail.line_booking_copy_file = null;
+      console.log("[DEBUG] No PDF file to copy");
+    }
+
+    console.log("[DEBUG] Duplicated detail:", duplicatedDetail);
+
+    // Add the duplicated detail to the list
+    setRequestedBookingDetails([...requestedBookingDetails, duplicatedDetail]);
+
+    console.log("[DEBUG] Added duplicated booking detail successfully");
   };
 
   function generateEquipmentCodeForBooking(equipmentType: string) {
@@ -656,13 +926,26 @@ export function LinerBookingForm({
         return;
       }
 
-      console.log(
-        `[DEBUG] Assignment mode - Bulk adding ${actualQty} booking details for equipment type: ${bulkEquipmentType}`
-      );
-      console.log(
-        `[DEBUG] Assignment mode - Available equipment:`,
-        availableEquipmentOfType.map((eq: any) => eq.displayName)
-      );
+
+      // Get route data from shipment plan for assignment mode
+      let routeData = {
+        loading_port: "",
+        destination_country: "",
+        port_of_discharge: "",
+      };
+
+      if (linerBooking?.shipmentPlan) {
+        const planData = (linerBooking.shipmentPlan.data as any) ?? {};
+        const containerMovement = planData?.container_movement ?? {};
+
+        routeData = {
+          loading_port: containerMovement?.loading_port || "",
+          destination_country: containerMovement?.destination_country || "",
+          port_of_discharge: containerMovement?.port_of_discharge || "",
+        };
+
+        console.log("[DEBUG] Bulk add - inheriting route data from shipment plan:", routeData);
+      }
 
       newItems = availableEquipmentOfType
         .slice(0, actualQty)
@@ -692,48 +975,26 @@ export function LinerBookingForm({
             trackingNumber: equipment.trackingNumber, // Set the tracking number
             displayName: equipment.displayName, // Set the display name
             booking_for: equipment.displayName, // Set booking_for to display name
+            ...routeData, // Inherit route data from shipment plan
           };
         });
     } else {
-      // For non-assignment mode or when no available equipment, use unallocated equipment
-      const unallocatedEquipment = getUnallocatedEquipmentTypes();
-      const availableEquipmentOfType = unallocatedEquipment.filter(
-        (equipment: any) => equipment.equipment_type === bulkEquipmentType
-      );
-
-      const actualQty = Math.min(qty, availableEquipmentOfType.length);
-
-      if (actualQty === 0) {
-        console.warn(
-          `No unallocated equipment available for type: ${bulkEquipmentType}`
-        );
-        return;
-      }
-
-      console.log(
-        `[DEBUG] Bulk adding ${actualQty} booking details for equipment type: ${bulkEquipmentType}`
-      );
-      console.log(
-        `[DEBUG] Available equipment:`,
-        availableEquipmentOfType.map(
-          (eq: any) => `${eq.equipment_type}|${eq.trackingNumber}`
-        )
-      );
-
-      newItems = availableEquipmentOfType
-        .slice(0, actualQty)
-        .map((equipment: any, i: number) => {
+      // For non-assignment mode (new mode) or when no available equipment, use unallocated equipment
+      if (mode === "new") {
+        // In new mode, just create booking details with the selected equipment type
+        // No need to check unallocated equipment since user can book any quantity
+        newItems = Array.from({ length: qty }, (_, i) => {
           const seq = String(existingCount + i + 1).padStart(3, "0");
-          const equipmentWithTracking = `${equipment.equipment_type}|${equipment.trackingNumber}`;
 
           return {
             temporary_booking_number: `${code}-${seq}`,
-            liner_booking_number: "",
+            liner_booking_number: bulkLinerBookingNumber || "",
+            suffix_for_anticipatory_temporary_booking_number: bulkSuffixForAnticipatoryTempBookingNumber || "",
             mbl_number: bulkMblNumber || "",
             carrier: bulkCarrier || "",
-            contract: "",
-            original_planned_vessel: "",
-            e_t_d_of_original_planned_vessel: "",
+            contract: bulkContract || "",
+            original_planned_vessel: bulkOriginalPlannedVessel || "",
+            e_t_d_of_original_planned_vessel: bulkEtdOfOriginalPlannedVessel || "",
             change_in_original_vessel: false,
             revised_vessel: "",
             etd_of_revised_vessel: "",
@@ -745,10 +1006,62 @@ export function LinerBookingForm({
             booking_received_from_carrier_on: "",
             additional_remarks: "",
             line_booking_copy: "",
-            equipment_type: equipmentWithTracking, // Include tracking number
-            booking_for: equipmentWithTracking, // Mirror with tracking number
+            equipment_type: bulkEquipmentType, // Just the equipment type name
+            booking_for: bulkEquipmentType, // Mirror with equipment type
+            loading_port: bulkLoadingPort || "",
+            destination_country: bulkDestinationCountry || "",
+            port_of_discharge: bulkPortOfDischarge || "",
           };
         });
+      } else {
+        // For edit mode without shipment plan, use unallocated equipment
+        const unallocatedEquipment = getUnallocatedEquipmentTypes();
+        const availableEquipmentOfType = unallocatedEquipment.filter(
+          (equipment: any) => equipment.equipment_type === bulkEquipmentType
+        );
+
+        const actualQty = Math.min(qty, availableEquipmentOfType.length);
+
+        if (actualQty === 0) {
+          console.warn(
+            `No unallocated equipment available for type: ${bulkEquipmentType}`
+          );
+          return;
+        }
+
+        newItems = availableEquipmentOfType
+          .slice(0, actualQty)
+          .map((equipment: any, i: number) => {
+            const seq = String(existingCount + i + 1).padStart(3, "0");
+            const equipmentWithTracking = `${equipment.equipment_type}|${equipment.trackingNumber}`;
+
+            return {
+              temporary_booking_number: `${code}-${seq}`,
+              liner_booking_number: "",
+              mbl_number: bulkMblNumber || "",
+              carrier: bulkCarrier || "",
+              contract: "",
+              original_planned_vessel: "",
+              e_t_d_of_original_planned_vessel: "",
+              change_in_original_vessel: false,
+              revised_vessel: "",
+              etd_of_revised_vessel: "",
+              empty_pickup_validity_from: "",
+              empty_pickup_validity_till: "",
+              estimate_gate_opening_date: "",
+              estimated_gate_cutoff_date: "",
+              s_i_cut_off_date: "",
+              booking_received_from_carrier_on: "",
+              additional_remarks: "",
+              line_booking_copy: "",
+              equipment_type: equipmentWithTracking, // Include tracking number
+              booking_for: equipmentWithTracking, // Mirror with tracking number
+              loading_port: bulkLoadingPort || "",
+              destination_country: bulkDestinationCountry || "",
+              port_of_discharge: bulkPortOfDischarge || "",
+            };
+          });
+      }
     }
 
     if (isAssignment) {
@@ -779,8 +1092,44 @@ export function LinerBookingForm({
     field: string,
     value: any
   ) => {
+    console.log(`[DEBUG] updateLinerBookingDetail called - index: ${index}, field: ${field}, value:`, value);
+    console.log("[DEBUG] Current requestedBookingDetails length:", requestedBookingDetails.length);
+    console.log("[DEBUG] isAssignment:", isAssignment);
     if (isAssignment) {
       const updated = [...requestedBookingDetails];
+
+      // Ensure the array has enough elements, fill with empty objects if needed
+      while (updated.length <= index) {
+        updated.push({
+          temporary_booking_number: "",
+          liner_booking_number: "",
+          mbl_number: "",
+          carrier: "",
+          contract: "",
+          original_planned_vessel: "",
+          e_t_d_of_original_planned_vessel: "",
+          change_in_original_vessel: false,
+          revised_vessel: "",
+          empty_pickup_from: "",
+          empty_pickup_till: "",
+          gate_opening_date: "",
+          estimated_gate_cutoff_date: "",
+          s_i_cut_off_date: "",
+          booking_received_from_carrier_on: "",
+          empty_pickup_validity_from: "",
+          empty_pickup_validity_till: "",
+          estimate_gate_opening_date: "",
+          line_booking_copy: "",
+          line_booking_copy_file: null,
+          additional_remarks: "",
+          equipment_type: "",
+          booking_for: "",
+          loading_port: "",
+          destination_country: "",
+          port_of_discharge: "",
+        });
+      }
+
       updated[index] = { ...updated[index], [field]: value };
       // Mirror behavior: in assignment mode keep booking_for in sync with selected equipment
       if (field === "equipment_type") {
@@ -790,14 +1139,48 @@ export function LinerBookingForm({
       if (field === "displayName" && availableEquipment.length > 0) {
         updated[index].booking_for = value || "";
       }
+      console.log("[DEBUG] Setting requestedBookingDetails to:", updated);
       setRequestedBookingDetails(updated);
     } else {
       const updated = [...linerBookingDetails];
+
+      // Ensure the array has enough elements, fill with empty objects if needed
+      while (updated.length <= index) {
+        updated.push({
+          temporary_booking_number: "",
+          liner_booking_number: "",
+          suffix_for_anticipatory_temporary_booking_number: "",
+          mbl_number: "",
+          carrier: "",
+          contract: "",
+          original_planned_vessel: "",
+          e_t_d_of_original_planned_vessel: "",
+          change_in_original_vessel: false,
+          revised_vessel: "",
+          etd_of_revised_vessel: "",
+          empty_pickup_validity_from: "",
+          empty_pickup_validity_till: "",
+          estimate_gate_opening_date: "",
+          estimated_gate_cutoff_date: "",
+          s_i_cut_off_date: "",
+          booking_received_from_carrier_on: "",
+          additional_remarks: "",
+          line_booking_copy: "",
+          line_booking_copy_file: null,
+          equipment_type: "",
+          booking_for: "",
+          loading_port: "",
+          destination_country: "",
+          port_of_discharge: "",
+        });
+      }
+
       updated[index] = { ...updated[index], [field]: value };
       // Mirror behavior: in "new" mode keep booking_for in sync with selected equipment
       if (mode === "new" && field === "equipment_type") {
         updated[index].booking_for = value || "";
       }
+      console.log("[DEBUG] Setting linerBookingDetails to:", updated);
       setLinerBookingDetails(updated);
     }
   };
@@ -1855,21 +2238,30 @@ export function LinerBookingForm({
                           </div>
                         ) : (
                           <>
-                            {/* Show read-only booked details when status is "Booked" */}
-                            {isAssignment && currentStatus === "Booked" ? (
-                              <div>
+                            {/* Show allocated liner booking details when there are existing bookings */}
+                            {isAssignment && data?.liner_booking_details && data.liner_booking_details.length > 0 && (
+                              <div className="mb-6">
                                 <h4 className="text-md font-semibold text-gray-800 mb-4">
-                                  Booked Liner Booking Details
+                                  {currentStatus === "Booked" ? "Booked Liner Booking Details" : "Allocated Liner Booking Details"}
                                 </h4>
                                 <div className="space-y-2">
-                                  {data?.liner_booking_details?.map(
-                                    (detail: any, index: number) => {
-                                      const isExpanded =
-                                        expandedBookingDetail === index;
+                                  {data?.liner_booking_details?.map((detail: any, originalIndex: number) => {
+                                    // Filter out unmapped equipment
+                                    if (detail.equipment_type && detail.equipment_type.includes("|")) {
+                                      const trackingNumber = detail.equipment_type.split("|")[1];
+                                      const shipmentPlanEquipment = getShipmentPlanEquipment();
+                                      const isUnmapped = shipmentPlanEquipment.some(
+                                        (eq: any) => eq.trackingNumber === trackingNumber && eq.unmapped
+                                      );
+                                      if (isUnmapped) return null;
+                                    }
+
+                                    const isExpanded =
+                                      expandedBookingDetail === originalIndex;
 
                                       return (
                                         <div
-                                          key={index}
+                                          key={originalIndex}
                                           className="bg-white border border-gray-200 rounded-lg overflow-hidden"
                                         >
                                           {/* Accordion Header */}
@@ -1877,14 +2269,14 @@ export function LinerBookingForm({
                                             type="button"
                                             onClick={() =>
                                               setExpandedBookingDetail(
-                                                isExpanded ? null : index
+                                                isExpanded ? null : originalIndex
                                               )
                                             }
                                             className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors duration-200 focus:outline-none focus:bg-gray-50"
                                           >
                                             <div className="flex items-center gap-3">
                                               <h5 className="text-sm font-semibold text-gray-700">
-                                                Booking Detail #{index + 1}
+                                                Booking Detail #{originalIndex + 1}
                                               </h5>
                                               <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
                                                 Booked
@@ -1894,6 +2286,17 @@ export function LinerBookingForm({
                                                   {detail.liner_booking_number}
                                                 </span>
                                               )}
+                                              {/* Show unmapping request indicator */}
+                                              {(() => {
+                                                const hasUnmappingRequest = pendingUnmappingRequests.some(
+                                                  (req: any) => req.linerBookingNumber === detail.liner_booking_number && req.equipmentIndex === originalIndex
+                                                );
+                                                return hasUnmappingRequest ? (
+                                                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-amber-100 text-amber-800">
+                                                    🔄 Unmapping Requested
+                                                  </span>
+                                                ) : null;
+                                              })()}
                                             </div>
                                             <div
                                               className={`transition-transform duration-200 ${
@@ -2205,6 +2608,79 @@ export function LinerBookingForm({
                                                     </p>
                                                   </div>
                                                 )}
+
+                                                {/* Individual Equipment Unmapping Button */}
+                                                {(() => {
+                                                  const hasUnmappingRequest = pendingUnmappingRequests.some(
+                                                    (req: any) => req.linerBookingNumber === detail.liner_booking_number && req.equipmentIndex === originalIndex
+                                                  );
+
+                                                  if (hasUnmappingRequest) {
+                                                    return (
+                                                      <div className="mt-4 pt-4 border-t border-gray-100">
+                                                        <div className="flex justify-end">
+                                                          <div className="text-xs text-amber-700 bg-amber-50 px-3 py-2 rounded-lg border border-amber-200">
+                                                            Unmapping request pending approval
+                                                          </div>
+                                                        </div>
+                                                      </div>
+                                                    );
+                                                  }
+
+                                                  return (
+                                                    <div className="mt-4 pt-4 border-t border-gray-100">
+                                                      <div className="flex justify-end">
+                                                        <Button
+                                                          type="button"
+                                                          variant="outline"
+                                                          className="border-amber-300 text-amber-700 hover:bg-amber-50 bg-white text-xs px-3 py-1"
+                                                      onClick={(e) => {
+                                                        e.preventDefault();
+
+                                                        // Prompt for unmapping reason
+                                                        const reason = prompt(
+                                                          `Please provide a reason for requesting unmapping of ${detail.equipment_type} (${detail.liner_booking_number}):`
+                                                        );
+
+                                                        if (!reason || reason.trim() === '') {
+                                                          alert('Unmapping reason is required');
+                                                          return;
+                                                        }
+
+                                                        if (confirm(`Are you sure you want to request unmapping for ${detail.equipment_type} (${detail.liner_booking_number})?\n\nReason: ${reason}`)) {
+                                                          // Create a temporary form to submit the unmapping request
+                                                          const form = document.createElement('form');
+                                                          form.method = 'post';
+                                                          form.action = window.location.href;
+
+                                                          // Add hidden inputs
+                                                          const inputs = [
+                                                            { name: '_action', value: 'request_individual_unmapping' },
+                                                            { name: 'equipmentIndex', value: originalIndex.toString() },
+                                                            { name: 'equipmentType', value: detail.equipment_type || '' },
+                                                            { name: 'linerBookingNumber', value: detail.liner_booking_number || '' },
+                                                            { name: 'unmappingReason', value: reason.trim() }
+                                                          ];
+
+                                                          inputs.forEach(({ name, value }) => {
+                                                            const input = document.createElement('input');
+                                                            input.type = 'hidden';
+                                                            input.name = name;
+                                                            input.value = value;
+                                                            form.appendChild(input);
+                                                          });
+
+                                                          document.body.appendChild(form);
+                                                          form.submit();
+                                                        }
+                                                      }}
+                                                    >
+                                                          Request Unmapping
+                                                        </Button>
+                                                      </div>
+                                                    </div>
+                                                  );
+                                                })()}
                                               </div>
                                             </div>
                                           )}
@@ -2222,104 +2698,331 @@ export function LinerBookingForm({
                                   )}
                                 </div>
                               </div>
-                            ) : (
+                            )}
+
+                            {/* Hidden form inputs for existing liner booking details to preserve them during submission */}
+                            {isAssignment && data?.liner_booking_details && data.liner_booking_details.length > 0 && (
                               <>
-                                {/* original request booking UI for non-booked status */}
-                                <div className="flex justify-between items-center mb-4">
-                                  <h4 className="text-md font-semibold text-gray-800">
-                                    Booking Details
-                                  </h4>
-                                  <Button
-                                    type="button"
-                                    onClick={addLinerBookingDetail}
-                                    className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded-lg text-sm font-medium transition-all duration-200"
-                                  >
-                                    Add Booking Detail
-                                  </Button>
-                                </div>
+                                {data.liner_booking_details.map((detail: any, originalIndex: number) => {
+                                  // Filter out unmapped equipment (same logic as display)
+                                  if (detail.equipment_type && detail.equipment_type.includes("|")) {
+                                    const trackingNumber = detail.equipment_type.split("|")[1];
+                                    const shipmentPlanEquipment = getShipmentPlanEquipment();
+                                    const isUnmapped = shipmentPlanEquipment.some(
+                                      (eq: any) => eq.trackingNumber === trackingNumber && eq.unmapped
+                                    );
+                                    if (isUnmapped) return null;
+                                  }
+
+                                  // Calculate the form index (existing details come first, then requested details)
+                                  const existingDetailsBeforeThis = data.liner_booking_details
+                                    .slice(0, originalIndex)
+                                    .filter((d: any, i: number) => {
+                                      if (d.equipment_type && d.equipment_type.includes("|")) {
+                                        const tn = d.equipment_type.split("|")[1];
+                                        const spe = getShipmentPlanEquipment();
+                                        return !spe.some((eq: any) => eq.trackingNumber === tn && eq.unmapped);
+                                      }
+                                      return true;
+                                    }).length;
+
+                                  const formIndex = existingDetailsBeforeThis;
+
+                                  return (
+                                    <div key={`existing-${originalIndex}`}>
+                                      {/* Hidden inputs for all the liner booking detail fields */}
+                                      <input type="hidden" name={`liner_booking_details[${formIndex}][temporary_booking_number]`} value={detail.temporary_booking_number || ""} />
+                                      <input type="hidden" name={`liner_booking_details[${formIndex}][equipment_type]`} value={detail.equipment_type || ""} />
+                                      <input type="hidden" name={`liner_booking_details[${formIndex}][booking_for]`} value={detail.booking_for || ""} />
+                                      <input type="hidden" name={`liner_booking_details[${formIndex}][loading_port]`} value={detail.loading_port || ""} />
+                                      <input type="hidden" name={`liner_booking_details[${formIndex}][destination_country]`} value={detail.destination_country || ""} />
+                                      <input type="hidden" name={`liner_booking_details[${formIndex}][port_of_discharge]`} value={detail.port_of_discharge || ""} />
+                                      <input type="hidden" name={`liner_booking_details[${formIndex}][line_booking_copy]`} value={detail.line_booking_copy || ""} />
+                                      <input type="hidden" name={`liner_booking_details[${formIndex}][line_booking_copy_file]`} value={detail.line_booking_copy_file || ""} />
+                                      <input type="hidden" name={`liner_booking_details[${formIndex}][additional_remarks]`} value={detail.additional_remarks || ""} />
+                                      <input type="hidden" name={`liner_booking_details[${formIndex}][suffix_for_anticipatory_temporary_booking_number]`} value={detail.suffix_for_anticipatory_temporary_booking_number || ""} />
+                                      <input type="hidden" name={`liner_booking_details[${formIndex}][liner_booking_number]`} value={detail.liner_booking_number || ""} />
+                                      <input type="hidden" name={`liner_booking_details[${formIndex}][mbl_number]`} value={detail.mbl_number || ""} />
+                                      <input type="hidden" name={`liner_booking_details[${formIndex}][carrier]`} value={detail.carrier || ""} />
+                                      <input type="hidden" name={`liner_booking_details[${formIndex}][contract]`} value={detail.contract || ""} />
+                                      <input type="hidden" name={`liner_booking_details[${formIndex}][original_planned_vessel]`} value={detail.original_planned_vessel || ""} />
+                                      <input type="hidden" name={`liner_booking_details[${formIndex}][change_in_original_vessel]`} value={detail.change_in_original_vessel ? "true" : "false"} />
+                                      <input type="hidden" name={`liner_booking_details[${formIndex}][revised_vessel]`} value={detail.revised_vessel || ""} />
+                                      <input type="hidden" name={`liner_booking_details[${formIndex}][empty_pickup_from]`} value={detail.empty_pickup_from || ""} />
+                                      <input type="hidden" name={`liner_booking_details[${formIndex}][empty_pickup_till]`} value={detail.empty_pickup_till || ""} />
+                                      <input type="hidden" name={`liner_booking_details[${formIndex}][gate_opening_date]`} value={detail.gate_opening_date || ""} />
+                                      <input type="hidden" name={`liner_booking_details[${formIndex}][estimated_gate_cutoff_date]`} value={detail.estimated_gate_cutoff_date || ""} />
+                                      <input type="hidden" name={`liner_booking_details[${formIndex}][s_i_cut_off_date]`} value={detail.s_i_cut_off_date || ""} />
+                                      <input type="hidden" name={`liner_booking_details[${formIndex}][booking_received_from_carrier_on]`} value={detail.booking_received_from_carrier_on || ""} />
+                                      <input type="hidden" name={`liner_booking_details[${formIndex}][e_t_d_of_original_planned_vessel]`} value={detail.e_t_d_of_original_planned_vessel || ""} />
+                                      <input type="hidden" name={`liner_booking_details[${formIndex}][etd_of_revised_vessel]`} value={detail.etd_of_revised_vessel || ""} />
+                                      <input type="hidden" name={`liner_booking_details[${formIndex}][empty_pickup_validity_from]`} value={detail.empty_pickup_validity_from || ""} />
+                                      <input type="hidden" name={`liner_booking_details[${formIndex}][empty_pickup_validity_till]`} value={detail.empty_pickup_validity_till || ""} />
+                                      <input type="hidden" name={`liner_booking_details[${formIndex}][estimate_gate_opening_date]`} value={detail.estimate_gate_opening_date || ""} />
+                                      <input type="hidden" name={`liner_booking_details[${formIndex}][allocated]`} value="true" />
+                                    </div>
+                                  );
+                                })}
                               </>
+                            )}
+
+                            {/* Request booking UI - Always show when on request tab */}
+                            {isAssignment && assignmentTab === "request" && currentStatus !== "Booked" && (
+                              <div className="flex justify-between items-center mb-4">
+                                <h4 className="text-md font-semibold text-gray-800">
+                                  Request New Booking Details
+                                </h4>
+                                <Button
+                                  type="button"
+                                  onClick={addLinerBookingDetail}
+                                  className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded-lg text-sm font-medium transition-all duration-200"
+                                >
+                                  Add Booking Detail
+                                </Button>
+                              </div>
                             )}
 
                             {/* Bulk Add block should only appear for new creation and when not booked */}
                             {mode === "new" && currentStatus !== "Booked" && (
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-                                {/* Equipment Type */}
-                                <div className="space-y-2">
-                                  <Label className="text-xs font-medium text-gray-600">
-                                    Equipment Type
-                                  </Label>
-                                  <Select
-                                    value={bulkEquipmentType}
-                                    onChange={(e) =>
-                                      setBulkEquipmentType(e.target.value)
-                                    }
-                                    className="text-sm"
-                                  >
-                                    <option value="">
-                                      -- Select Equipment Type --
-                                    </option>
-                                    {(dataPoints?.equipment || []).map(
-                                      (eq: any) => (
-                                        <option key={eq.id} value={eq.name}>
-                                          {eq.name}
-                                        </option>
-                                      )
-                                    )}
-                                  </Select>
-                                </div>
+                              <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
+                                <h4 className="text-md font-semibold text-gray-800 mb-4">
+                                  Bulk Add Booking Details
+                                </h4>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                                  {/* Equipment Type */}
+                                  <div className="space-y-2">
+                                    <Label className="text-xs font-medium text-gray-600">
+                                      Equipment Type <span className="text-red-500">*</span>
+                                    </Label>
+                                    <Select
+                                      value={bulkEquipmentType}
+                                      onChange={(e) =>
+                                        setBulkEquipmentType(e.target.value)
+                                      }
+                                      className="text-sm"
+                                    >
+                                      <option value="">
+                                        -- Select Equipment Type --
+                                      </option>
+                                      {(dataPoints?.equipment || []).map(
+                                        (eq: any) => (
+                                          <option key={eq.id} value={eq.name}>
+                                            {eq.name}
+                                          </option>
+                                        )
+                                      )}
+                                    </Select>
+                                  </div>
 
-                                {/* Quantity */}
-                                <div className="space-y-2">
-                                  <Label className="text-xs font-medium text-gray-600">
-                                    Quantity
-                                  </Label>
-                                  <input
-                                    type="number"
-                                    min={1}
-                                    value={bulkQuantity}
-                                    onChange={(e) =>
-                                      setBulkQuantity(e.target.value)
-                                    }
-                                    className="w-full border border-gray-300 rounded px-2 py-2 text-sm"
-                                    placeholder="e.g. 2"
-                                  />
-                                </div>
+                                  {/* Quantity */}
+                                  <div className="space-y-2">
+                                    <Label className="text-xs font-medium text-gray-600">
+                                      Quantity <span className="text-red-500">*</span>
+                                    </Label>
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      value={bulkQuantity}
+                                      onChange={(e) =>
+                                        setBulkQuantity(e.target.value)
+                                      }
+                                      className="w-full border border-gray-300 rounded px-2 py-2 text-sm"
+                                      placeholder="e.g. 2"
+                                    />
+                                  </div>
 
-                                {/* MBL Number */}
-                                <div className="space-y-2">
-                                  <Label className="text-xs font-medium text-gray-600">
-                                    MBL Number
-                                  </Label>
-                                  <input
-                                    type="text"
-                                    value={bulkMblNumber}
-                                    onChange={(e) =>
-                                      setBulkMblNumber(e.target.value)
-                                    }
-                                    className="w-full border border-gray-300 rounded px-2 py-2 text-sm"
-                                    placeholder="Enter MBL number"
-                                  />
-                                </div>
+                                  {/* MBL Number */}
+                                  <div className="space-y-2">
+                                    <Label className="text-xs font-medium text-gray-600">
+                                      MBL Number
+                                    </Label>
+                                    <input
+                                      type="text"
+                                      value={bulkMblNumber}
+                                      onChange={(e) =>
+                                        setBulkMblNumber(e.target.value)
+                                      }
+                                      className="w-full border border-gray-300 rounded px-2 py-2 text-sm"
+                                      placeholder="Enter MBL number"
+                                    />
+                                  </div>
 
-                                {/* Carrier */}
-                                <div className="space-y-2">
-                                  <Label className="text-xs font-medium text-gray-600">
-                                    Carrier
-                                  </Label>
-                                  <SearchableSelect
-                                    value={bulkCarrier}
-                                    onChange={(value: string) =>
-                                      setBulkCarrier(value)
-                                    }
-                                    placeholder="Search carriers..."
-                                    className="text-sm"
-                                    options={(dataPoints?.carriers || []).map(
-                                      (c: any) => ({
-                                        value: c.name,
-                                        label: c.name,
-                                      })
-                                    )}
-                                  />
+                                  {/* Liner Booking Number */}
+                                  <div className="space-y-2">
+                                    <Label className="text-xs font-medium text-gray-600">
+                                      Liner Booking Number
+                                    </Label>
+                                    <input
+                                      type="text"
+                                      value={bulkLinerBookingNumber}
+                                      onChange={(e) =>
+                                        setBulkLinerBookingNumber(e.target.value)
+                                      }
+                                      className="w-full border border-gray-300 rounded px-2 py-2 text-sm"
+                                      placeholder="Enter liner booking number"
+                                    />
+                                  </div>
+
+                                  {/* Suffix for Anticipatory Temp Booking Number */}
+                                  <div className="space-y-2">
+                                    <Label className="text-xs font-medium text-gray-600">
+                                      Suffix for Anticipatory Temp Booking Number
+                                    </Label>
+                                    <input
+                                      type="text"
+                                      value={bulkSuffixForAnticipatoryTempBookingNumber}
+                                      onChange={(e) =>
+                                        setBulkSuffixForAnticipatoryTempBookingNumber(e.target.value)
+                                      }
+                                      className="w-full border border-gray-300 rounded px-2 py-2 text-sm"
+                                      placeholder="Enter suffix"
+                                    />
+                                  </div>
+
+                                  {/* Carrier */}
+                                  <div className="space-y-2">
+                                    <Label className="text-xs font-medium text-gray-600">
+                                      Carrier
+                                    </Label>
+                                    <SearchableSelect
+                                      value={bulkCarrier}
+                                      onChange={(value: string) =>
+                                        setBulkCarrier(value)
+                                      }
+                                      placeholder="Search carriers..."
+                                      className="text-sm"
+                                      options={(dataPoints?.carriers || []).map(
+                                        (c: any) => ({
+                                          value: c.name,
+                                          label: c.name,
+                                        })
+                                      )}
+                                    />
+                                  </div>
+
+                                  {/* Contract */}
+                                  <div className="space-y-2">
+                                    <Label className="text-xs font-medium text-gray-600">
+                                      Contract
+                                    </Label>
+                                    <input
+                                      type="text"
+                                      value={bulkContract}
+                                      onChange={(e) =>
+                                        setBulkContract(e.target.value)
+                                      }
+                                      className="w-full border border-gray-300 rounded px-2 py-2 text-sm"
+                                      placeholder="Enter contract"
+                                    />
+                                  </div>
+
+                                  {/* Original Planned Vessel */}
+                                  <div className="space-y-2">
+                                    <Label className="text-xs font-medium text-gray-600">
+                                      Original Planned Vessel
+                                    </Label>
+                                    <SearchableSelect
+                                      value={bulkOriginalPlannedVessel}
+                                      onChange={(value: string) =>
+                                        setBulkOriginalPlannedVessel(value)
+                                      }
+                                      placeholder="Search vessels..."
+                                      className="text-sm"
+                                      options={(dataPoints?.vessels || []).map(
+                                        (v: any) => ({
+                                          value: v.name,
+                                          label: v.name,
+                                        })
+                                      )}
+                                    />
+                                  </div>
+
+                                  {/* ETD of Original Planned Vessel */}
+                                  <div className="space-y-2">
+                                    <Label className="text-xs font-medium text-gray-600">
+                                      ETD of Original Planned Vessel
+                                    </Label>
+                                    <input
+                                      type="date"
+                                      value={bulkEtdOfOriginalPlannedVessel}
+                                      onChange={(e) =>
+                                        setBulkEtdOfOriginalPlannedVessel(e.target.value)
+                                      }
+                                      className="w-full border border-gray-300 rounded px-2 py-2 text-sm"
+                                    />
+                                  </div>
+
+                                  {/* Loading Port */}
+                                  <div className="space-y-2">
+                                    <Label className="text-xs font-medium text-gray-600">
+                                      Loading Port
+                                    </Label>
+                                    <SearchableSelect
+                                      value={bulkLoadingPort}
+                                      onChange={(value: string) =>
+                                        setBulkLoadingPort(value)
+                                      }
+                                      placeholder="Select loading port"
+                                      className="text-sm"
+                                      options={(dataPoints?.loadingPorts || []).map(
+                                        (port: any) => ({
+                                          value: port.name,
+                                          label: `🚢 ${port.name}, ${port.country}`,
+                                        })
+                                      )}
+                                    />
+                                  </div>
+
+                                  {/* Destination Country */}
+                                  <div className="space-y-2">
+                                    <Label className="text-xs font-medium text-gray-600">
+                                      Destination Country
+                                    </Label>
+                                    <SearchableSelect
+                                      value={bulkDestinationCountry}
+                                      onChange={(value: string) =>
+                                        handleBulkDestinationCountryChange(value)
+                                      }
+                                      placeholder="Select destination country"
+                                      className="text-sm"
+                                      options={(dataPoints?.destinationCountries || []).map(
+                                        (country: any) => ({
+                                          value: country.name,
+                                          label: `🌍 ${country.name}`,
+                                        })
+                                      )}
+                                    />
+                                  </div>
+
+                                  {/* Port of Discharge */}
+                                  <div className="space-y-2">
+                                    <Label className="text-xs font-medium text-gray-600">
+                                      Port of Discharge
+                                    </Label>
+                                    <SearchableSelect
+                                      value={bulkPortOfDischarge}
+                                      onChange={(value: string) =>
+                                        setBulkPortOfDischarge(value)
+                                      }
+                                      placeholder={
+                                        bulkDestinationCountry
+                                          ? `Select port in ${bulkDestinationCountry}`
+                                          : "Select destination country first"
+                                      }
+                                      className="text-sm"
+                                      disabled={!bulkDestinationCountry}
+                                      options={(dataPoints?.portsOfDischarge || [])
+                                        .filter(
+                                          (port: any) =>
+                                            !bulkDestinationCountry ||
+                                            port.country === bulkDestinationCountry
+                                        )
+                                        .map((port: any) => ({
+                                          value: port.name,
+                                          label: `🏢 ${port.name}, ${port.country}`,
+                                        }))}
+                                    />
+                                  </div>
                                 </div>
 
                                 {/* Auto-generation preview */}
@@ -2328,7 +3031,7 @@ export function LinerBookingForm({
                                     (bulkQuantity || "").trim(),
                                     10
                                   ) || 0) > 0 && (
-                                    <div className="md:col-span-3 bg-blue-50 rounded-lg p-3 border border-blue-200">
+                                    <div className="bg-blue-100 rounded-lg p-3 border border-blue-300 mb-4">
                                       <p className="text-xs text-blue-700">
                                         Temporary Booking Numbers will be
                                         generated automatically:{" "}
@@ -2355,15 +3058,32 @@ export function LinerBookingForm({
                                     </div>
                                   )}
 
-                                <div className="flex items-end">
+                                <div className="flex justify-end">
                                   <Button
                                     type="button"
                                     onClick={bulkAddLinerBookingDetails}
-                                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded text-sm font-medium transition-all duration-200 w-full md:w-auto"
+                                    disabled={!bulkEquipmentType || !bulkQuantity || Number.parseInt(bulkQuantity || "0", 10) < 1}
+                                    className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-6 py-2 rounded text-sm font-medium transition-all duration-200"
                                   >
-                                    Bulk Add
+                                    Bulk Add ({bulkQuantity || 0} booking details)
                                   </Button>
                                 </div>
+                              </div>
+                            )}
+
+                            {/* Add Booking Detail button for new mode */}
+                            {mode === "new" && currentStatus !== "Booked" && (
+                              <div className="flex justify-between items-center mb-4">
+                                <h4 className="text-md font-semibold text-gray-800">
+                                  Liner Booking Details
+                                </h4>
+                                <Button
+                                  type="button"
+                                  onClick={addLinerBookingDetail}
+                                  className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-lg text-sm font-medium transition-all duration-200"
+                                >
+                                  Add Booking Detail
+                                </Button>
                               </div>
                             )}
 
@@ -2373,9 +3093,28 @@ export function LinerBookingForm({
                               (isAssignment
                                 ? requestedBookingDetails
                                 : linerBookingDetails
-                              ).map((detail: any, index: number) => (
+                              ).map((detail: any, originalIndex: number) => {
+                                console.log(`[DEBUG] Mapping booking detail - originalIndex: ${originalIndex}, detail:`, detail);
+                                // Calculate the correct form index for requested booking details
+                                // In assignment mode, requested details should come after existing details
+                                let index = originalIndex;
+                                if (isAssignment && data?.liner_booking_details) {
+                                  // Count existing details that are NOT unmapped
+                                  const existingValidDetailsCount = data.liner_booking_details.filter((d: any) => {
+                                    if (d.equipment_type && d.equipment_type.includes("|")) {
+                                      const trackingNumber = d.equipment_type.split("|")[1];
+                                      const shipmentPlanEquipment = getShipmentPlanEquipment();
+                                      return !shipmentPlanEquipment.some((eq: any) => eq.trackingNumber === trackingNumber && eq.unmapped);
+                                    }
+                                    return true;
+                                  }).length;
+                                  index = existingValidDetailsCount + originalIndex;
+                                  console.log(`[DEBUG] Assignment mode - existingValidDetailsCount: ${existingValidDetailsCount}, originalIndex: ${originalIndex}, calculated index: ${index}`);
+                                }
+
+                                return (
                                 <div
-                                  key={index}
+                                  key={`${isAssignment ? 'requested' : 'liner'}-${originalIndex}`}
                                   className="bg-white border border-gray-200 rounded-lg p-6 mb-4 relative"
                                 >
                                   <div className="flex justify-between items-center mb-4">
@@ -2387,7 +3126,7 @@ export function LinerBookingForm({
                                       {isAssignment &&
                                         mode === "edit" &&
                                         linerBooking?.shipmentPlan &&
-                                        allocatedBookingDetails.has(index) && (
+                                        allocatedBookingDetails.has(originalIndex) && (
                                           <button
                                             type="button"
                                             onClick={() => {
@@ -2396,7 +3135,7 @@ export function LinerBookingForm({
                                               const newAllocated = new Set(
                                                 allocatedBookingDetails
                                               );
-                                              newAllocated.delete(index);
+                                              newAllocated.delete(originalIndex);
                                               setAllocatedBookingDetails(
                                                 newAllocated
                                               );
@@ -2408,7 +3147,7 @@ export function LinerBookingForm({
                                                 setRequestedBookingDetails(
                                                   requestedBookingDetails.filter(
                                                     (_: any, i: number) =>
-                                                      i !== index
+                                                      i !== originalIndex
                                                   )
                                                 );
                                               }
@@ -2451,7 +3190,7 @@ export function LinerBookingForm({
                                                 hiddenInput.name =
                                                   "detailIndex";
                                                 hiddenInput.value =
-                                                  index.toString();
+                                                  originalIndex.toString();
                                                 form.appendChild(hiddenInput);
                                               }
 
@@ -2459,7 +3198,7 @@ export function LinerBookingForm({
                                               const newAllocated = new Set(
                                                 allocatedBookingDetails
                                               );
-                                              newAllocated.add(index);
+                                              newAllocated.add(originalIndex);
                                               setAllocatedBookingDetails(
                                                 newAllocated
                                               );
@@ -2478,17 +3217,30 @@ export function LinerBookingForm({
                                           const newAllocated = new Set(
                                             allocatedBookingDetails
                                           );
-                                          newAllocated.delete(index);
+                                          newAllocated.delete(originalIndex);
                                           setAllocatedBookingDetails(
                                             newAllocated
                                           );
                                           // Remove the booking detail
-                                          removeLinerBookingDetail(index);
+                                          removeLinerBookingDetail(originalIndex);
                                         }}
                                         className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-xs font-medium transition-all duration-200"
                                       >
                                         Remove
                                       </Button>
+
+                                      {/* Duplicate button: Only show in assignment mode */}
+                                      {isAssignment && (
+                                        <Button
+                                          type="button"
+                                          onClick={() => {
+                                            duplicateLinerBookingDetail(originalIndex);
+                                          }}
+                                          className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-xs font-medium transition-all duration-200"
+                                        >
+                                          Duplicate
+                                        </Button>
+                                      )}
                                     </div>
                                   </div>
 
@@ -2497,7 +3249,7 @@ export function LinerBookingForm({
                                     type="hidden"
                                     name={`liner_booking_details[${index}][allocated]`}
                                     value={
-                                      allocatedBookingDetails.has(index)
+                                      allocatedBookingDetails.has(originalIndex)
                                         ? "true"
                                         : "false"
                                     }
@@ -2524,7 +3276,7 @@ export function LinerBookingForm({
                                               }
                                               onChange={(e) =>
                                                 updateLinerBookingDetail(
-                                                  index,
+                                                  originalIndex,
                                                   "equipment_type",
                                                   e.target.value
                                                 )
@@ -2648,30 +3400,32 @@ export function LinerBookingForm({
                                                         e.target.value
                                                     );
                                                   if (selectedEquipment) {
+                                                    console.log("[DEBUG] Assignment mode equipment selected - originalIndex:", originalIndex, "calculated index:", index);
                                                     updateLinerBookingDetail(
-                                                      index,
+                                                      originalIndex,
                                                       "equipment_type",
                                                       selectedEquipment.equipmentType
                                                     );
                                                     updateLinerBookingDetail(
-                                                      index,
+                                                      originalIndex,
                                                       "trackingNumber",
                                                       selectedEquipment.trackingNumber
                                                     );
                                                     updateLinerBookingDetail(
-                                                      index,
+                                                      originalIndex,
                                                       "displayName",
                                                       selectedEquipment.displayName
                                                     );
                                                     updateLinerBookingDetail(
-                                                      index,
+                                                      originalIndex,
                                                       "booking_for",
                                                       selectedEquipment.displayName
                                                     );
                                                   }
                                                 } else {
+                                                  console.log("[DEBUG] Equipment selected - originalIndex:", originalIndex, "calculated index:", index);
                                                   updateLinerBookingDetail(
-                                                    index,
+                                                    originalIndex,
                                                     "equipment_type",
                                                     e.target.value
                                                   );
@@ -2842,7 +3596,7 @@ export function LinerBookingForm({
                                             value={detail.equipment_type || ""}
                                             onChange={(e) =>
                                               updateLinerBookingDetail(
-                                                index,
+                                                originalIndex,
                                                 "equipment_type",
                                                 e.target.value
                                               )
@@ -2896,7 +3650,7 @@ export function LinerBookingForm({
                                         value={detail.temporary_booking_number}
                                         onChange={(e) =>
                                           updateLinerBookingDetail(
-                                            index,
+                                            originalIndex,
                                             "temporary_booking_number",
                                             e.target.value
                                           )
@@ -2918,7 +3672,7 @@ export function LinerBookingForm({
                                         }
                                         onChange={(e) =>
                                           updateLinerBookingDetail(
-                                            index,
+                                            originalIndex,
                                             "suffix_for_anticipatory_temporary_booking_number",
                                             e.target.value
                                           )
@@ -2937,7 +3691,7 @@ export function LinerBookingForm({
                                         value={detail.liner_booking_number}
                                         onChange={(e) =>
                                           updateLinerBookingDetail(
-                                            index,
+                                            originalIndex,
                                             "liner_booking_number",
                                             e.target.value
                                           )
@@ -2956,7 +3710,7 @@ export function LinerBookingForm({
                                         value={detail.mbl_number}
                                         onChange={(e) =>
                                           updateLinerBookingDetail(
-                                            index,
+                                            originalIndex,
                                             "mbl_number",
                                             e.target.value
                                           )
@@ -2975,7 +3729,7 @@ export function LinerBookingForm({
                                         value={detail.carrier}
                                         onChange={(value) =>
                                           updateLinerBookingDetail(
-                                            index,
+                                            originalIndex,
                                             "carrier",
                                             value
                                           )
@@ -3000,7 +3754,7 @@ export function LinerBookingForm({
                                         value={detail.contract}
                                         onChange={(e) =>
                                           updateLinerBookingDetail(
-                                            index,
+                                            originalIndex,
                                             "contract",
                                             e.target.value
                                           )
@@ -3019,7 +3773,7 @@ export function LinerBookingForm({
                                         value={detail.original_planned_vessel}
                                         onChange={(value) =>
                                           updateLinerBookingDetail(
-                                            index,
+                                            originalIndex,
                                             "original_planned_vessel",
                                             value
                                           )
@@ -3044,7 +3798,7 @@ export function LinerBookingForm({
                                           }
                                           onChange={(checked) =>
                                             updateLinerBookingDetail(
-                                              index,
+                                              originalIndex,
                                               "change_in_original_vessel",
                                               checked
                                             )
@@ -3067,7 +3821,7 @@ export function LinerBookingForm({
                                           value={detail.revised_vessel}
                                           onChange={(value) =>
                                             updateLinerBookingDetail(
-                                              index,
+                                              originalIndex,
                                               "revised_vessel",
                                               value
                                             )
@@ -3095,7 +3849,7 @@ export function LinerBookingForm({
                                           )}
                                           onChange={(e) =>
                                             updateLinerBookingDetail(
-                                              index,
+                                              originalIndex,
                                               "etd_of_revised_vessel",
                                               e.target.value
                                             )
@@ -3119,7 +3873,7 @@ export function LinerBookingForm({
                                         )}
                                         onChange={(e) =>
                                           updateLinerBookingDetail(
-                                            index,
+                                            originalIndex,
                                             "e_t_d_of_original_planned_vessel",
                                             e.target.value
                                           )
@@ -3140,7 +3894,7 @@ export function LinerBookingForm({
                                         )}
                                         onChange={(e) =>
                                           updateLinerBookingDetail(
-                                            index,
+                                            originalIndex,
                                             "empty_pickup_validity_from",
                                             e.target.value
                                           )
@@ -3161,7 +3915,7 @@ export function LinerBookingForm({
                                         )}
                                         onChange={(e) =>
                                           updateLinerBookingDetail(
-                                            index,
+                                            originalIndex,
                                             "empty_pickup_validity_till",
                                             e.target.value
                                           )
@@ -3182,7 +3936,7 @@ export function LinerBookingForm({
                                         )}
                                         onChange={(e) =>
                                           updateLinerBookingDetail(
-                                            index,
+                                            originalIndex,
                                             "estimate_gate_opening_date",
                                             e.target.value
                                           )
@@ -3203,7 +3957,7 @@ export function LinerBookingForm({
                                         )}
                                         onChange={(e) =>
                                           updateLinerBookingDetail(
-                                            index,
+                                            originalIndex,
                                             "estimated_gate_cutoff_date",
                                             e.target.value
                                           )
@@ -3224,7 +3978,7 @@ export function LinerBookingForm({
                                         )}
                                         onChange={(e) =>
                                           updateLinerBookingDetail(
-                                            index,
+                                            originalIndex,
                                             "s_i_cut_off_date",
                                             e.target.value
                                           )
@@ -3247,7 +4001,7 @@ export function LinerBookingForm({
                                         )}
                                         onChange={(e) =>
                                           updateLinerBookingDetail(
-                                            index,
+                                            originalIndex,
                                             "booking_received_from_carrier_on",
                                             e.target.value
                                           )
@@ -3266,7 +4020,7 @@ export function LinerBookingForm({
                                         value={detail.line_booking_copy}
                                         onChange={(e) =>
                                           updateLinerBookingDetail(
-                                            index,
+                                            originalIndex,
                                             "line_booking_copy",
                                             e.target.value
                                           )
@@ -3284,7 +4038,7 @@ export function LinerBookingForm({
                                         name={`liner_booking_details[${index}][line_booking_copy_file]`}
                                         onChange={(e) =>
                                           updateLinerBookingDetail(
-                                            index,
+                                            originalIndex,
                                             "line_booking_copy_file",
                                             e.target.files
                                               ? e.target.files[0]
@@ -3294,24 +4048,168 @@ export function LinerBookingForm({
                                         accept=".pdf"
                                         className="text-sm"
                                       />
-                                      {detail.line_booking_copy_file &&
-                                        typeof detail.line_booking_copy_file ===
-                                          "string" && (
-                                          <p className="text-xs text-gray-500 mt-1">
-                                            Current file:{" "}
+                                      {detail.line_booking_copy_file && (
+                                        <p className="text-xs text-gray-500 mt-1">
+                                          Current file:{" "}
+                                          {typeof detail.line_booking_copy_file === "string" ? (
                                             <a
-                                              href={
-                                                detail.line_booking_copy_file
-                                              }
+                                              href={detail.line_booking_copy_file}
                                               target="_blank"
                                               rel="noopener noreferrer"
                                               className="text-blue-600 hover:underline"
                                             >
                                               View PDF
                                             </a>
-                                          </p>
-                                        )}
+                                          ) : detail.line_booking_copy_file instanceof File ? (
+                                            <span className="text-gray-700 font-medium">
+                                              {detail.line_booking_copy_file.name} ({Math.round(detail.line_booking_copy_file.size / 1024)} KB)
+                                            </span>
+                                          ) : (
+                                            <span className="text-gray-500">Unknown file type</span>
+                                          )}
+                                        </p>
+                                      )}
                                     </div>
+
+                                    {/* Only show route fields in new mode, not in assignment mode */}
+                                    {!isAssignment && (
+                                      <>
+                                        {/* Loading Port */}
+                                        <div className="space-y-2">
+                                          <Label className="text-xs font-medium text-gray-600">
+                                            Loading Port
+                                          </Label>
+                                          <SearchableSelect
+                                            name={`liner_booking_details[${index}][loading_port]`}
+                                            value={detail.loading_port || ""}
+                                            onChange={(value: string) =>
+                                              updateLinerBookingDetail(
+                                                originalIndex,
+                                                "loading_port",
+                                                value
+                                              )
+                                            }
+                                            placeholder="Select loading port"
+                                            className="text-sm"
+                                            options={(dataPoints?.loadingPorts || []).map(
+                                              (port: any) => ({
+                                                value: port.name,
+                                                label: `🚢 ${port.name}, ${port.country}`,
+                                              })
+                                            )}
+                                          />
+                                        </div>
+
+                                        {/* Destination Country */}
+                                        <div className="space-y-2">
+                                          <Label className="text-xs font-medium text-gray-600">
+                                            Destination Country
+                                          </Label>
+                                          <SearchableSelect
+                                            name={`liner_booking_details[${index}][destination_country]`}
+                                            value={detail.destination_country || ""}
+                                            onChange={(value: string) => {
+                                              console.log(`[DEBUG] Destination country changed for detail ${originalIndex}:`, value);
+
+                                              // Update immediate state for UI responsiveness
+                                              setIndividualDestinationCountries(prev => ({
+                                                ...prev,
+                                                [originalIndex]: value
+                                              }));
+
+                                              // Update form state
+                                              updateLinerBookingDetail(
+                                                originalIndex,
+                                                "destination_country",
+                                                value
+                                              );
+                                              // Reset port of discharge when country changes
+                                              updateLinerBookingDetail(
+                                                originalIndex,
+                                                "port_of_discharge",
+                                                ""
+                                              );
+                                            }}
+                                            placeholder="Select destination country"
+                                            className="text-sm"
+                                            options={(dataPoints?.destinationCountries || []).map(
+                                              (country: any) => ({
+                                                value: country.name,
+                                                label: `🌍 ${country.name}`,
+                                              })
+                                            )}
+                                          />
+                                        </div>
+
+                                        {/* Port of Discharge */}
+                                        <div className="space-y-2">
+                                          <Label className="text-xs font-medium text-gray-600">
+                                            Port of Discharge
+                                          </Label>
+                                          <SearchableSelect
+                                            name={`liner_booking_details[${index}][port_of_discharge]`}
+                                            value={detail.port_of_discharge || ""}
+                                            onChange={(value: string) =>
+                                              updateLinerBookingDetail(
+                                                originalIndex,
+                                                "port_of_discharge",
+                                                value
+                                              )
+                                            }
+                                            placeholder={(() => {
+                                              const currentCountry = individualDestinationCountries[originalIndex] || detail.destination_country;
+                                              return currentCountry
+                                                ? `Select port in ${currentCountry}`
+                                                : "Select destination country first";
+                                            })()}
+                                            className="text-sm"
+                                            disabled={!individualDestinationCountries[originalIndex] && !detail.destination_country}
+                                            options={(() => {
+                                              const currentCountry = individualDestinationCountries[originalIndex] || detail.destination_country;
+                                              const allPorts = dataPoints?.portsOfDischarge || [];
+                                              const filteredPorts = allPorts.filter(
+                                                (port: any) =>
+                                                  !currentCountry ||
+                                                  port.country === currentCountry
+                                              );
+                                              console.log(`[DEBUG] Port filtering for detail ${originalIndex}:`, {
+                                                currentCountry,
+                                                immediateState: individualDestinationCountries[originalIndex],
+                                                detailState: detail.destination_country,
+                                                allPortsCount: allPorts.length,
+                                                filteredPortsCount: filteredPorts.length,
+                                                samplePorts: filteredPorts.slice(0, 3).map(p => `${p.name}, ${p.country}`)
+                                              });
+                                              return filteredPorts.map((port: any) => ({
+                                                value: port.name,
+                                                label: `🏢 ${port.name}, ${port.country}`,
+                                              }));
+                                            })()}
+                                          />
+                                        </div>
+                                      </>
+                                    )}
+
+                                    {/* In assignment mode, add hidden inputs to preserve route data from shipment plan */}
+                                    {isAssignment && (
+                                      <>
+                                        <input
+                                          type="hidden"
+                                          name={`liner_booking_details[${index}][loading_port]`}
+                                          value={detail.loading_port || ""}
+                                        />
+                                        <input
+                                          type="hidden"
+                                          name={`liner_booking_details[${index}][destination_country]`}
+                                          value={detail.destination_country || ""}
+                                        />
+                                        <input
+                                          type="hidden"
+                                          name={`liner_booking_details[${index}][port_of_discharge]`}
+                                          value={detail.port_of_discharge || ""}
+                                        />
+                                      </>
+                                    )}
 
                                     <div className="space-y-2 md:col-span-3">
                                       <Label className="text-xs font-medium text-gray-600">
@@ -3322,7 +4220,7 @@ export function LinerBookingForm({
                                         value={detail.additional_remarks}
                                         onChange={(e) =>
                                           updateLinerBookingDetail(
-                                            index,
+                                            originalIndex,
                                             "additional_remarks",
                                             e.target.value
                                           )
@@ -3334,7 +4232,8 @@ export function LinerBookingForm({
                                     </div>
                                   </div>
                                 </div>
-                              ))}
+                              );
+                              })}
                           </>
                         )}
                       </div>

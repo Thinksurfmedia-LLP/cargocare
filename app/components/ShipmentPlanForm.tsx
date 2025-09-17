@@ -2333,9 +2333,26 @@ export function ShipmentPlanForm({
                                                 // Check if this equipment has been allocated a liner booking number
                                                 const linkedBookingData = shipmentPlan?.linerBooking?.data || shipmentPlan?.shipmentAssignment?.data;
                                                 if (linkedBookingData && (linkedBookingData as any).liner_booking_details) {
-                                                  const matchingDetail = (linkedBookingData as any).liner_booking_details.find(
-                                                    (detail: any) => detail.trackingNumber === equipment.trackingNumber
-                                                  );
+                                                  const details = (linkedBookingData as any).liner_booking_details;
+
+                                                  // First try to match by trackingNumber
+                                                  let matchingDetail = details.find((detail: any) => detail.trackingNumber === equipment.trackingNumber);
+
+                                                  // If no match by trackingNumber, try to match by liner_booking_number (most reliable for allocated equipment)
+                                                  if (!matchingDetail) {
+                                                    matchingDetail = details.find((detail: any) => detail.liner_booking_number === equipment.trackingNumber);
+                                                  }
+
+                                                  // If no match by liner_booking_number, try to match by equipment type and booking_for fields that contain the tracking number
+                                                  if (!matchingDetail) {
+                                                    matchingDetail = details.find((detail: any) => {
+                                                      // Check if equipment_type or booking_for fields contain the tracking number
+                                                      const equipmentTypeMatches = detail.equipment_type && detail.equipment_type.includes(equipment.trackingNumber);
+                                                      const bookingForMatches = detail.booking_for && detail.booking_for.includes(equipment.trackingNumber);
+                                                      return equipmentTypeMatches || bookingForMatches;
+                                                    });
+                                                  }
+
                                                   if (matchingDetail && matchingDetail.liner_booking_number) {
                                                     return matchingDetail.liner_booking_number;
                                                   }
@@ -2926,22 +2943,57 @@ export function ShipmentPlanForm({
                                         const matchingDetail = linkedBookingData && (linkedBookingData as any).liner_booking_details ?
                                           (() => {
                                             const details = (linkedBookingData as any).liner_booking_details;
+                                            console.log(`[DEBUG] ============ MATCHING FOR EQUIPMENT ${index} ============`);
+                                            console.log(`[DEBUG] Equipment trackingNumber:`, equipment.trackingNumber);
+                                            console.log(`[DEBUG] Equipment type:`, equipment.equipment_type);
+                                            console.log(`[DEBUG] Total available liner booking details:`, details.length);
+                                            details.forEach((d: any, i: number) => {
+                                              console.log(`[DEBUG] Detail ${i}:`, {
+                                                trackingNumber: d.trackingNumber,
+                                                equipment_type: d.equipment_type,
+                                                booking_for: d.booking_for,
+                                                liner_booking_number: d.liner_booking_number
+                                              });
+                                            });
+
                                             // First try to match by trackingNumber
                                             let match = details.find((detail: any) => detail.trackingNumber === equipment.trackingNumber);
+                                            console.log(`[DEBUG] Match by trackingNumber:`, match);
 
-                                            // If no match by trackingNumber, try to match by equipment type
+                                            // If no match by trackingNumber, try to match by liner_booking_number (most reliable for allocated equipment)
+                                            if (!match) {
+                                              match = details.find((detail: any) => detail.liner_booking_number === equipment.trackingNumber);
+                                              console.log(`[DEBUG] Match by liner_booking_number:`, match);
+                                            }
+
+                                            // If no match by liner_booking_number, try to match by equipment type and booking_for fields that contain the tracking number
+                                            if (!match) {
+                                              match = details.find((detail: any) => {
+                                                // Check if equipment_type or booking_for fields contain the tracking number
+                                                const equipmentTypeMatches = detail.equipment_type && detail.equipment_type.includes(equipment.trackingNumber);
+                                                const bookingForMatches = detail.booking_for && detail.booking_for.includes(equipment.trackingNumber);
+                                                return equipmentTypeMatches || bookingForMatches;
+                                              });
+                                              console.log(`[DEBUG] Match by equipment_type/booking_for containing trackingNumber:`, match);
+                                            }
+
+                                            // If still no match, try by equipment type only
                                             if (!match) {
                                               match = details.find((detail: any) =>
                                                 detail.equipment_type === equipment.equipment_type ||
                                                 detail.booking_for === equipment.equipment_type
                                               );
+                                              console.log(`[DEBUG] Match by equipment type only:`, match);
                                             }
 
-                                            // If still no match and there's only one detail and one equipment, show it
-                                            if (!match && details.length === 1) {
-                                              match = details[0];
+                                            // If still no match, try matching by position index (for existing mismatched data)
+                                            // This ensures equipment[0] gets detail[0], equipment[1] gets detail[1], etc.
+                                            if (!match && details.length > index && index >= 0) {
+                                              match = details[index];
+                                              console.log(`[DEBUG] Match by position index ${index}:`, match);
                                             }
 
+                                            console.log(`[DEBUG] Final match for equipment ${equipment.trackingNumber}:`, match);
                                             return match;
                                           })() : null;
 

@@ -36,11 +36,14 @@ model User {
   updatedAt           DateTime             @updatedAt
   roleId              String
   branchId            String?
-  linerBookings       LinerBooking[]
-  shipmentAssignments ShipmentAssignment[]
-  shipmentPlans       ShipmentPlan[]
-  businessBranch      BusinessBranch?      @relation(fields: [branchId], references: [id])
-  role                Role                 @relation(fields: [roleId], references: [id])
+  linerBookings                                LinerBooking[]
+  shipmentAssignments                          ShipmentAssignment[]
+  shipmentPlans                                ShipmentPlan[]
+  individualUnmappingRequestsRequested         IndividualEquipmentUnmappingRequest[] @relation("RequestedBy")
+  individualUnmappingRequestsApproved          IndividualEquipmentUnmappingRequest[] @relation("ApprovedBy")
+  individualUnmappingRequestsRejected          IndividualEquipmentUnmappingRequest[] @relation("RejectedBy")
+  businessBranch                               BusinessBranch?                       @relation(fields: [branchId], references: [id])
+  role                                         Role                                  @relation(fields: [roleId], references: [id])
 
   @@map("users")
 }
@@ -54,9 +57,10 @@ model ShipmentPlan {
   linerBookingId       String?             @unique
   linkedStatus         Int                 @default(0)
   shipmentAssignmentId String?             @unique
-  linerBooking         LinerBooking?       @relation(fields: [linerBookingId], references: [id])
-  shipmentAssignment   ShipmentAssignment? @relation(fields: [shipmentAssignmentId], references: [id])
-  user                 User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  linerBooking                             LinerBooking?                         @relation(fields: [linerBookingId], references: [id])
+  shipmentAssignment                       ShipmentAssignment?                   @relation(fields: [shipmentAssignmentId], references: [id])
+  user                                     User                                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  individualEquipmentUnmappingRequests     IndividualEquipmentUnmappingRequest[]
 
   @@map("shipment_plans")
 }
@@ -181,6 +185,38 @@ model ShipmentAssignment {
   shipmentPlan    ShipmentPlan?
 
   @@map("shipment_assignments")
+}
+
+model IndividualEquipmentUnmappingRequest {
+  id                  String                                @id @default(cuid())
+  shipmentPlanId      String
+  equipmentIndex      Int
+  equipmentType       String
+  linerBookingNumber  String
+  requestedBy         String
+  unmappingReason     String?
+  status              IndividualUnmappingRequestStatus      @default(PENDING)
+  requestedAt         DateTime                              @default(now())
+  approvedAt          DateTime?
+  rejectedAt          DateTime?
+  approvedBy          String?
+  rejectedBy          String?
+  approvalReason      String?
+  rejectionReason     String?
+  createdAt           DateTime                              @default(now())
+  updatedAt           DateTime                              @updatedAt
+  shipmentPlan        ShipmentPlan                          @relation(fields: [shipmentPlanId], references: [id], onDelete: Cascade)
+  requestedByUser     User                                  @relation("RequestedBy", fields: [requestedBy], references: [id])
+  approvedByUser      User?                                 @relation("ApprovedBy", fields: [approvedBy], references: [id])
+  rejectedByUser      User?                                 @relation("RejectedBy", fields: [rejectedBy], references: [id])
+
+  @@map("individual_equipment_unmapping_requests")
+}
+
+enum IndividualUnmappingRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }
 
 enum RoleType {
