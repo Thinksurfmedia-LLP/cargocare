@@ -5,6 +5,7 @@ import { prisma } from "~/lib/prisma.server"
 import { AdminLayout } from "~/components/AdminLayout"
 import { ShipmentPlanForm } from "~/components/ShipmentPlanForm"
 import { Button } from "~/components/ui/button"
+import { Label } from "~/components/ui/label"
 
 export const meta: MetaFunction = () => {
   return [{ title: "Edit Shipment Plan - Cargo Care" }, { name: "description", content: "Edit shipment plan" }]
@@ -103,9 +104,30 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       }),
     ])
 
+    // Fetch individual equipment unmapping requests for this shipment plan
+    const individualUnmappingRequests = await prisma.individualEquipmentUnmappingRequest.findMany({
+      where: {
+        shipmentPlanId: planId,
+        status: "PENDING",
+      },
+      include: {
+        requestedByUser: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: {
+        requestedAt: "desc",
+      },
+    })
+
     return {
       user,
       shipmentPlan,
+      individualUnmappingRequests,
       dataPoints: {
         businessBranches,
         commodities,
@@ -382,12 +404,38 @@ export async function action({ request, params }: ActionFunctionArgs) {
         }
       }
 
-      // Update shipment plan status and unlink marker
+      // Revert equipment tracking numbers back to original temporary numbers
+      console.log("[DEBUG] approve_unmapping - Starting equipment tracking number reversion")
+      const revertedPlanData = { ...planData }
+
+      if (revertedPlanData.equipment_details && Array.isArray(revertedPlanData.equipment_details)) {
+        console.log("[DEBUG] approve_unmapping - Equipment details count:", revertedPlanData.equipment_details.length)
+
+        revertedPlanData.equipment_details = revertedPlanData.equipment_details.map((equipment: any, idx: number) => {
+          const currentTracking = equipment.trackingNumber
+          const originalTracking = equipment.originalTrackingNumber || currentTracking
+
+          console.log(`[DEBUG] approve_unmapping - Equipment ${idx}: reverting "${currentTracking}" -> "${originalTracking}"`)
+
+          return {
+            ...equipment,
+            trackingNumber: originalTracking,
+            // Clear the originalTrackingNumber since we've reverted
+            originalTrackingNumber: undefined
+          }
+        })
+
+        console.log("[DEBUG] approve_unmapping - ✅ Equipment tracking numbers reverted to original temporary numbers")
+      } else {
+        console.log("[DEBUG] approve_unmapping - ❌ No equipment_details found to revert")
+      }
+
+      // Update shipment plan status and unlink marker with reverted equipment tracking numbers
       await prisma.shipmentPlan.update({
         where: { id: planId },
         data: {
           data: {
-            ...planData,
+            ...revertedPlanData,
             booking_status: "Awaiting Booking",
           },
           linkedStatus: 0,
@@ -451,6 +499,232 @@ export async function action({ request, params }: ActionFunctionArgs) {
       }
 
       return redirect("/shipment-plans")
+    }
+
+    // Handle individual equipment unmapping approval/rejection
+    const approveIndividualUnmapping = formData.get("approve_individual_unmapping") === "true"
+    const rejectIndividualUnmapping = formData.get("reject_individual_unmapping") === "true"
+    const unmappingRequestId = formData.get("unmapping_request_id") as string
+
+    if (approveIndividualUnmapping && unmappingRequestId) {
+      console.log("[v0] approve_individual_unmapping action started", {
+        unmappingRequestId,
+        planId
+      })
+
+      // Get the unmapping request
+      const unmappingRequest = await prisma.individualEquipmentUnmappingRequest.findUnique({
+        where: { id: unmappingRequestId },
+        include: { shipmentPlan: true }
+      })
+
+      if (!unmappingRequest || unmappingRequest.shipmentPlanId !== planId) {
+        return Response.json({ error: "Unmapping request not found or does not belong to this shipment plan" }, { status: 404 })
+      }
+
+      // Update the unmapping request status
+      await prisma.individualEquipmentUnmappingRequest.update({
+        where: { id: unmappingRequestId },
+        data: {
+          status: "APPROVED",
+          approvedAt: new Date(),
+          approvedBy: user.id,
+        }
+      })
+
+      // Update the shipment plan to remove the specific equipment
+      const currentPlan = await prisma.shipmentPlan.findUnique({
+        where: { id: planId },
+        include: { linerBooking: true, shipmentAssignment: true },
+      })
+
+      if (currentPlan) {
+        const planData = currentPlan.data as any
+
+        // Mark the specific equipment as unmapped and revert tracking number to original temporary number
+        if (planData.equipment_details && Array.isArray(planData.equipment_details)) {
+          const updatedEquipmentDetails = planData.equipment_details.map((equipment: any, index: number) => {
+            if (index === unmappingRequest.equipmentIndex) {
+              // Revert tracking number to original temporary number
+              const originalTrackingNumber = equipment.originalTrackingNumber || equipment.trackingNumber
+
+              console.log(`[DEBUG] Individual unmapping approval - Equipment ${index}: reverting "${equipment.trackingNumber}" -> "${originalTrackingNumber}"`)
+
+              return {
+                ...equipment,
+                trackingNumber: originalTrackingNumber, // Revert to original temporary number
+                originalTrackingNumber: undefined, // Clear the reference since we've reverted
+                unmapped: true,
+                unmappedAt: new Date().toISOString(),
+                unmappedReason: unmappingRequest.unmappingReason
+              }
+            }
+            return equipment
+          })
+
+          // Check how many equipment are still available (not unmapped)
+          const availableEquipmentCount = updatedEquipmentDetails.filter((eq: any) => !eq.unmapped).length
+
+          // If there are still available equipment, update the plan and mark as awaiting booking
+          // (since unmapping equipment means allocation is incomplete)
+          if (availableEquipmentCount > 0) {
+            await prisma.shipmentPlan.update({
+              where: { id: planId },
+              data: {
+                data: {
+                  ...planData,
+                  equipment_details: updatedEquipmentDetails,
+                  booking_status: "Awaiting Booking" // Always set to awaiting booking when equipment is unmapped
+                }
+              }
+            })
+
+            // Also remove the corresponding liner booking detail if it exists
+            if (currentPlan.linerBooking) {
+              const bookingData = currentPlan.linerBooking.data as any
+              if (bookingData.liner_booking_details && Array.isArray(bookingData.liner_booking_details)) {
+                const updatedLinerBookingDetails = bookingData.liner_booking_details.filter(
+                  (detail: any) => detail.liner_booking_number !== unmappingRequest.linerBookingNumber
+                )
+
+                await prisma.linerBooking.update({
+                  where: { id: currentPlan.linerBooking.id },
+                  data: {
+                    data: {
+                      ...bookingData,
+                      liner_booking_details: updatedLinerBookingDetails,
+                      carrier_booking_status: "Awaiting Booking" // Update status since equipment was unmapped
+                    }
+                  }
+                })
+              }
+            }
+
+            if (currentPlan.shipmentAssignment) {
+              const assignmentData = currentPlan.shipmentAssignment.data as any
+              if (assignmentData.liner_booking_details && Array.isArray(assignmentData.liner_booking_details)) {
+                const updatedLinerBookingDetails = assignmentData.liner_booking_details.filter(
+                  (detail: any) => detail.liner_booking_number !== unmappingRequest.linerBookingNumber
+                )
+
+                await prisma.shipmentAssignment.update({
+                  where: { id: currentPlan.shipmentAssignment.id },
+                  data: {
+                    data: {
+                      ...assignmentData,
+                      liner_booking_details: updatedLinerBookingDetails,
+                      carrier_booking_status: "Awaiting Booking" // Update status since equipment was unmapped
+                    }
+                  }
+                })
+              }
+            }
+
+            // Create new available liner booking for the unmapped equipment
+            const unmappedEquipment = updatedEquipmentDetails[unmappingRequest.equipmentIndex];
+            if (unmappedEquipment) {
+              const newBookingData = {
+                carrier_booking_status: "Awaiting Booking",
+                liner_booking_details: [{
+                  liner_booking_number: unmappingRequest.linerBookingNumber,
+                  equipment_type: unmappedEquipment.equipment_type,
+                  trackingNumber: unmappedEquipment.trackingNumber,
+                  container_number: unmappedEquipment.container_number || "",
+                  stuffing_point: unmappedEquipment.stuffing_point || "",
+                  empty_container_pick_up_from: unmappedEquipment.empty_container_pick_up_from || "",
+                  container_handover_location: unmappedEquipment.container_handover_location || "",
+                  empty_container_pick_up_location: unmappedEquipment.empty_container_pick_up_location || "",
+                  container_handover_at: unmappedEquipment.container_handover_at || "",
+                  unmapped_from_plan: planId,
+                  unmapped_reason: unmappingRequest.unmappingReason
+                }]
+              };
+
+              await prisma.linerBooking.create({
+                data: {
+                  data: newBookingData,
+                  userId: user.id,
+                  shipmentPlanId: null // This makes it available for linking
+                }
+              });
+
+              console.log("[v0] Created new available liner booking for unmapped equipment", {
+                linerBookingNumber: unmappingRequest.linerBookingNumber,
+                equipmentType: unmappedEquipment.equipment_type,
+                planId
+              });
+            }
+          } else {
+            // If no available equipment left, mark shipment as awaiting booking
+            await prisma.shipmentPlan.update({
+              where: { id: planId },
+              data: {
+                data: {
+                  ...planData,
+                  equipment_details: updatedEquipmentDetails, // Keep the equipment with unmapped flags
+                  booking_status: "Awaiting Booking"
+                },
+                linkedStatus: 0
+              }
+            })
+
+            // Update related booking status
+            if (currentPlan.linerBooking) {
+              const bookingData = currentPlan.linerBooking.data as any
+              await prisma.linerBooking.update({
+                where: { id: currentPlan.linerBooking.id },
+                data: {
+                  data: {
+                    ...bookingData,
+                    carrier_booking_status: "Awaiting Booking"
+                  },
+                  shipmentPlanId: null
+                }
+              })
+            }
+
+            if (currentPlan.shipmentAssignment) {
+              const assignmentData = currentPlan.shipmentAssignment.data as any
+              await prisma.shipmentAssignment.update({
+                where: { id: currentPlan.shipmentAssignment.id },
+                data: {
+                  data: {
+                    ...assignmentData,
+                    carrier_booking_status: "Awaiting Booking"
+                  },
+                  shipmentPlanId: null
+                }
+              })
+            }
+          }
+        }
+      }
+
+      console.log("[v0] Individual equipment unmapping approved successfully")
+      return redirect(`/shipment-plans/${planId}/edit`)
+    }
+
+    if (rejectIndividualUnmapping && unmappingRequestId) {
+      console.log("[v0] reject_individual_unmapping action started", {
+        unmappingRequestId,
+        planId
+      })
+
+      const rejectionReason = formData.get("rejection_reason") as string
+
+      // Update the unmapping request status
+      await prisma.individualEquipmentUnmappingRequest.update({
+        where: { id: unmappingRequestId },
+        data: {
+          status: "REJECTED",
+          rejectedAt: new Date(),
+          rejectedBy: user.id,
+          rejectionReason: rejectionReason || "No reason provided"
+        }
+      })
+
+      console.log("[v0] Individual equipment unmapping rejected successfully")
+      return redirect(`/shipment-plans/${planId}/edit`)
     }
 
     // Get form values and preserve existing values if form fields are empty
@@ -694,7 +968,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 }
 
 export default function EditShipmentPlan() {
-  const { user, shipmentPlan, dataPoints } = useLoaderData<typeof loader>()
+  const { user, shipmentPlan, dataPoints, individualUnmappingRequests } = useLoaderData<typeof loader>()
   const actionData = useActionData<typeof action>()
   const navigation = useNavigation()
 
@@ -704,6 +978,12 @@ export default function EditShipmentPlan() {
   const unmappingRequested =
     Boolean((shipmentPlan.linerBooking?.data as any)?.unmapping_request) ||
     Boolean((shipmentPlan.shipmentAssignment?.data as any)?.unmapping_request)
+
+  // Get unmapping reason from either liner booking or shipment assignment
+  const unmappingReason =
+    (shipmentPlan.linerBooking?.data as any)?.unmapping_reason ||
+    (shipmentPlan.shipmentAssignment?.data as any)?.unmapping_reason ||
+    ''
 
   return (
     <AdminLayout user={user}>
@@ -772,24 +1052,167 @@ export default function EditShipmentPlan() {
 
         {unmappingRequested && (
           <div className="max-w-5xl mx-auto mb-6">
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-center justify-between">
-              <div className="text-amber-800 text-sm">
-                Unmapping has been requested for this plan. Approve to unlink and split into individual available liner
-                bookings, or reject to keep the current linkage.
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-6 h-6 bg-amber-500 rounded-full flex items-center justify-center">
+                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                      </svg>
+                    </div>
+                    <h3 className="text-lg font-semibold text-amber-800">
+                      Unmapping Request Pending
+                    </h3>
+                  </div>
+                  <p className="text-amber-800 text-sm mb-3">
+                    The liner booking team has requested to unmap this shipment plan.
+                  </p>
+
+                  <div className="bg-white/60 border border-amber-300 rounded-md p-3 mb-3">
+                    <h4 className="text-sm font-medium text-amber-800 mb-2">What happens when approved:</h4>
+                    <ul className="text-amber-700 text-sm space-y-1">
+                      <li>• Equipment tracking numbers will be reverted to original temporary numbers</li>
+                      <li>• Shipment plan status will change to "Awaiting Booking"</li>
+                      <li>• Linked bookings will be split into individual available liner bookings</li>
+                      <li>• Plan will be unlinked and available for new bookings</li>
+                    </ul>
+                  </div>
+
+                  {unmappingReason && (
+                    <div className="bg-white/60 border border-amber-300 rounded-md p-3">
+                      <h4 className="text-sm font-medium text-amber-800 mb-2">Unmapping Reason:</h4>
+                      <p className="text-amber-700 text-sm italic">
+                        "{unmappingReason}"
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center gap-3">
-                <form method="post">
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-amber-200">
+                <form method="post" className="inline">
+                  <input type="hidden" name="reject_unmapping" value="true" />
+                  <Button type="submit" variant="outline" className="border-red-300 text-red-700 hover:bg-red-50 bg-white">
+                    Reject Unmapping
+                  </Button>
+                </form>
+                <form method="post" className="inline">
                   <input type="hidden" name="approve_unmapping" value="true" />
                   <Button type="submit" className="bg-green-600 hover:bg-green-700 text-white">
                     Approve Unmapping
                   </Button>
                 </form>
-                <form method="post">
-                  <input type="hidden" name="reject_unmapping" value="true" />
-                  <Button type="submit" variant="outline" className="border-red-300 text-red-700 bg-transparent">
-                    Reject Unmapping
-                  </Button>
-                </form>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Individual Equipment Unmapping Requests */}
+        {individualUnmappingRequests.length > 0 && (
+          <div className="max-w-5xl mx-auto mb-6">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center">
+                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </div>
+                    <h3 className="text-lg font-semibold text-blue-800">
+                      Individual Equipment Unmapping Requests ({individualUnmappingRequests.length})
+                    </h3>
+                  </div>
+                  <p className="text-blue-800 text-sm mb-4">
+                    Liner booking team has requested to unmap specific equipment from this shipment plan.
+                  </p>
+
+                  <div className="space-y-4">
+                    {individualUnmappingRequests.map((request: any) => (
+                      <div key={request.id} className="bg-white border border-blue-200 rounded-lg p-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                          <div>
+                            <Label className="text-xs font-medium text-gray-500">Equipment Type</Label>
+                            <p className="mt-1 text-gray-900 font-medium">{request.equipmentType}</p>
+                          </div>
+                          <div>
+                            <Label className="text-xs font-medium text-gray-500">Liner Booking Number</Label>
+                            <p className="mt-1 text-blue-600 font-medium">{request.linerBookingNumber}</p>
+                          </div>
+                          <div>
+                            <Label className="text-xs font-medium text-gray-500">Requested By</Label>
+                            <p className="mt-1 text-gray-900">{request.requestedByUser.name}</p>
+                          </div>
+                        </div>
+
+                        <div className="mb-4">
+                          <Label className="text-xs font-medium text-gray-500">Requested At</Label>
+                          <p className="mt-1 text-gray-900 text-sm">
+                            {new Date(request.requestedAt).toLocaleDateString()} at {new Date(request.requestedAt).toLocaleTimeString()}
+                          </p>
+                        </div>
+
+                        {request.unmappingReason && (
+                          <div className="mb-4">
+                            <Label className="text-xs font-medium text-gray-500">Unmapping Reason</Label>
+                            <div className="mt-1 bg-gray-50 border border-gray-200 rounded-md p-3">
+                              <p className="text-gray-900 text-sm italic">
+                                "{request.unmappingReason}"
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-end gap-3 pt-3 border-t border-blue-200">
+                          <form method="post" className="inline">
+                            <input type="hidden" name="reject_individual_unmapping" value="true" />
+                            <input type="hidden" name="unmapping_request_id" value={request.id} />
+                            <Button
+                              type="submit"
+                              variant="outline"
+                              className="border-red-300 text-red-700 hover:bg-red-50 bg-white"
+                              onClick={(e) => {
+                                const reason = prompt("Please provide a reason for rejecting this unmapping request:");
+                                if (!reason) {
+                                  e.preventDefault();
+                                  return;
+                                }
+                                const form = e.currentTarget.closest('form');
+                                if (form) {
+                                  const input = document.createElement('input');
+                                  input.type = 'hidden';
+                                  input.name = 'rejection_reason';
+                                  input.value = reason;
+                                  form.appendChild(input);
+                                }
+                              }}
+                            >
+                              Reject Request
+                            </Button>
+                          </form>
+                          <form method="post" className="inline">
+                            <input type="hidden" name="approve_individual_unmapping" value="true" />
+                            <input type="hidden" name="unmapping_request_id" value={request.id} />
+                            <Button
+                              type="submit"
+                              className="bg-green-600 hover:bg-green-700 text-white"
+                              onClick={(e) => {
+                                if (!confirm(
+                                  `Are you sure you want to approve unmapping of ${request.equipmentType} (${request.linerBookingNumber})? This equipment will be removed from this shipment plan.`
+                                )) {
+                                  e.preventDefault();
+                                }
+                              }}
+                            >
+                              Approve Request
+                            </Button>
+                          </form>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           </div>

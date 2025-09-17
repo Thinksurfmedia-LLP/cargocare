@@ -67,7 +67,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         normalizedData.liner_booking_details = []
       }
 
-      const [availableShipmentPlans, carriers, vessels, organizations, equipment, availableLinerBookings] =
+      const [availableShipmentPlans, carriers, vessels, organizations, equipment, loadingPorts, portsOfDischarge, destinationCountries, availableLinerBookings] =
         await Promise.all([
           prisma.shipmentPlan.findMany({
             where: { linkedStatus: 0 },
@@ -77,7 +77,10 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
           prisma.carrier.findMany({ orderBy: { name: "asc" } }),
           prisma.vessel.findMany({ orderBy: { name: "asc" } }),
           prisma.organization.findMany({ orderBy: { name: "asc" } }),
-          prisma.equipment.findMany({ orderBy: { name: "asc" } }), // include equipment for edit UI fallback
+          prisma.equipment.findMany({ orderBy: { name: "asc" } }),
+          prisma.loadingPort.findMany({ orderBy: { name: "asc" } }),
+          prisma.portOfDischarge.findMany({ orderBy: { name: "asc" } }),
+          prisma.destinationCountry.findMany({ orderBy: { name: "asc" } }),
           prisma.linerBooking.findMany({
             where: {
               OR: [
@@ -106,6 +109,17 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
             .filter((t: any) => typeof t === "string" && t.trim() !== ""),
         )
 
+        // Get route information from shipment plan's container movement
+        const containerMovement = planData?.container_movement ?? {}
+        const requiredLoadingPort = containerMovement?.loading_port?.trim()
+        const requiredPortOfDischarge = containerMovement?.port_of_discharge?.trim()
+
+        console.log("[DEBUG] Route validation - shipment plan requirements:", {
+          requiredLoadingPort,
+          requiredPortOfDischarge,
+          requiredEquipmentTypes: Array.from(requiredTypes)
+        })
+
         const allowedStatuses = new Set([
           "available",
           "ready for re-linking",
@@ -114,11 +128,11 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
         filteredAvailableLinerBookings = availableLinerBookings.filter((b: any) => {
           const statusRaw = (b?.data?.carrier_booking_status ?? "").toString()
-  const status = statusRaw.toLowerCase()
+          const status = statusRaw.toLowerCase()
 
-  const isLinkedToCurrent = b.shipmentPlanId === assignment.shipmentPlan?.id
-  // Only show truly unlinked bookings OR those linked to current assignment
-  const statusOk = (b.shipmentPlanId === null && (status === "" || allowedStatuses.has(status))) || isLinkedToCurrent
+          const isLinkedToCurrent = b.shipmentPlanId === assignment.shipmentPlan?.id
+          // Only show truly unlinked bookings OR those linked to current assignment
+          const statusOk = (b.shipmentPlanId === null && (status === "" || allowedStatuses.has(status))) || isLinkedToCurrent
 
           if (!statusOk) return false
 
@@ -137,11 +151,57 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
           const bookingTypes = new Set<string>([...typesFromED, ...typesFromLBD])
 
-          // Intersect bookingTypes with requiredTypes
+          // Equipment type validation
+          let hasMatchingEquipment = false
           for (const t of bookingTypes) {
-            if (requiredTypes.has(t)) return true
+            if (requiredTypes.has(t)) {
+              hasMatchingEquipment = true
+              break
+            }
           }
-          return false
+
+          if (!hasMatchingEquipment) {
+            console.log(`[DEBUG] Booking ${b.id} filtered out - no matching equipment types`)
+            return false
+          }
+
+          // Route validation - check if any booking detail matches the required route
+          let hasMatchingRoute = false
+
+          // If no route requirements are specified, consider it a match
+          if (!requiredLoadingPort && !requiredPortOfDischarge) {
+            hasMatchingRoute = true
+          } else {
+            // Check liner booking details for route match
+            for (const detail of lbd) {
+              const bookingLoadingPort = detail?.loading_port?.trim()
+              const bookingPortOfDischarge = detail?.port_of_discharge?.trim()
+
+              // A booking detail matches the route if:
+              // 1. Loading port matches (when both are specified)
+              // 2. Port of discharge matches (when both are specified)
+              const loadingPortMatches = !requiredLoadingPort || !bookingLoadingPort || bookingLoadingPort === requiredLoadingPort
+              const dischargePortMatches = !requiredPortOfDischarge || !bookingPortOfDischarge || bookingPortOfDischarge === requiredPortOfDischarge
+
+              if (loadingPortMatches && dischargePortMatches) {
+                hasMatchingRoute = true
+                break
+              }
+            }
+          }
+
+          console.log(`[DEBUG] Booking ${b.id} validation result:`, {
+            hasMatchingEquipment,
+            hasMatchingRoute,
+            requiredLoadingPort,
+            requiredPortOfDischarge,
+            bookingDetails: lbd.map(d => ({
+              loading_port: d?.loading_port,
+              port_of_discharge: d?.port_of_discharge
+            }))
+          })
+
+          return hasMatchingEquipment && hasMatchingRoute
         })
       } catch (e) {
         console.error("[v0] loader: filtering availableLinerBookings by status/type failed", e)
@@ -165,13 +225,13 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         equipmentType: string;
         displayName: string;
       }> = [];
-      
+
       if (assignment.shipmentPlan && assignment.shipmentPlan.data) {
         const shipmentPlanData = assignment.shipmentPlan.data as any;
-        
+
         if (shipmentPlanData.equipment_details && Array.isArray(shipmentPlanData.equipment_details)) {
           shipmentPlanData.equipment_details.forEach((eq: any, index: number) => {
-            
+
             if (eq.trackingNumber) {
               availableEquipment.push({
                 trackingNumber: eq.trackingNumber,
@@ -182,6 +242,34 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
           });
         }
       }
+
+      // Fetch pending individual unmapping requests for this shipment plan
+      let pendingUnmappingRequests: any[] = [];
+      try {
+        pendingUnmappingRequests = assignment.shipmentPlan ? await prisma.individualEquipmentUnmappingRequest.findMany({
+          where: {
+            shipmentPlanId: assignment.shipmentPlan.id,
+            status: "PENDING",
+          },
+          select: {
+            id: true,
+            equipmentIndex: true,
+            equipmentType: true,
+            linerBookingNumber: true,
+            unmappingReason: true,
+            requestedAt: true,
+            requestedByUser: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+        }) : [];
+      } catch (error) {
+        console.error("Error fetching pending unmapping requests:", error);
+        pendingUnmappingRequests = [];
+      }
       
 
       return {
@@ -191,7 +279,8 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         availableLinerBookings: filteredAvailableLinerBookings, // use filtered list
         isAssignment: true,
         availableEquipment, // Add available equipment for the dropdown
-        dataPoints: { carriers, vessels, organizations, equipment },
+        pendingUnmappingRequests, // Add pending unmapping requests
+        dataPoints: { carriers, vessels, organizations, equipment, loadingPorts, portsOfDischarge, destinationCountries },
       }
     }
 
@@ -218,7 +307,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     }
 
     // Fetch available shipment plans for linking (only those without existing liner bookings)
-    const [availableShipmentPlans, carriers, vessels, organizations, equipment] = await Promise.all([
+    const [availableShipmentPlans, carriers, vessels, organizations, equipment, loadingPorts, portsOfDischarge, destinationCountries] = await Promise.all([
       prisma.shipmentPlan.findMany({
         where: {
           linkedStatus: 0, // Only unlinked plans
@@ -233,8 +322,39 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       prisma.carrier.findMany({ orderBy: { name: "asc" } }),
       prisma.vessel.findMany({ orderBy: { name: "asc" } }),
       prisma.organization.findMany({ orderBy: { name: "asc" } }),
-      prisma.equipment.findMany({ orderBy: { name: "asc" } }), // include equipment for edit UI fallback
+      prisma.equipment.findMany({ orderBy: { name: "asc" } }),
+      prisma.loadingPort.findMany({ orderBy: { name: "asc" } }),
+      prisma.portOfDischarge.findMany({ orderBy: { name: "asc" } }),
+      prisma.destinationCountry.findMany({ orderBy: { name: "asc" } }),
     ])
+
+    // Fetch pending individual unmapping requests for this liner booking's shipment plan
+    let pendingUnmappingRequests: any[] = [];
+    try {
+      pendingUnmappingRequests = linerBooking.shipmentPlan ? await prisma.individualEquipmentUnmappingRequest.findMany({
+        where: {
+          shipmentPlanId: linerBooking.shipmentPlan.id,
+          status: "PENDING",
+        },
+        select: {
+          id: true,
+          equipmentIndex: true,
+          equipmentType: true,
+          linerBookingNumber: true,
+          unmappingReason: true,
+          requestedAt: true,
+          requestedByUser: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      }) : [];
+    } catch (error) {
+      console.error("Error fetching pending unmapping requests:", error);
+      pendingUnmappingRequests = [];
+    }
 
     return {
       user,
@@ -243,11 +363,15 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       availableLinerBookings: [],
       isAssignment: false,
       availableEquipment: [], // Empty for non-assignment mode
+      pendingUnmappingRequests, // Add pending unmapping requests
       dataPoints: {
         carriers,
         vessels,
         organizations,
         equipment,
+        loadingPorts,
+        portsOfDischarge,
+        destinationCountries,
       },
     }
   } catch (error) {
@@ -355,7 +479,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         carrier: formData.get(`liner_booking_details[${detailIndex}][carrier]`) as string,
         contract: (formData.get(`liner_booking_details[${detailIndex}][contract]`) as string) || null,
         original_planned_vessel: formData.get(
-          `liner_booking_details[${detailIndex}][original-planned_vessel]`,
+          `liner_booking_details[${detailIndex}][original_planned_vessel]`,
         ) as string,
         e_t_d_of_original_planned_vessel: etdOriginal ? new Date(etdOriginal).toISOString() : null,
         change_in_original_vessel:
@@ -373,11 +497,115 @@ export async function action({ request, params }: ActionFunctionArgs) {
         line_booking_copy_file: await handleFileUpload(
           formData.get(`liner_booking_details[${detailIndex}][line_booking_copy_file]`),
         ),
-        equipment_type: (formData.get(`liner_booking_details[${detailIndex}][equipment_type]`) as string) || "",
+        equipment_type: (() => {
+          const equipmentType = (formData.get(`liner_booking_details[${detailIndex}][equipment_type]`) as string) || ""
+          const bookingFor = (formData.get(`liner_booking_details[${detailIndex}][booking_for]`) as string) || ""
+
+          // If equipment_type is empty but booking_for contains "type|trackingNumber", extract the type
+          if (!equipmentType && bookingFor && bookingFor.includes("|")) {
+            return bookingFor.split("|")[0].trim()
+          }
+
+          return equipmentType
+        })(),
         equipment_quantity: (formData.get(`liner_booking_details[${detailIndex}][equipment_quantity]`) as string) || "",
         booking_for: (formData.get(`liner_booking_details[${detailIndex}][booking_for]`) as string) || "",
+        loading_port: (formData.get(`liner_booking_details[${detailIndex}][loading_port]`) as string) || "",
+        destination_country: (formData.get(`liner_booking_details[${detailIndex}][destination_country]`) as string) || "",
+        port_of_discharge: (formData.get(`liner_booking_details[${detailIndex}][port_of_discharge]`) as string) || "",
       })
       detailIndex++
+    }
+
+    // Handle individual equipment unmapping request
+    if (specialAction === "request_individual_unmapping") {
+      const equipmentIndex = formData.get("equipmentIndex") as string
+      const equipmentType = formData.get("equipmentType") as string
+      const linerBookingNumber = formData.get("linerBookingNumber") as string
+      const unmappingReason = formData.get("unmappingReason") as string
+
+      console.log("[v0] request_individual_unmapping action started", {
+        equipmentIndex,
+        equipmentType,
+        linerBookingNumber,
+        unmappingReason,
+        assignmentId
+      })
+
+      if (!unmappingReason || unmappingReason.trim() === "") {
+        return Response.json({ error: "Unmapping reason is required" }, { status: 400 })
+      }
+
+      if (assignmentId) {
+        // Assignment mode: create individual unmapping request
+        const current = await prisma.shipmentAssignment.findUnique({
+          where: { id: assignmentId },
+          include: { shipmentPlan: true },
+        })
+        if (!current || !current.shipmentPlan) {
+          return Response.json({ error: "Shipment assignment or linked shipment plan not found" }, { status: 404 })
+        }
+
+        // Create individual equipment unmapping request
+        try {
+          const unmappingRequest = await prisma.individualEquipmentUnmappingRequest.create({
+            data: {
+              shipmentPlanId: current.shipmentPlan.id,
+              equipmentIndex: parseInt(equipmentIndex, 10),
+              equipmentType,
+              linerBookingNumber,
+              unmappingReason: unmappingReason.trim(),
+              requestedBy: user.id,
+              status: "PENDING",
+            }
+          })
+
+          console.log("[v0] Individual equipment unmapping request created", {
+            requestId: unmappingRequest.id,
+            shipmentPlanId: current.shipmentPlan.id
+          })
+        } catch (error) {
+          console.error("Error creating unmapping request:", error)
+          return Response.json({ error: "Failed to create unmapping request. The feature may not be fully available yet." }, { status: 500 })
+        }
+
+        return redirect(`/liner-bookings/${params.id}/edit?assignmentId=${assignmentId}`)
+      } else {
+        // Regular liner booking mode: create individual unmapping request
+        const linerBooking = await prisma.linerBooking.findUnique({
+          where: { id },
+          include: { shipmentPlan: true },
+        })
+
+        if (!linerBooking || !linerBooking.shipmentPlan) {
+          return Response.json({ error: "Liner booking or linked shipment plan not found" }, { status: 404 })
+        }
+
+        // Create individual equipment unmapping request
+        try {
+          const unmappingRequest = await prisma.individualEquipmentUnmappingRequest.create({
+            data: {
+              shipmentPlanId: linerBooking.shipmentPlan.id,
+              equipmentIndex: parseInt(equipmentIndex, 10),
+              equipmentType,
+              linerBookingNumber,
+              unmappingReason: unmappingReason.trim(),
+              requestedBy: user.id,
+              status: "PENDING",
+            }
+          })
+
+          console.log("[v0] Individual equipment unmapping request created", {
+            requestId: unmappingRequest.id,
+            shipmentPlanId: linerBooking.shipmentPlan.id
+          })
+        } catch (error) {
+          console.error("Error creating unmapping request:", error)
+          return Response.json({ error: "Failed to create unmapping request. The feature may not be fully available yet." }, { status: 500 })
+        }
+
+        return redirect(`/liner-bookings/${id}/edit`)
+      }
     }
 
     if (assignmentId && specialAction === "unlink_booking") {
@@ -464,15 +692,58 @@ export async function action({ request, params }: ActionFunctionArgs) {
       await prisma.$transaction(async (tx) => {
         // Unlink the booking and set status to make it available again
         const bookingData = (bookingToUnlink.data as any) || {}
-        await tx.linerBooking.update({
+
+        console.log("[DEBUG] unlink_booking - Original booking data before unlinking:", {
+          bookingId: bookingIdToUnlink,
+          fullBookingData: bookingData,
+          linerBookingDetails: bookingData.liner_booking_details,
+          detailsCount: Array.isArray(bookingData.liner_booking_details) ? bookingData.liner_booking_details.length : 0,
+          sampleDetail: Array.isArray(bookingData.liner_booking_details) && bookingData.liner_booking_details.length > 0
+            ? {
+                temporary_booking_number: bookingData.liner_booking_details[0]?.temporary_booking_number,
+                liner_booking_number: bookingData.liner_booking_details[0]?.liner_booking_number,
+                mbl_number: bookingData.liner_booking_details[0]?.mbl_number,
+                carrier: bookingData.liner_booking_details[0]?.carrier,
+                contract: bookingData.liner_booking_details[0]?.contract,
+                original_planned_vessel: bookingData.liner_booking_details[0]?.original_planned_vessel,
+                change_in_original_vessel: bookingData.liner_booking_details[0]?.change_in_original_vessel,
+                revised_vessel: bookingData.liner_booking_details[0]?.revised_vessel,
+                loading_port: bookingData.liner_booking_details[0]?.loading_port,
+                destination_country: bookingData.liner_booking_details[0]?.destination_country,
+                port_of_discharge: bookingData.liner_booking_details[0]?.port_of_discharge,
+                line_booking_copy: bookingData.liner_booking_details[0]?.line_booking_copy,
+                line_booking_copy_file: bookingData.liner_booking_details[0]?.line_booking_copy_file,
+                additional_remarks: bookingData.liner_booking_details[0]?.additional_remarks,
+                equipment_type: bookingData.liner_booking_details[0]?.equipment_type,
+                booking_for: bookingData.liner_booking_details[0]?.booking_for,
+              }
+            : null
+        })
+
+        const unlinkedBookingData = {
+          ...bookingData,
+          carrier_booking_status: "Ready for Re-linking",
+        }
+
+        console.log("[DEBUG] unlink_booking - Data being saved after unlinking:", {
+          unlinkedBookingData,
+          preservedDetailsCount: Array.isArray(unlinkedBookingData.liner_booking_details) ? unlinkedBookingData.liner_booking_details.length : 0
+        })
+
+        const updatedBooking = await tx.linerBooking.update({
           where: { id: bookingIdToUnlink },
           data: {
             shipmentPlanId: null,
-            data: {
-              ...bookingData,
-              carrier_booking_status: "Ready for Re-linking",
-            },
+            data: unlinkedBookingData,
           },
+        })
+
+        console.log("[DEBUG] unlink_booking - Booking after database update:", {
+          updatedBookingId: updatedBooking.id,
+          updatedBookingData: updatedBooking.data,
+          preservedDetailsInDb: Array.isArray((updatedBooking.data as any)?.liner_booking_details)
+            ? (updatedBooking.data as any).liner_booking_details.length
+            : 0
         })
 
         // Update assignment with filtered details
@@ -545,8 +816,8 @@ await prisma.$transaction(async (tx) => {
         data: {
           ...data,
           // Keep existing status unless it's "Ready for Re-linking"
-          carrier_booking_status: data.carrier_booking_status === "Ready for Re-linking" 
-            ? "Awaiting MD Approval" 
+          carrier_booking_status: data.carrier_booking_status === "Ready for Re-linking"
+            ? "Awaiting MD Approval"
             : (data.carrier_booking_status || "Awaiting MD Approval")
         },
       },
@@ -564,10 +835,146 @@ await prisma.$transaction(async (tx) => {
           },
         })
 
+        // Update equipment tracking numbers in linked shipment plan
+        console.log("[DEBUG] link_available - Starting equipment tracking update process")
+        console.log("[DEBUG] link_available - mergedDetails count:", mergedDetails.length)
+        console.log("[DEBUG] link_available - mergedDetails with booking numbers:", mergedDetails.filter(d => d.liner_booking_number).length)
+
+        // Initialize shipmentPlanData with current data
+        let shipmentPlanData = current.shipmentPlan?.data as any
+
+        if (current.shipmentPlan && mergedDetails.some(detail => detail.liner_booking_number)) {
+          console.log("[DEBUG] link_available - Conditions met, proceeding with update")
+
+          console.log("[DEBUG] link_available - Current shipment plan ID:", current.shipmentPlan.id)
+          console.log("[DEBUG] link_available - Equipment details count:", shipmentPlanData.equipment_details?.length || 0)
+
+          // Log current equipment details
+          if (shipmentPlanData.equipment_details) {
+            console.log("[DEBUG] link_available - Current equipment details:")
+            shipmentPlanData.equipment_details.forEach((eq: any, idx: number) => {
+              console.log(`[DEBUG]   Equipment ${idx}: ${eq.equipment_type} | ${eq.trackingNumber}`)
+            })
+          }
+
+          // Log liner booking details
+          console.log("[DEBUG] link_available - Merged liner booking details:")
+          mergedDetails.forEach((detail: any, idx: number) => {
+            console.log(`[DEBUG]   Detail ${idx}:`)
+            console.log(`[DEBUG]     - booking_for: "${detail.booking_for}"`)
+            console.log(`[DEBUG]     - equipment_type: "${detail.equipment_type}"`)
+            console.log(`[DEBUG]     - trackingNumber: "${detail.trackingNumber}"`)
+            console.log(`[DEBUG]     - liner_booking_number: "${detail.liner_booking_number}"`)
+          })
+
+          // Update equipment tracking numbers with liner booking numbers
+          if (shipmentPlanData.equipment_details && Array.isArray(shipmentPlanData.equipment_details)) {
+            // Create a map of equipmentType -> liner_booking_number
+            const equipmentTypeToBookingMap = new Map()
+
+            for (const detail of mergedDetails) {
+              if (detail.liner_booking_number && detail.liner_booking_number.trim()) {
+                // Get equipment type from the detail
+                let equipmentType = null
+
+                console.log(`[DEBUG] link_available - Processing detail:`)
+                console.log(`[DEBUG] link_available - equipment_type: "${detail.equipment_type}"`)
+                console.log(`[DEBUG] link_available - booking_for: "${detail.booking_for}"`)
+                console.log(`[DEBUG] link_available - liner_booking_number: "${detail.liner_booking_number}"`)
+
+                // Try to extract equipment type from various fields
+                if (detail.equipment_type && detail.equipment_type.includes("|")) {
+                  equipmentType = detail.equipment_type.split("|")[0].trim()
+                  console.log(`[DEBUG] link_available - Extracted from equipment_type: "${equipmentType}"`)
+                } else if (detail.equipment_type && !detail.equipment_type.includes("|")) {
+                  equipmentType = detail.equipment_type.trim()
+                  console.log(`[DEBUG] link_available - Using equipment_type directly: "${equipmentType}"`)
+                } else if (detail.booking_for && detail.booking_for.includes("|")) {
+                  equipmentType = detail.booking_for.split("|")[0].trim()
+                  console.log(`[DEBUG] link_available - Extracted from booking_for: "${equipmentType}"`)
+                }
+
+                if (equipmentType) {
+                  // If we don't have a booking number for this equipment type yet, or if we have multiple bookings for same type,
+                  // collect all booking numbers for this equipment type
+                  if (!equipmentTypeToBookingMap.has(equipmentType)) {
+                    equipmentTypeToBookingMap.set(equipmentType, [])
+                  }
+                  equipmentTypeToBookingMap.get(equipmentType).push(detail.liner_booking_number)
+                  console.log(`[DEBUG] link_available - MAPPED equipment type: ${equipmentType} -> ${detail.liner_booking_number}`)
+                } else {
+                  console.log(`[DEBUG] link_available - WARNING: Could not extract equipment type from detail`)
+                }
+              } else {
+                console.log(`[DEBUG] link_available - Skipping detail without liner_booking_number`)
+              }
+            }
+
+            console.log(`[DEBUG] link_available - Final mapping has ${equipmentTypeToBookingMap.size} equipment types`)
+            for (const [type, bookings] of equipmentTypeToBookingMap.entries()) {
+              console.log(`[DEBUG] link_available - Equipment type "${type}" has booking numbers:`, bookings)
+            }
+
+            // Update equipment details with liner booking numbers
+            let hasUpdates = false
+            let bookingNumberIndex = new Map() // Track which booking number to use for each equipment type
+
+            shipmentPlanData.equipment_details = shipmentPlanData.equipment_details.map((equipment: any, idx: number) => {
+              const originalTracking = equipment.trackingNumber
+              const equipmentType = equipment.equipment_type
+
+              console.log(`[DEBUG] link_available - Equipment ${idx}: type="${equipmentType}", tracking="${originalTracking}"`)
+
+              // Check if we have booking numbers for this equipment type
+              const bookingNumbers = equipmentTypeToBookingMap.get(equipmentType)
+              if (bookingNumbers && bookingNumbers.length > 0) {
+                // Get the next booking number for this equipment type
+                if (!bookingNumberIndex.has(equipmentType)) {
+                  bookingNumberIndex.set(equipmentType, 0)
+                }
+                const currentIndex = bookingNumberIndex.get(equipmentType)
+                const newBookingNumber = bookingNumbers[currentIndex % bookingNumbers.length]
+
+                // Move to next booking number for this equipment type
+                bookingNumberIndex.set(equipmentType, currentIndex + 1)
+
+                if (originalTracking !== newBookingNumber) {
+                  hasUpdates = true
+                  console.log(`[DEBUG] link_available - UPDATING equipment ${idx}: ${originalTracking} -> ${newBookingNumber}`)
+                  return {
+                    ...equipment,
+                    trackingNumber: newBookingNumber,
+                    originalTrackingNumber: originalTracking // Keep reference to original
+                  }
+                }
+              } else {
+                console.log(`[DEBUG] link_available - No booking numbers found for equipment type "${equipmentType}"`)
+              }
+
+              return equipment
+            })
+
+            console.log(`[DEBUG] link_available - hasUpdates: ${hasUpdates}`)
+
+            // Update the shipment plan data if there were changes
+            if (hasUpdates) {
+              console.log("[DEBUG] link_available - ✅ Equipment tracking numbers updated in shipment plan data")
+            } else {
+              console.log("[DEBUG] link_available - ❌ No equipment tracking number updates made")
+            }
+          } else {
+            console.log("[DEBUG] link_available - ❌ No equipment_details array found in shipment plan")
+          }
+        } else {
+          console.log("[DEBUG] link_available - ❌ Conditions not met for equipment update")
+          console.log("[DEBUG] link_available - Missing shipmentPlan or no booking numbers found")
+        }
+
         // Ensure plan is marked as linked so loader doesn't clear details
         await tx.shipmentPlan.update({
           where: { id: current.shipmentPlan!.id },
           data: {
+            data: shipmentPlanData,
             linkedStatus: 1,
           },
         })
@@ -608,9 +1015,17 @@ await prisma.$transaction(async (tx) => {
           ? assignmentData.liner_booking_details
           : []
 
-        // Add the allocated detail (mark it as allocated somehow)
+        // Add the allocated detail (mark it as allocated and update tracking number if liner booking number exists)
         const updatedDetails = [...existingDetails]
-        updatedDetails[detailIndexNum] = { ...detailToAllocate, allocated: true }
+        const updatedDetail = { ...detailToAllocate, allocated: true }
+
+        // If this detail has a liner booking number, use it as the tracking number for matching
+        if (detailToAllocate.liner_booking_number) {
+          updatedDetail.trackingNumber = detailToAllocate.liner_booking_number
+          console.log(`[v0] allocate_individual - Updated detail trackingNumber to liner booking number: ${detailToAllocate.liner_booking_number}`)
+        }
+
+        updatedDetails[detailIndexNum] = updatedDetail
 
         const updatedData = {
           ...assignmentData,
@@ -1448,7 +1863,7 @@ await prisma.$transaction(async (tx) => {
 }
 
 export default function EditLinerBookingPage() {
-  const { user, linerBooking, availableShipmentPlans, dataPoints, availableLinerBookings, isAssignment, availableEquipment } =
+  const { user, linerBooking, availableShipmentPlans, dataPoints, availableLinerBookings, isAssignment, availableEquipment, pendingUnmappingRequests } =
     useLoaderData<typeof loader>()
   const actionData = useActionData<typeof action>()
 
@@ -1464,6 +1879,7 @@ export default function EditLinerBookingPage() {
         availableLinerBookings={availableLinerBookings}
         isAssignment={isAssignment}
         availableEquipment={availableEquipment}
+        pendingUnmappingRequests={pendingUnmappingRequests}
       />
     </AdminLayout>
   )

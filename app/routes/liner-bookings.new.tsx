@@ -21,7 +21,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     }
 
     // Fetch data points for dropdowns and available shipment plans
-    const [availableShipmentPlans, carriers, vessels, organizations, equipment] = await Promise.all([
+    const [availableShipmentPlans, carriers, vessels, organizations, equipment, loadingPorts, portsOfDischarge, destinationCountries] = await Promise.all([
       prisma.shipmentPlan.findMany({
         where: {
           linerBookingId: null, // Only unlinked plans
@@ -36,7 +36,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
       prisma.carrier.findMany({ orderBy: { name: "asc" } }),
       prisma.vessel.findMany({ orderBy: { name: "asc" } }),
       prisma.organization.findMany({ orderBy: { name: "asc" } }),
-      prisma.equipment.findMany({ orderBy: { name: "asc" } }), // <— new
+      prisma.equipment.findMany({ orderBy: { name: "asc" } }),
+      prisma.loadingPort.findMany({ orderBy: { name: "asc" } }),
+      prisma.portOfDischarge.findMany({ orderBy: { name: "asc" } }),
+      prisma.destinationCountry.findMany({ orderBy: { name: "asc" } }),
     ])
 
     return {
@@ -46,7 +49,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
         carriers,
         vessels,
         organizations,
-        equipment, // pass equipment to form
+        equipment,
+        loadingPorts,
+        portsOfDischarge,
+        destinationCountries,
       },
     }
   } catch (error) {
@@ -173,7 +179,10 @@ export async function action({ request }: ActionFunctionArgs) {
         ),
         equipment_type: formData.get(`liner_booking_details[${detailIndex}][equipment_type]`) as string,
         equipment_quantity: formData.get(`liner_booking_details[${detailIndex}][equipment_quantity]`) as string,
-        booking_for: formData.get(`liner_booking_details[${detailIndex}][booking_for]`) as string, // new per-detail field: booking_for
+        booking_for: formData.get(`liner_booking_details[${detailIndex}][booking_for]`) as string,
+        loading_port: formData.get(`liner_booking_details[${detailIndex}][loading_port]`) as string,
+        destination_country: formData.get(`liner_booking_details[${detailIndex}][destination_country]`) as string,
+        port_of_discharge: formData.get(`liner_booking_details[${detailIndex}][port_of_discharge]`) as string,
       })
       detailIndex++
     }
