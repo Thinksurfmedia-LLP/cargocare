@@ -916,7 +916,8 @@ export default function ShipmentPlans() {
   };
 
   // Column definitions for the table
-  const availableColumns = [
+  // Define base columns available to all users
+  const baseColumns = [
     { id: "checkbox", label: "Select", defaultVisible: true, locked: true },
     { id: "reference_number", label: "Reference No.", defaultVisible: true },
     { id: "business_branch", label: "Business Branch", defaultVisible: true },
@@ -924,15 +925,27 @@ export default function ShipmentPlans() {
     { id: "customer", label: "Customer", defaultVisible: true },
     { id: "loading_port", label: "Loading Port", defaultVisible: true },
     { id: "destination_country", label: "Destination", defaultVisible: true },
-    { id: "booking_status", label: "Status", defaultVisible: true },
+    { id: "booking_status", label: "Booking Status", defaultVisible: true },
+    { id: "milestone_status", label: "Container Status", defaultVisible: true },
     {
       id: "port_of_discharge",
       label: "Port of Discharge",
       defaultVisible: true,
     },
     { id: "consignee", label: "Consignee", defaultVisible: true },
+  ];
+
+  // Define price columns (only for ADMIN and MD)
+  const priceColumns = [
     { id: "selling_price", label: "Selling Price", defaultVisible: true },
     { id: "buying_price", label: "Buying Price", defaultVisible: true },
+  ];
+
+  // Build available columns based on user role
+  const availableColumns = [
+    ...baseColumns,
+    // Only show price columns to ADMIN and MD
+    ...(user.role.name === "ADMIN" || user.role.name === "MD" ? priceColumns : []),
     { id: "carrier", label: "Carrier", defaultVisible: true },
     { id: "vessel", label: "Vessel", defaultVisible: true },
     { id: "container_status", label: "Container Status", defaultVisible: true },
@@ -982,6 +995,136 @@ export default function ShipmentPlans() {
       setSelectedIds(selectedIds.filter((id) => id !== planId));
     }
   };
+
+  // Function to determine milestone status based on equipment details
+  const getMilestoneStatus = (plan: any) => {
+    const equipmentDetails = plan.data?.equipment_details || [];
+    if (equipmentDetails.length === 0) return "No Equipment";
+
+    // Count equipments with each milestone completed
+    let emptyPickupCompleted = 0;
+    let stuffingCompleted = 0;
+    let gateInCompleted = 0;
+    let loadedCompleted = 0;
+    const totalEquipments = equipmentDetails.length;
+
+    equipmentDetails.forEach((equipment: any) => {
+      if (equipment.emptyPickupStatus && equipment.emptyPickupDate) emptyPickupCompleted++;
+      if (equipment.stuffingStatus && equipment.stuffingDate) stuffingCompleted++;
+      if (equipment.gateInStatus && equipment.gateInDate) gateInCompleted++;
+      if (equipment.loadedStatus && equipment.loadedDate) loadedCompleted++;
+    });
+
+    // Determine current milestone status
+    if (loadedCompleted === totalEquipments) {
+      return "Loaded on Vessel";
+    } else if (gateInCompleted === totalEquipments) {
+      return "Gate In Completed";
+    } else if (stuffingCompleted === totalEquipments) {
+      return "Container Stuffing Completed";
+    } else if (emptyPickupCompleted === totalEquipments) {
+      return "Empty Container Picked Up";
+    } else if (emptyPickupCompleted > 0) {
+      return `Empty Pickup: ${emptyPickupCompleted}/${totalEquipments}`;
+    } else if (stuffingCompleted > 0) {
+      return `Stuffing: ${stuffingCompleted}/${totalEquipments}`;
+    } else if (gateInCompleted > 0) {
+      return `Gate In: ${gateInCompleted}/${totalEquipments}`;
+    } else if (loadedCompleted > 0) {
+      return `Loaded: ${loadedCompleted}/${totalEquipments}`;
+    } else {
+      return "Pending";
+    }
+  };
+
+  const getMilestoneStatusBadge = (status: string) => {
+    const statusConfig: Record<string, { color: string; bg: string; border: string; icon: string }> = {
+      "Loaded on Vessel": {
+        color: "text-green-800",
+        bg: "bg-green-100",
+        border: "border-green-300",
+        icon: "🚢"
+      },
+      "Gate In Completed": {
+        color: "text-blue-800",
+        bg: "bg-blue-100",
+        border: "border-blue-300",
+        icon: "🚪"
+      },
+      "Container Stuffing Completed": {
+        color: "text-purple-800",
+        bg: "bg-purple-100",
+        border: "border-purple-300",
+        icon: "📦"
+      },
+      "Empty Container Picked Up": {
+        color: "text-yellow-800",
+        bg: "bg-yellow-100",
+        border: "border-yellow-300",
+        icon: "🚛"
+      },
+      "Pending": {
+        color: "text-gray-600",
+        bg: "bg-gray-100",
+        border: "border-gray-300",
+        icon: "⏳"
+      },
+      "No Equipment": {
+        color: "text-gray-500",
+        bg: "bg-gray-50",
+        border: "border-gray-200",
+        icon: "❌"
+      }
+    };
+
+    // Handle partial statuses (e.g., "Empty Pickup: 2/3")
+    let config = statusConfig[status];
+    if (!config) {
+      if (status.includes("Empty Pickup:")) {
+        config = {
+          color: "text-orange-800",
+          bg: "bg-orange-100",
+          border: "border-orange-300",
+          icon: "🚛"
+        };
+      } else if (status.includes("Stuffing:")) {
+        config = {
+          color: "text-purple-800",
+          bg: "bg-purple-100",
+          border: "border-purple-300",
+          icon: "📦"
+        };
+      } else if (status.includes("Gate In:")) {
+        config = {
+          color: "text-blue-800",
+          bg: "bg-blue-100",
+          border: "border-blue-300",
+          icon: "🚪"
+        };
+      } else if (status.includes("Loaded:")) {
+        config = {
+          color: "text-green-800",
+          bg: "bg-green-100",
+          border: "border-green-300",
+          icon: "🚢"
+        };
+      } else {
+        config = statusConfig["Pending"];
+      }
+    }
+
+    return (
+      <span
+        className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
+          config.bg
+        } ${config.color} border ${config.border}`}
+      >
+        <span className="mr-1">{config.icon}</span>
+        {status}
+      </span>
+    );
+  };
+
   const getStatusBadge = (status: string) => {
     const statusConfig: Record<
       string,
@@ -1140,6 +1283,10 @@ export default function ShipmentPlans() {
           </TableCell>
         );
       case "selling_price":
+        // Only show selling price to ADMIN and MD
+        if (user.role.name !== "ADMIN" && user.role.name !== "MD") {
+          return <TableCell key={columnId}>-</TableCell>;
+        }
         return (
           <TableCell key={columnId} className="text-gray-700">
             <div className="flex items-center space-x-2">
@@ -1151,6 +1298,10 @@ export default function ShipmentPlans() {
           </TableCell>
         );
       case "buying_price":
+        // Only show buying price to ADMIN and MD
+        if (user.role.name !== "ADMIN" && user.role.name !== "MD") {
+          return <TableCell key={columnId}>-</TableCell>;
+        }
         return (
           <TableCell key={columnId} className="text-gray-700">
             <div className="flex items-center space-x-2">
@@ -1204,6 +1355,12 @@ export default function ShipmentPlans() {
               <span className="text-gray-400">📅</span>
               <span>{formatDate(plan.createdAt)}</span>
             </div>
+          </TableCell>
+        );
+      case "milestone_status":
+        return (
+          <TableCell key={columnId}>
+            {getMilestoneStatusBadge(getMilestoneStatus(plan))}
           </TableCell>
         );
       case "created_by":

@@ -420,6 +420,7 @@ export default function PendingApprovals() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-44">Customer</TableHead>
+                    <TableHead className="w-36">Business Branch</TableHead>
                     <TableHead className="w-52">Equipment Details</TableHead>
                     <TableHead className="w-32">Selling Price</TableHead>
                     <TableHead className="w-44">Shipper</TableHead>
@@ -440,6 +441,14 @@ export default function PendingApprovals() {
                       >
                         <TableCell>
                           {planData.container_movement?.customer || "N/A"}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center space-x-2">
+                            <span className="text-gray-400">🏢</span>
+                            <span className="font-medium text-gray-700">
+                              {planData.bussiness_branch || "N/A"}
+                            </span>
+                          </div>
                         </TableCell>
                         <TableCell>
                           {planData.equipment_details && planData.equipment_details.length > 0 ? (

@@ -58,16 +58,13 @@ export function LinerBookingForm({
   // Extract data from the JSON field for edit mode
   const data = mode === "edit" ? (linerBooking?.data as any) : null;
 
-  // Initialize state for liner booking details - only show manually requested ones in Request Booking tab
+  // Initialize state for liner booking details - show all existing details including those that remain after individual unmapping
   const [linerBookingDetails, setLinerBookingDetails] = useState(() => {
     if (mode === "edit" && data?.liner_booking_details && isAssignment) {
-      // In assignment mode, filter out details that came from linked bookings
-      // We'll identify linked details by checking if they match any available liner booking details
-      const allDetails = data.liner_booking_details || [];
-
-      // For now, start with empty array for Request Booking tab in assignment mode
-      // Linked booking details will be shown separately in the Link Available tab
-      return [];
+      // In assignment mode, show all existing liner booking details
+      // This includes details that remain after individual unmapping
+      console.log("[DEBUG] LinerBookingForm init - Assignment mode with existing details:", data.liner_booking_details);
+      return data.liner_booking_details || [];
     } else if (mode === "edit" && data?.liner_booking_details) {
       return data.liner_booking_details;
     } else if (mode === "new") {
@@ -134,6 +131,7 @@ export function LinerBookingForm({
   const [bulkContract, setBulkContract] = useState<string>("");
   const [bulkOriginalPlannedVessel, setBulkOriginalPlannedVessel] = useState<string>("");
   const [bulkEtdOfOriginalPlannedVessel, setBulkEtdOfOriginalPlannedVessel] = useState<string>("");
+  const [bulkEmptyPickupValidityFrom, setBulkEmptyPickupValidityFrom] = useState<string>("");
   const [bulkLoadingPort, setBulkLoadingPort] = useState<string>("");
   const [bulkDestinationCountry, setBulkDestinationCountry] = useState<string>("");
   const [bulkPortOfDischarge, setBulkPortOfDischarge] = useState<string>("");
@@ -998,10 +996,10 @@ export function LinerBookingForm({
             change_in_original_vessel: false,
             revised_vessel: "",
             etd_of_revised_vessel: "",
-            empty_pickup_validity_from: "",
-            empty_pickup_validity_till: "",
-            estimate_gate_opening_date: "",
-            estimated_gate_cutoff_date: "",
+            empty_pickup_validity_from: bulkEmptyPickupValidityFrom || "",
+            empty_pickup_validity_till: bulkEmptyPickupValidityFrom ? addDays(bulkEmptyPickupValidityFrom, 3) : "",
+            estimate_gate_opening_date: bulkEtdOfOriginalPlannedVessel ? addDays(bulkEtdOfOriginalPlannedVessel, -3) : "",
+            estimated_gate_cutoff_date: bulkEtdOfOriginalPlannedVessel ? addDays(bulkEtdOfOriginalPlannedVessel, -2) : "",
             s_i_cut_off_date: "",
             booking_received_from_carrier_on: "",
             additional_remarks: "",
@@ -1087,6 +1085,33 @@ export function LinerBookingForm({
     }
   };
 
+  // Helper function to add/subtract days from a date
+  const addDays = (dateString: string, days: number): string => {
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    date.setDate(date.getDate() + days);
+    return date.toISOString().split('T')[0]; // Return YYYY-MM-DD format
+  };
+
+  // Helper function to auto-calculate related dates
+  const calculateRelatedDates = (field: string, value: string, currentDetail: any) => {
+    const updates: any = {};
+
+    if (field === "e_t_d_of_original_planned_vessel" && value) {
+      // Auto-calculate Gate Opening Date (ETD - 3 days)
+      updates.estimate_gate_opening_date = addDays(value, -3);
+      // Auto-calculate Gate Cutoff Date (ETD - 2 days)
+      updates.estimated_gate_cutoff_date = addDays(value, -2);
+    }
+
+    if (field === "empty_pickup_validity_from" && value) {
+      // Auto-calculate Empty Pickup Validity Till (From + 3 days)
+      updates.empty_pickup_validity_till = addDays(value, 3);
+    }
+
+    return updates;
+  };
+
   const updateLinerBookingDetail = (
     index: number,
     field: string,
@@ -1130,7 +1155,13 @@ export function LinerBookingForm({
         });
       }
 
+      // Apply the main field update
       updated[index] = { ...updated[index], [field]: value };
+
+      // Auto-calculate related dates
+      const relatedUpdates = calculateRelatedDates(field, value, updated[index]);
+      updated[index] = { ...updated[index], ...relatedUpdates };
+
       // Mirror behavior: in assignment mode keep booking_for in sync with selected equipment
       if (field === "equipment_type") {
         updated[index].booking_for = value || "";
@@ -1175,7 +1206,13 @@ export function LinerBookingForm({
         });
       }
 
+      // Apply the main field update
       updated[index] = { ...updated[index], [field]: value };
+
+      // Auto-calculate related dates
+      const relatedUpdates = calculateRelatedDates(field, value, updated[index]);
+      updated[index] = { ...updated[index], ...relatedUpdates };
+
       // Mirror behavior: in "new" mode keep booking_for in sync with selected equipment
       if (mode === "new" && field === "equipment_type") {
         updated[index].booking_for = value || "";
@@ -1503,6 +1540,48 @@ export function LinerBookingForm({
                                 )}
                               </div>
                             </div>
+
+                            {/* Buying Price Field - Required if missing from shipment plan */}
+                            {(() => {
+                              const currentBuyingPrice = (linerBooking.shipmentPlan?.data as any)?.container_movement?.buying_price;
+
+                              if (!currentBuyingPrice) {
+                                // Show editable field if buying price is missing
+                                return (
+                                  <div className="space-y-2">
+                                    <Label className="text-sm font-semibold text-gray-700">
+                                      Buying Price <span className="text-red-500">*</span>
+                                      <span className="text-xs text-gray-500 block mt-1">
+                                        (Required - not provided by planner)
+                                      </span>
+                                    </Label>
+                                    <Input
+                                      name="buying_price"
+                                      type="number"
+                                      step="0.01"
+                                      placeholder="Enter buying price"
+                                      className="text-sm"
+                                      required
+                                    />
+                                  </div>
+                                );
+                              } else {
+                                // Show read-only field if buying price exists
+                                return (
+                                  <div className="space-y-2">
+                                    <Label className="text-sm font-semibold text-gray-700">
+                                      Buying Price
+                                      <span className="text-xs text-green-600 block mt-1">
+                                        (Provided by planner)
+                                      </span>
+                                    </Label>
+                                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-gray-700">
+                                      ${currentBuyingPrice}
+                                    </div>
+                                  </div>
+                                );
+                              }
+                            })()}
 
                             <div className="space-y-2">
                               <Label className="text-sm font-semibold text-gray-700">
@@ -2850,7 +2929,7 @@ export function LinerBookingForm({
                                   {/* Liner Booking Number */}
                                   <div className="space-y-2">
                                     <Label className="text-xs font-medium text-gray-600">
-                                      Liner Booking Number
+                                      Liner Booking Number <span className="text-red-500">*</span>
                                     </Label>
                                     <input
                                       type="text"
@@ -2860,6 +2939,7 @@ export function LinerBookingForm({
                                       }
                                       className="w-full border border-gray-300 rounded px-2 py-2 text-sm"
                                       placeholder="Enter liner booking number"
+                                      required
                                     />
                                   </div>
 
@@ -2882,7 +2962,7 @@ export function LinerBookingForm({
                                   {/* Carrier */}
                                   <div className="space-y-2">
                                     <Label className="text-xs font-medium text-gray-600">
-                                      Carrier
+                                      Carrier <span className="text-red-500">*</span>
                                     </Label>
                                     <SearchableSelect
                                       value={bulkCarrier}
@@ -2940,7 +3020,7 @@ export function LinerBookingForm({
                                   {/* ETD of Original Planned Vessel */}
                                   <div className="space-y-2">
                                     <Label className="text-xs font-medium text-gray-600">
-                                      ETD of Original Planned Vessel
+                                      ETD of Original Planned Vessel <span className="text-red-500">*</span>
                                     </Label>
                                     <input
                                       type="date"
@@ -2949,6 +3029,23 @@ export function LinerBookingForm({
                                         setBulkEtdOfOriginalPlannedVessel(e.target.value)
                                       }
                                       className="w-full border border-gray-300 rounded px-2 py-2 text-sm"
+                                      required
+                                    />
+                                  </div>
+
+                                  {/* Empty Pickup Validity From */}
+                                  <div className="space-y-2">
+                                    <Label className="text-xs font-medium text-gray-600">
+                                      Empty Pickup Validity From <span className="text-red-500">*</span>
+                                    </Label>
+                                    <input
+                                      type="date"
+                                      value={bulkEmptyPickupValidityFrom}
+                                      onChange={(e) =>
+                                        setBulkEmptyPickupValidityFrom(e.target.value)
+                                      }
+                                      className="w-full border border-gray-300 rounded px-2 py-2 text-sm"
+                                      required
                                     />
                                   </div>
 
@@ -3684,7 +3781,7 @@ export function LinerBookingForm({
 
                                     <div className="space-y-2">
                                       <Label className="text-xs font-medium text-gray-600">
-                                        Liner Booking Number
+                                        Liner Booking Number <span className="text-red-500">*</span>
                                       </Label>
                                       <Input
                                         name={`liner_booking_details[${index}][liner_booking_number]`}
@@ -3698,6 +3795,7 @@ export function LinerBookingForm({
                                         }
                                         placeholder="Enter liner booking number"
                                         className="text-sm"
+                                        required
                                       />
                                     </div>
 
@@ -3722,7 +3820,7 @@ export function LinerBookingForm({
 
                                     <div className="space-y-2">
                                       <Label className="text-xs font-medium text-gray-600">
-                                        Carrier
+                                        Carrier <span className="text-red-500">*</span>
                                       </Label>
                                       <SearchableSelect
                                         name={`liner_booking_details[${index}][carrier]`}
@@ -3863,7 +3961,7 @@ export function LinerBookingForm({
                                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
                                     <div className="space-y-2">
                                       <Label className="text-xs font-medium text-gray-600">
-                                        ETD of Original Planned Vessel
+                                        ETD of Original Planned Vessel <span className="text-red-500">*</span>
                                       </Label>
                                       <Input
                                         type="date"
@@ -3879,12 +3977,13 @@ export function LinerBookingForm({
                                           )
                                         }
                                         className="text-sm"
+                                        required
                                       />
                                     </div>
 
                                     <div className="space-y-2">
                                       <Label className="text-xs font-medium text-gray-600">
-                                        Empty Pickup Validity From
+                                        Empty Pickup Validity From <span className="text-red-500">*</span>
                                       </Label>
                                       <Input
                                         type="date"
@@ -3900,12 +3999,14 @@ export function LinerBookingForm({
                                           )
                                         }
                                         className="text-sm"
+                                        required
                                       />
                                     </div>
 
                                     <div className="space-y-2">
                                       <Label className="text-xs font-medium text-gray-600">
                                         Empty Pickup Validity Till
+                                        <span className="text-xs text-blue-600 block">(Auto: From + 3 days)</span>
                                       </Label>
                                       <Input
                                         type="date"
@@ -3927,6 +4028,7 @@ export function LinerBookingForm({
                                     <div className="space-y-2">
                                       <Label className="text-xs font-medium text-gray-600">
                                         Gate Opening Date
+                                        <span className="text-xs text-blue-600 block">(Auto: ETD - 3 days)</span>
                                       </Label>
                                       <Input
                                         type="date"
@@ -3948,6 +4050,7 @@ export function LinerBookingForm({
                                     <div className="space-y-2">
                                       <Label className="text-xs font-medium text-gray-600">
                                         Gate Cutoff Date
+                                        <span className="text-xs text-blue-600 block">(Auto: ETD - 2 days)</span>
                                       </Label>
                                       <Input
                                         type="date"
