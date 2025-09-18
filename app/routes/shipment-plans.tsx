@@ -64,9 +64,31 @@ export async function loader({ request }: LoaderFunctionArgs) {
     let whereCondition: any = {};
 
     // Role-based access control
-    console.log("User data:", user.id, "Role:", user.role.name);
+    console.log("User data:", user.id, "Role:", user.role.name, "Branch:", user.businessBranch?.name);
     if (user?.role.name !== "ADMIN" && user?.role.name !== "MD") {
-      whereCondition.userId = user.id;
+      // For SHIPMENT_PLAN_TEAM, filter by both userId and business branch
+      if (user.role.name === "SHIPMENT_PLAN_TEAM") {
+        const conditions: any[] = [
+          { userId: user.id } // User can see their own shipment plans
+        ];
+
+        // If user has a business branch, also filter by business branch
+        if (user.businessBranch?.name) {
+          conditions.push({
+            data: {
+              path: ["bussiness_branch"],
+              equals: user.businessBranch.name,
+            },
+          });
+        }
+
+        // User can see shipment plans they created OR shipment plans from their business branch
+        whereCondition.OR = conditions;
+        console.log("SHIPMENT_PLAN_TEAM branch filtering applied:", JSON.stringify(whereCondition, null, 2));
+      } else {
+        // For other roles, use the existing logic
+        whereCondition.userId = user.id;
+      }
     }
 
     // Search functionality
@@ -282,7 +304,19 @@ export async function loader({ request }: LoaderFunctionArgs) {
         console.error("Error in raw SQL search:", error);
       }
 
-      whereCondition.OR = searchConditions;
+      // Combine branch filtering with search conditions
+      if (whereCondition.OR && searchConditions.length > 0) {
+        // If we already have branch filtering (OR conditions), we need to apply search to each branch condition
+        const existingConditions = whereCondition.OR;
+        whereCondition.AND = [
+          { OR: existingConditions }, // Branch filtering
+          { OR: searchConditions }    // Search filtering
+        ];
+        delete whereCondition.OR;
+      } else {
+        // If no branch filtering, just apply search conditions
+        whereCondition.OR = searchConditions;
+      }
     }
 
     const [

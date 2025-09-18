@@ -13,6 +13,11 @@ export type AuthUser = {
     id: string;
     name: string;
   };
+  businessBranch?: {
+    id: string;
+    name: string;
+    code: string;
+  } | null;
 };
 
 export const authenticator = new Authenticator<AuthUser>(sessionStorage);
@@ -28,7 +33,10 @@ authenticator.use(
 
     const user = await prisma.user.findUnique({
       where: { email },
-      include: { role: true },
+      include: {
+        role: true,
+        businessBranch: true
+      },
     });
 
     if (!user) {
@@ -58,6 +66,11 @@ authenticator.use(
         id: user.role.id,
         name: user.role.name,
       },
+      businessBranch: user.businessBranch ? {
+        id: user.businessBranch.id,
+        name: user.businessBranch.name,
+        code: user.businessBranch.code,
+      } : null,
     };
   }),
   "form"

@@ -92,10 +92,13 @@ export async function loader({ request }: LoaderFunctionArgs) {
     }
 
     // Role-based access control
-    console.log("User data:", user.id)
-    if (user.role.name !== "ADMIN" && user.role.name !== "MD" && user.role.name !== "LINER_BOOKING_TEAM") {
+    console.log("User data:", user.id, "Role:", user.role.name)
+    if (user.role.name === "LINER_BOOKING_TEAM") {
+      // LINER_BOOKING_TEAM members can only see bookings/assignments assigned to them
       whereCondition.assignBookingId = user.id
-    } // Search functionality
+      console.log("LINER_BOOKING_TEAM access control applied: assignBookingId =", user.id)
+    }
+    // ADMIN and MD can see all bookings/assignments (no filter applied) // Search functionality
     if (search) {
       const searchConditions = []
 
@@ -267,7 +270,39 @@ export async function loader({ request }: LoaderFunctionArgs) {
         console.error("Error in raw SQL search:", error)
       }
 
-      whereCondition.OR = searchConditions
+      // Combine tab filtering, access control filtering, and search conditions
+      const existingOrConditions = whereCondition.OR || [];
+      const accessControlCondition = whereCondition.assignBookingId ? { assignBookingId: whereCondition.assignBookingId } : null;
+
+      // Build final query conditions
+      const andConditions = [];
+
+      // Add tab filtering if exists
+      if (existingOrConditions.length > 0) {
+        andConditions.push({ OR: existingOrConditions });
+      }
+
+      // Add access control if exists
+      if (accessControlCondition) {
+        andConditions.push(accessControlCondition);
+        delete whereCondition.assignBookingId;
+      }
+
+      // Add search filtering if exists
+      if (searchConditions.length > 0) {
+        andConditions.push({ OR: searchConditions });
+      }
+
+      // Apply combined conditions
+      if (andConditions.length > 1) {
+        whereCondition.AND = andConditions;
+        delete whereCondition.OR;
+        console.log("Combined tab, access control, and search filtering applied");
+      } else if (searchConditions.length > 0 && !accessControlCondition) {
+        whereCondition.OR = searchConditions;
+      }
+
+      console.log("Final whereCondition:", JSON.stringify(whereCondition, null, 2));
     }
 
     // Assignments branch: query prisma.shipmentAssignment and return same payload shape
