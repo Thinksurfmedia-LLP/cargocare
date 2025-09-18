@@ -20,7 +20,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
     // Fetch data points for dropdowns
     const [
-      businessBranches,
+      allBusinessBranches,
       commodities,
       equipment,
       loadingPorts,
@@ -40,6 +40,14 @@ export async function loader({ request }: LoaderFunctionArgs) {
       prisma.carrier.findMany({ orderBy: { name: "asc" } }),
       prisma.organization.findMany({ orderBy: { name: "asc" } }),
     ])
+
+    // Filter business branches based on user's role and assigned branch
+    let businessBranches = allBusinessBranches;
+    if (user.role.name === "SHIPMENT_PLAN_TEAM" && user.businessBranch) {
+      // SHIPMENT_PLAN_TEAM users can only create shipment plans for their assigned business branch
+      businessBranches = allBusinessBranches.filter(branch => branch.id === user.businessBranch?.id);
+    }
+    // ADMIN users can create shipment plans for any business branch
 
     return {
       user,

@@ -61,14 +61,30 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
     if (!shipmentPlan) {
       return redirect("/shipment-plans")
-    } // Check permissions
-    if (user.role.name !== "ADMIN" && user.role.name !== "MD" && shipmentPlan.userId !== user.id) {
-      return redirect("/shipment-plans")
+    }
+
+    // Check permissions
+    if (user.role.name !== "ADMIN" && user.role.name !== "MD") {
+      // For SHIPMENT_PLAN_TEAM, check if user created the plan OR if it belongs to their business branch
+      if (user.role.name === "SHIPMENT_PLAN_TEAM") {
+        const isOwner = shipmentPlan.userId === user.id;
+        const isSameBranch = user.businessBranch?.name &&
+          (shipmentPlan.data as any)?.bussiness_branch === user.businessBranch.name;
+
+        if (!isOwner && !isSameBranch) {
+          return redirect("/shipment-plans");
+        }
+      } else {
+        // For other roles, use the existing logic
+        if (shipmentPlan.userId !== user.id) {
+          return redirect("/shipment-plans");
+        }
+      }
     }
 
     // Fetch data points for dropdowns
     const [
-      businessBranches,
+      allBusinessBranches,
       commodities,
       equipment,
       loadingPorts,
@@ -123,6 +139,14 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         requestedAt: "desc",
       },
     })
+
+    // Filter business branches based on user's role and assigned branch
+    let businessBranches = allBusinessBranches;
+    if (user.role.name === "SHIPMENT_PLAN_TEAM" && user.businessBranch) {
+      // SHIPMENT_PLAN_TEAM users can only edit shipment plans for their assigned business branch
+      businessBranches = allBusinessBranches.filter(branch => branch.id === user.businessBranch?.id);
+    }
+    // ADMIN users can edit any business branch
 
     return {
       user,
@@ -623,11 +647,54 @@ export async function action({ request, params }: ActionFunctionArgs) {
             // Create new available liner booking for the unmapped equipment
             const unmappedEquipment = updatedEquipmentDetails[unmappingRequest.equipmentIndex];
             if (unmappedEquipment) {
+              // Find the original liner booking detail for this equipment to preserve all allocated details
+              let originalLinerBookingDetail = null;
+
+              if (currentPlan.linerBooking) {
+                const bookingData = currentPlan.linerBooking.data as any;
+                if (bookingData.liner_booking_details && Array.isArray(bookingData.liner_booking_details)) {
+                  originalLinerBookingDetail = bookingData.liner_booking_details.find(
+                    (detail: any) => detail.liner_booking_number === unmappingRequest.linerBookingNumber
+                  );
+                }
+              }
+
+              if (currentPlan.shipmentAssignment) {
+                const assignmentData = currentPlan.shipmentAssignment.data as any;
+                if (assignmentData.liner_booking_details && Array.isArray(assignmentData.liner_booking_details)) {
+                  originalLinerBookingDetail = assignmentData.liner_booking_details.find(
+                    (detail: any) => detail.liner_booking_number === unmappingRequest.linerBookingNumber
+                  );
+                }
+              }
+
               const newBookingData = {
-                carrier_booking_status: "Awaiting Booking",
+                carrier_booking_status: "Ready for Re-linking",
                 liner_booking_details: [{
+                  // Preserve all original liner booking details
+                  temporary_booking_number: originalLinerBookingDetail?.temporary_booking_number || `TEMP-${unmappedEquipment.trackingNumber}`,
                   liner_booking_number: unmappingRequest.linerBookingNumber,
+                  suffix_for_anticipatory_temporary_booking_number: originalLinerBookingDetail?.suffix_for_anticipatory_temporary_booking_number || "",
+                  mbl_number: originalLinerBookingDetail?.mbl_number || "",
+                  carrier: originalLinerBookingDetail?.carrier || "",
+                  contract: originalLinerBookingDetail?.contract || "",
+                  original_planned_vessel: originalLinerBookingDetail?.original_planned_vessel || "",
+                  revised_vessel: originalLinerBookingDetail?.revised_vessel || "",
+                  e_t_d_of_original_planned_vessel: originalLinerBookingDetail?.e_t_d_of_original_planned_vessel || "",
+                  etd_of_revised_vessel: originalLinerBookingDetail?.etd_of_revised_vessel || "",
+                  empty_pickup_validity_from: originalLinerBookingDetail?.empty_pickup_validity_from || "",
+                  empty_pickup_validity_till: originalLinerBookingDetail?.empty_pickup_validity_till || "",
+                  estimate_gate_opening_date: originalLinerBookingDetail?.estimate_gate_opening_date || "",
+                  estimated_gate_cutoff_date: originalLinerBookingDetail?.estimated_gate_cutoff_date || "",
+                  s_i_cut_off_date: originalLinerBookingDetail?.s_i_cut_off_date || "",
+                  booking_received_from_carrier_on: originalLinerBookingDetail?.booking_received_from_carrier_on || "",
+                  loading_port: originalLinerBookingDetail?.loading_port || "",
+                  destination_country: originalLinerBookingDetail?.destination_country || "",
+                  port_of_discharge: originalLinerBookingDetail?.port_of_discharge || "",
+                  additional_remarks: originalLinerBookingDetail?.additional_remarks || "",
+                  // Equipment specific details
                   equipment_type: unmappedEquipment.equipment_type,
+                  equipment_quantity: originalLinerBookingDetail?.equipment_quantity || 1,
                   trackingNumber: unmappedEquipment.trackingNumber,
                   container_number: unmappedEquipment.container_number || "",
                   stuffing_point: unmappedEquipment.stuffing_point || "",
@@ -635,6 +702,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
                   container_handover_location: unmappedEquipment.container_handover_location || "",
                   empty_container_pick_up_location: unmappedEquipment.empty_container_pick_up_location || "",
                   container_handover_at: unmappedEquipment.container_handover_at || "",
+                  // Unmapping metadata
                   unmapped_from_plan: planId,
                   unmapped_reason: unmappingRequest.unmappingReason
                 }]

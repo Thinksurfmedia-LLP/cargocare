@@ -23,9 +23,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
       throw new Response("Forbidden", { status: 403 });
     }
 
-    // Get all users with their roles
+    // Get all users with their roles and business branches
     const users = await prisma.user.findMany({
-      include: { role: true },
+      include: {
+        role: true,
+        businessBranch: true
+      },
       orderBy: { createdAt: "desc" },
     });
 
@@ -171,6 +174,9 @@ export default function AdminPanel() {
                       Status
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Current Branch
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Created
                     </th>
                     {user.role.name != "MD" && (
@@ -214,6 +220,15 @@ export default function AdminPanel() {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {userRecord.businessBranch ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            {userRecord.businessBranch.name.replace(/_/g, ' ')}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 italic">No branch assigned</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {new Date(userRecord.createdAt).toLocaleDateString()}
                       </td>
 
@@ -247,16 +262,17 @@ export default function AdminPanel() {
                             <td className="px-6 py-4 whitespace-nowrap text-sm space-x-2">
 
                                 {/* Branch Update Form */}
-                                {(userRecord.role.name != "ADMIN") && (userRecord.role.name != "MD") && (userRecord.role.name != "SHIPMENT_PLAN_TEAM") && (
+                                {(userRecord.role.name != "ADMIN") && (userRecord.role.name != "MD") && (
                                   <>
                                       <Form method="post" className="inline-block">
                                       <input type="hidden" name="action" value="updateBranch" />
                                       <input type="hidden" name="userId" value={userRecord.id} />
-                                      <select 
-                                        name="branchId" 
+                                      <select
+                                        name="branchId"
                                         className="text-xs border rounded px-2 py-1"
-                                        defaultValue={userRecord.branchId}
+                                        defaultValue={userRecord.branchId || ""}
                                       >
+                                        <option value="" disabled>Select a branch...</option>
                                         {businessBranches.map((branch: any) => (
                                           <option key={branch.id} value={branch.id}>
                                             {branch.name.replace(/_/g, ' ')}
