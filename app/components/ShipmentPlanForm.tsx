@@ -788,13 +788,11 @@ export function ShipmentPlanForm({
       errors.push("Selling Price is required");
     }
 
-    // Check Buying Price
+    // Check Buying Price - Optional for planners
     const buyingPrice = document.querySelector<HTMLInputElement>(
       'input[name="buying_price"]'
     )?.value;
-    if (!buyingPrice) {
-      errors.push("Buying Price is required");
-    }
+    // Buying price is optional for shipment planners
 
     if (errors.length > 0) {
       addToast({
@@ -1970,7 +1968,7 @@ export function ShipmentPlanForm({
                     </div>
                     <div>
                       <Label htmlFor="buying_price">
-                        Buying Price <span className="text-red-500">*</span>
+                        Buying Price <span className="text-sm text-gray-500">(Optional)</span>
                       </Label>
                       <Input
                         id="buying_price"
@@ -1978,8 +1976,7 @@ export function ShipmentPlanForm({
                         type="number"
                         step="0.01"
                         defaultValue={planData.container_movement?.buying_price}
-                        placeholder="Enter buying price"
-                        required
+                        placeholder="Enter buying price (optional)"
                       />
                     </div>
                     <div>

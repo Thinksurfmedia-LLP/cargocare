@@ -537,7 +537,7 @@ export default function LinerBookings() {
   })
 
   // Column definitions for the table - different for assignments vs bookings
-  const availableColumns = isAssignments ? [
+  const baseAssignmentColumns = [
     { id: "checkbox", label: "Select", defaultVisible: true, locked: true },
     { id: "reference_number", label: "Reference No.", defaultVisible: true },
     { id: "customer", label: "Customer", defaultVisible: true },
@@ -547,15 +547,31 @@ export default function LinerBookings() {
     { id: "status", label: "Status", defaultVisible: true },
     { id: "port_of_discharge", label: "Port of Discharge", defaultVisible: true },
     { id: "consignee", label: "Consignee", defaultVisible: true },
+  ];
+
+  // Price columns (only for ADMIN and MD)
+  const priceColumns = [
     { id: "selling_price", label: "Selling Price", defaultVisible: true },
     { id: "buying_price", label: "Buying Price", defaultVisible: true },
+  ];
+
+  const remainingAssignmentColumns = [
     { id: "carrier", label: "Carrier", defaultVisible: true },
     { id: "vessel", label: "Vessel", defaultVisible: true },
     { id: "container_status", label: "Container Status", defaultVisible: true },
     { id: "created_date", label: "Created", defaultVisible: true },
     { id: "created_by", label: "Created By", defaultVisible: true },
     { id: "type", label: "Type", defaultVisible: true },
-  ] : [
+  ];
+
+  const assignmentColumns = [
+    ...baseAssignmentColumns,
+    // Only show price columns to ADMIN and MD
+    ...((user as any).role.name === "ADMIN" || (user as any).role.name === "MD" ? priceColumns : []),
+    ...remainingAssignmentColumns,
+  ];
+
+  const availableColumns = isAssignments ? assignmentColumns : [
     { id: "checkbox", label: "Select", defaultVisible: true, locked: true },
     {
       id: "temp_booking_number",
@@ -572,6 +588,8 @@ export default function LinerBookings() {
     },
     { id: "mbl_number", label: "MBL Number", defaultVisible: true },
     { id: "contract", label: "Contract", defaultVisible: true },
+    { id: "loading_port", label: "Loading Port", defaultVisible: true },
+    { id: "port_of_discharge", label: "Port of Discharge", defaultVisible: true },
     { id: "equipment_type", label: "Equipment Type", defaultVisible: true },
     { id: "created_date", label: "Created", defaultVisible: true },
     { id: "created_by", label: "Created By", defaultVisible: true },
@@ -949,13 +967,17 @@ export default function LinerBookings() {
           </TableCell>
         )
       case "loading_port":
-        if (!isAssignments) return <TableCell key={columnId}>N/A</TableCell>
-        const loadingPort = isOrphaned
-          ? (booking.data as any)?._originalShipmentPlan?.container_movement?.loading_port
-          : booking?.shipmentPlan?.data?.container_movement?.loading_port
+        const loadingPort = isAssignments
+          ? (isOrphaned
+              ? (booking.data as any)?._originalShipmentPlan?.container_movement?.loading_port
+              : booking?.shipmentPlan?.data?.container_movement?.loading_port)
+          : (booking.data as any)?.liner_booking_details?.[0]?.loading_port
         return (
           <TableCell key={columnId} className="text-gray-700">
-            <span>{loadingPort || "N/A"}</span>
+            <div className="flex items-center space-x-1">
+              <span className="text-gray-400">🚢</span>
+              <span>{loadingPort || "N/A"}</span>
+            </div>
           </TableCell>
         )
       case "destination":
@@ -969,13 +991,17 @@ export default function LinerBookings() {
           </TableCell>
         )
       case "port_of_discharge":
-        if (!isAssignments) return <TableCell key={columnId}>N/A</TableCell>
-        const portOfDischarge = isOrphaned
-          ? (booking.data as any)?._originalShipmentPlan?.container_movement?.port_of_discharge
-          : booking?.shipmentPlan?.data?.container_movement?.port_of_discharge
+        const portOfDischarge = isAssignments
+          ? (isOrphaned
+              ? (booking.data as any)?._originalShipmentPlan?.container_movement?.port_of_discharge
+              : booking?.shipmentPlan?.data?.container_movement?.port_of_discharge)
+          : (booking.data as any)?.liner_booking_details?.[0]?.port_of_discharge
         return (
           <TableCell key={columnId} className="text-gray-700">
-            <span>{portOfDischarge || "N/A"}</span>
+            <div className="flex items-center space-x-1">
+              <span className="text-gray-400">🏴</span>
+              <span>{portOfDischarge || "N/A"}</span>
+            </div>
           </TableCell>
         )
       case "consignee":
@@ -990,6 +1016,10 @@ export default function LinerBookings() {
         )
       case "selling_price":
         if (!isAssignments) return <TableCell key={columnId}>N/A</TableCell>
+        // Only show selling price to ADMIN and MD
+        if ((user as any).role.name !== "ADMIN" && (user as any).role.name !== "MD") {
+          return <TableCell key={columnId}>-</TableCell>;
+        }
         const sellingPrice = isOrphaned
           ? (booking.data as any)?._originalShipmentPlan?.container_movement?.selling_price
           : booking?.shipmentPlan?.data?.container_movement?.selling_price
@@ -1000,6 +1030,10 @@ export default function LinerBookings() {
         )
       case "buying_price":
         if (!isAssignments) return <TableCell key={columnId}>N/A</TableCell>
+        // Only show buying price to ADMIN and MD
+        if ((user as any).role.name !== "ADMIN" && (user as any).role.name !== "MD") {
+          return <TableCell key={columnId}>-</TableCell>;
+        }
         const buyingPrice = isOrphaned
           ? (booking.data as any)?._originalShipmentPlan?.container_movement?.buying_price
           : booking?.shipmentPlan?.data?.container_movement?.buying_price

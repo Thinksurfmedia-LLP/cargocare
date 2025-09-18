@@ -187,6 +187,30 @@ export async function action({ request }: ActionFunctionArgs) {
       detailIndex++
     }
 
+    // Validate mandatory fields for liner booking team
+    const errors: string[] = [];
+
+    linerBookingDetails.forEach((detail, index) => {
+      if (!detail.liner_booking_number || detail.liner_booking_number.trim() === '') {
+        errors.push(`Liner Booking Number is required for equipment ${index + 1}`);
+      }
+      if (!detail.carrier || detail.carrier.trim() === '') {
+        errors.push(`Carrier is required for equipment ${index + 1}`);
+      }
+      if (!detail.e_t_d_of_original_planned_vessel) {
+        errors.push(`ETD of Original Planned Vessel is required for equipment ${index + 1}`);
+      }
+      if (!detail.empty_pickup_validity_from) {
+        errors.push(`Empty Pickup Validity From is required for equipment ${index + 1}`);
+      }
+    });
+
+    if (errors.length > 0) {
+      return {
+        error: errors.join('; ')
+      };
+    }
+
     // Fan out creation: create 1 LinerBooking row per equipment detail (and per quantity if provided)
     const baseData = {
       carrier_booking_status,

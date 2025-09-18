@@ -49,7 +49,20 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       }
 
       const normalizedData = { ...(assignment.data as any) }
+
+      console.log("[DEBUG] Loader - Assignment data analysis:", {
+        assignmentId,
+        hasShipmentPlan: !!assignment.shipmentPlan,
+        linkedStatus: assignment.shipmentPlan?.linkedStatus,
+        hasLinerBookingDetails: Array.isArray(normalizedData.liner_booking_details) && normalizedData.liner_booking_details.length > 0,
+        linerBookingDetailsCount: Array.isArray(normalizedData.liner_booking_details) ? normalizedData.liner_booking_details.length : 'not array',
+        assignmentStatus: normalizedData.carrier_booking_status,
+        fullAssignmentData: normalizedData
+      });
+
       if (assignment.shipmentPlan && assignment.shipmentPlan.linkedStatus === 0) {
+        console.log("[DEBUG] Loader - Processing unlinked assignment (linkedStatus === 0)");
+
         if (Array.isArray(normalizedData.equipment_details) && normalizedData.equipment_details.length > 0) {
           console.log("[v0] loader: clearing stale equipment_details for unlinked assignment", {
             assignmentId,
@@ -57,14 +70,52 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
           })
         }
         normalizedData.equipment_details = []
-        // liner_booking_details should also be empty post-unlink; keep only if explicitly needed by UI
-        if (Array.isArray(normalizedData.liner_booking_details) && normalizedData.liner_booking_details.length > 0) {
+
+        // Check if this is a case of individual unmapping (where we have liner booking details but linkedStatus is 0)
+        // In individual unmapping scenarios, we want to preserve the liner booking details even if linkedStatus is 0
+        const hasLinerBookingDetails = Array.isArray(normalizedData.liner_booking_details) && normalizedData.liner_booking_details.length > 0;
+        const assignmentStatus = normalizedData.carrier_booking_status;
+        const isIndividualUnmappingScenario = hasLinerBookingDetails && (
+          assignmentStatus === "Partially Unmapped" ||
+          assignmentStatus === "Awaiting Booking" ||
+          assignmentStatus === "Ready for Re-linking"
+        );
+
+        console.log("[DEBUG] Loader - Individual unmapping detection:", {
+          hasLinerBookingDetails,
+          assignmentStatus,
+          isIndividualUnmappingScenario,
+          linerBookingDetails: normalizedData.liner_booking_details
+        });
+
+        if (hasLinerBookingDetails && !isIndividualUnmappingScenario) {
           console.log("[v0] loader: clearing stale liner_booking_details for unlinked assignment", {
             assignmentId,
             detailCount: normalizedData.liner_booking_details.length,
           })
+          normalizedData.liner_booking_details = []
+        } else if (isIndividualUnmappingScenario) {
+          console.log("[v0] loader: preserving liner_booking_details for individual unmapping scenario", {
+            assignmentId,
+            detailCount: normalizedData.liner_booking_details.length,
+            status: assignmentStatus
+          })
+          // Keep liner_booking_details intact for individual unmapping scenarios
+        } else if (hasLinerBookingDetails) {
+          console.log("[v0] loader: has booking details but not individual unmapping scenario - clearing", {
+            hasLinerBookingDetails,
+            assignmentStatus,
+            expectedStatuses: ["Partially Unmapped", "Awaiting Booking", "Ready for Re-linking"]
+          })
+          normalizedData.liner_booking_details = []
+        } else {
+          console.log("[v0] loader: no booking details to process")
         }
-        normalizedData.liner_booking_details = []
+      } else {
+        console.log("[DEBUG] Loader - Assignment is linked or no shipment plan", {
+          hasShipmentPlan: !!assignment.shipmentPlan,
+          linkedStatus: assignment.shipmentPlan?.linkedStatus
+        });
       }
 
       const [availableShipmentPlans, carriers, vessels, organizations, equipment, loadingPorts, portsOfDischarge, destinationCountries, availableLinerBookings] =
@@ -439,6 +490,31 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const unmapping_reason = formData.get("unmapping_reason") as string
     const booking_released_to = formData.get("booking_released_to") as string
 
+    // Handle buying price for shipment plan update
+    const buyingPrice = formData.get("buying_price") as string
+
+    // Validate buying price is provided when required
+    if (assignmentId) {
+      const currentAssignment = await prisma.shipmentAssignment.findUnique({
+        where: { id: assignmentId },
+        include: {
+          shipmentPlan: true
+        }
+      });
+
+      if (currentAssignment?.shipmentPlan) {
+        const planData = currentAssignment.shipmentPlan.data as any;
+        const existingBuyingPrice = planData?.container_movement?.buying_price;
+
+        // If buying price is missing from shipment plan and not provided by liner team, return error
+        if (!existingBuyingPrice && (!buyingPrice || !buyingPrice.trim())) {
+          return Response.json({
+            error: "Buying price is required. The shipment planner did not provide it, so you must enter it."
+          }, { status: 400 });
+        }
+      }
+    }
+
     const linerBookingDetails: any[] = []
     let detailIndex = 0
     while (formData.get(`liner_booking_details[${detailIndex}][temporary_booking_number]`) !== null) {
@@ -515,6 +591,32 @@ export async function action({ request, params }: ActionFunctionArgs) {
         port_of_discharge: (formData.get(`liner_booking_details[${detailIndex}][port_of_discharge]`) as string) || "",
       })
       detailIndex++
+    }
+
+    // Validate mandatory fields for liner booking team (for regular operations, not special actions)
+    if (!specialAction || specialAction === '') {
+      const errors: string[] = [];
+
+      linerBookingDetails.forEach((detail, index) => {
+        if (!detail.liner_booking_number || detail.liner_booking_number.trim() === '') {
+          errors.push(`Liner Booking Number is required for equipment ${index + 1}`);
+        }
+        if (!detail.carrier || detail.carrier.trim() === '') {
+          errors.push(`Carrier is required for equipment ${index + 1}`);
+        }
+        if (!detail.e_t_d_of_original_planned_vessel) {
+          errors.push(`ETD of Original Planned Vessel is required for equipment ${index + 1}`);
+        }
+        if (!detail.empty_pickup_validity_from) {
+          errors.push(`Empty Pickup Validity From is required for equipment ${index + 1}`);
+        }
+      });
+
+      if (errors.length > 0) {
+        return Response.json({
+          error: errors.join('; ')
+        }, { status: 400 });
+      }
     }
 
     // Handle individual equipment unmapping request
@@ -1351,6 +1453,15 @@ await prisma.$transaction(async (tx) => {
       const prevStatus = spData.booking_status
       spData.booking_status = "Booked"
 
+      // Update buying price if provided by liner booking team
+      if (buyingPrice && buyingPrice.trim()) {
+        if (!spData.container_movement) {
+          spData.container_movement = {};
+        }
+        spData.container_movement.buying_price = parseFloat(buyingPrice);
+        console.log("[DEBUG] Assignment All Booking Assigned - Updated buying price:", buyingPrice);
+      }
+
       console.log("[v0] assignment: updating shipment plan status", {
         shipmentPlanId: current.shipmentPlan.id,
         previousStatus: prevStatus,
@@ -1639,7 +1750,16 @@ await prisma.$transaction(async (tx) => {
         console.log("[DEBUG] All Booking Assigned - Starting equipment tracking update")
         console.log("[DEBUG] All Booking Assigned - Equipment details exists:", !!shipmentPlanData.equipment_details)
         console.log("[DEBUG] All Booking Assigned - Equipment details count:", shipmentPlanData.equipment_details?.length || 0)
-        
+
+        // Update buying price if provided by liner booking team
+        if (buyingPrice && buyingPrice.trim()) {
+          if (!shipmentPlanData.container_movement) {
+            shipmentPlanData.container_movement = {};
+          }
+          shipmentPlanData.container_movement.buying_price = parseFloat(buyingPrice);
+          console.log("[DEBUG] All Booking Assigned - Updated buying price:", buyingPrice);
+        }
+
         if (shipmentPlanData.equipment_details && Array.isArray(shipmentPlanData.equipment_details)) {
           // Get liner booking details from the current booking
           const linerBookingData = updatedLinerBooking.data as any
@@ -1809,6 +1929,15 @@ await prisma.$transaction(async (tx) => {
         const shipmentPlanData = updatedLinerBooking.shipmentPlan.data as any
         console.log("[DEBUG] Regular update - Shipment plan ID:", updatedLinerBooking.shipmentPlan.id)
         console.log("[DEBUG] Regular update - Equipment details count:", shipmentPlanData.equipment_details?.length || 0)
+
+        // Update buying price if provided by liner booking team
+        if (buyingPrice && buyingPrice.trim()) {
+          if (!shipmentPlanData.container_movement) {
+            shipmentPlanData.container_movement = {};
+          }
+          shipmentPlanData.container_movement.buying_price = parseFloat(buyingPrice);
+          console.log("[DEBUG] Regular update - Updated buying price:", buyingPrice);
+        }
         
         // Log current equipment details
         if (shipmentPlanData.equipment_details) {

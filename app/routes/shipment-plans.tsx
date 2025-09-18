@@ -916,7 +916,8 @@ export default function ShipmentPlans() {
   };
 
   // Column definitions for the table
-  const availableColumns = [
+  // Define base columns available to all users
+  const baseColumns = [
     { id: "checkbox", label: "Select", defaultVisible: true, locked: true },
     { id: "reference_number", label: "Reference No.", defaultVisible: true },
     { id: "business_branch", label: "Business Branch", defaultVisible: true },
@@ -924,16 +925,27 @@ export default function ShipmentPlans() {
     { id: "customer", label: "Customer", defaultVisible: true },
     { id: "loading_port", label: "Loading Port", defaultVisible: true },
     { id: "destination_country", label: "Destination", defaultVisible: true },
-    { id: "booking_status", label: "Status", defaultVisible: true },
-    { id: "milestone_status", label: "Status", defaultVisible: true },
+    { id: "booking_status", label: "Booking Status", defaultVisible: true },
+    { id: "milestone_status", label: "Container Status", defaultVisible: true },
     {
       id: "port_of_discharge",
       label: "Port of Discharge",
       defaultVisible: true,
     },
     { id: "consignee", label: "Consignee", defaultVisible: true },
+  ];
+
+  // Define price columns (only for ADMIN and MD)
+  const priceColumns = [
     { id: "selling_price", label: "Selling Price", defaultVisible: true },
     { id: "buying_price", label: "Buying Price", defaultVisible: true },
+  ];
+
+  // Build available columns based on user role
+  const availableColumns = [
+    ...baseColumns,
+    // Only show price columns to ADMIN and MD
+    ...(user.role.name === "ADMIN" || user.role.name === "MD" ? priceColumns : []),
     { id: "carrier", label: "Carrier", defaultVisible: true },
     { id: "vessel", label: "Vessel", defaultVisible: true },
     { id: "container_status", label: "Container Status", defaultVisible: true },
@@ -1271,6 +1283,10 @@ export default function ShipmentPlans() {
           </TableCell>
         );
       case "selling_price":
+        // Only show selling price to ADMIN and MD
+        if (user.role.name !== "ADMIN" && user.role.name !== "MD") {
+          return <TableCell key={columnId}>-</TableCell>;
+        }
         return (
           <TableCell key={columnId} className="text-gray-700">
             <div className="flex items-center space-x-2">
@@ -1282,6 +1298,10 @@ export default function ShipmentPlans() {
           </TableCell>
         );
       case "buying_price":
+        // Only show buying price to ADMIN and MD
+        if (user.role.name !== "ADMIN" && user.role.name !== "MD") {
+          return <TableCell key={columnId}>-</TableCell>;
+        }
         return (
           <TableCell key={columnId} className="text-gray-700">
             <div className="flex items-center space-x-2">
