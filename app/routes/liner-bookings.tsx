@@ -94,9 +94,14 @@ export async function loader({ request }: LoaderFunctionArgs) {
     // Role-based access control
     console.log("User data:", user.id, "Role:", user.role.name)
     if (user.role.name === "LINER_BOOKING_TEAM") {
-      // LINER_BOOKING_TEAM members can only see bookings/assignments assigned to them
-      whereCondition.assignBookingId = user.id
-      console.log("LINER_BOOKING_TEAM access control applied: assignBookingId =", user.id)
+      // LINER_BOOKING_TEAM members can see bookings/assignments they:
+      // 1. Are assigned to (assignBookingId = user.id)
+      // 2. Created themselves (userId = user.id)
+      whereCondition.OR = [
+        { assignBookingId: user.id },  // Assigned to them
+        { userId: user.id }           // Created by them
+      ]
+      console.log("LINER_BOOKING_TEAM access control applied: assignBookingId OR userId =", user.id)
     }
     // ADMIN and MD can see all bookings/assignments (no filter applied) // Search functionality
     if (search) {
@@ -272,20 +277,31 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
       // Combine tab filtering, access control filtering, and search conditions
       const existingOrConditions = whereCondition.OR || [];
-      const accessControlCondition = whereCondition.assignBookingId ? { assignBookingId: whereCondition.assignBookingId } : null;
+
+      // Check if OR conditions contain access control (contains assignBookingId or userId)
+      const hasAccessControl = existingOrConditions.some(
+        (condition: any) => condition.assignBookingId !== undefined || condition.userId !== undefined
+      );
 
       // Build final query conditions
       const andConditions = [];
 
+      // Separate tab filtering from access control
+      const tabFilteringConditions = existingOrConditions.filter(
+        (condition: any) => condition.assignBookingId === undefined && condition.userId === undefined
+      );
+      const accessControlConditions = existingOrConditions.filter(
+        (condition: any) => condition.assignBookingId !== undefined || condition.userId !== undefined
+      );
+
       // Add tab filtering if exists
-      if (existingOrConditions.length > 0) {
-        andConditions.push({ OR: existingOrConditions });
+      if (tabFilteringConditions.length > 0) {
+        andConditions.push({ OR: tabFilteringConditions });
       }
 
       // Add access control if exists
-      if (accessControlCondition) {
-        andConditions.push(accessControlCondition);
-        delete whereCondition.assignBookingId;
+      if (accessControlConditions.length > 0) {
+        andConditions.push({ OR: accessControlConditions });
       }
 
       // Add search filtering if exists
@@ -298,7 +314,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
         whereCondition.AND = andConditions;
         delete whereCondition.OR;
         console.log("Combined tab, access control, and search filtering applied");
-      } else if (searchConditions.length > 0 && !accessControlCondition) {
+      } else if (searchConditions.length > 0 && !hasAccessControl) {
         whereCondition.OR = searchConditions;
       }
 

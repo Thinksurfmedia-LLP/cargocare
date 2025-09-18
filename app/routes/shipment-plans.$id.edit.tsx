@@ -556,6 +556,16 @@ export async function action({ request, params }: ActionFunctionArgs) {
         }
       })
 
+      // Check if there are any other pending unmapping requests for this shipment plan
+      const remainingPendingRequests = await prisma.individualEquipmentUnmappingRequest.count({
+        where: {
+          shipmentPlanId: planId,
+          status: "PENDING"
+        }
+      });
+
+      console.log("[v0] Remaining pending unmapping requests:", remainingPendingRequests);
+
       // Update the shipment plan to remove the specific equipment
       const currentPlan = await prisma.shipmentPlan.findUnique({
         where: { id: planId },
@@ -708,12 +718,32 @@ export async function action({ request, params }: ActionFunctionArgs) {
                 }]
               };
 
+              // Preserve original booking ownership for access control
+              let originalUserId = user.id; // Default to current user (admin/shipment planner)
+              let originalAssignBookingId = null;
+
+              // Try to preserve original ownership from the current plan's booking/assignment
+              if (currentPlan.linerBooking) {
+                originalUserId = currentPlan.linerBooking.userId;
+                originalAssignBookingId = currentPlan.linerBooking.assignBookingId;
+              } else if (currentPlan.shipmentAssignment) {
+                originalUserId = currentPlan.shipmentAssignment.userId;
+                originalAssignBookingId = currentPlan.shipmentAssignment.assignBookingId;
+              }
+
               await prisma.linerBooking.create({
                 data: {
                   data: newBookingData,
-                  userId: user.id,
+                  userId: originalUserId, // Preserve original user
+                  assignBookingId: originalAssignBookingId, // Preserve original assignment
                   shipmentPlanId: null // This makes it available for linking
                 }
+              });
+
+              console.log("[v0] Created new available liner booking with preserved ownership", {
+                userId: originalUserId,
+                assignBookingId: originalAssignBookingId,
+                linerBookingNumber: unmappingRequest.linerBookingNumber
               });
 
               console.log("[v0] Created new available liner booking for unmapped equipment", {
@@ -721,6 +751,98 @@ export async function action({ request, params }: ActionFunctionArgs) {
                 equipmentType: unmappedEquipment.equipment_type,
                 planId
               });
+            }
+
+            // Update the original liner booking to remove the unmapped equipment's liner booking details
+            if (currentPlan.linerBooking) {
+              const originalBookingData = currentPlan.linerBooking.data as any;
+
+              // Remove the liner booking detail that matches the unmapped equipment
+              if (originalBookingData.liner_booking_details && Array.isArray(originalBookingData.liner_booking_details)) {
+                const updatedLinerBookingDetails = originalBookingData.liner_booking_details.filter(
+                  (detail: any) => detail.liner_booking_number !== unmappingRequest.linerBookingNumber
+                );
+
+                console.log("[v0] Individual unmapping - updating original liner booking", {
+                  originalDetailsCount: originalBookingData.liner_booking_details.length,
+                  updatedDetailsCount: updatedLinerBookingDetails.length,
+                  removedLinerBookingNumber: unmappingRequest.linerBookingNumber
+                });
+
+                // If no liner booking details remain, unlink the entire booking
+                if (updatedLinerBookingDetails.length === 0) {
+                  await prisma.linerBooking.update({
+                    where: { id: currentPlan.linerBooking.id },
+                    data: {
+                      data: {
+                        ...originalBookingData,
+                        liner_booking_details: [],
+                        carrier_booking_status: "Ready for Re-linking"
+                      },
+                      shipmentPlanId: null // Unlink from shipment plan
+                    }
+                  });
+                  console.log("[v0] Original liner booking fully unlinked (no details remain)");
+                } else {
+                  // Update the booking with remaining details
+                  await prisma.linerBooking.update({
+                    where: { id: currentPlan.linerBooking.id },
+                    data: {
+                      data: {
+                        ...originalBookingData,
+                        liner_booking_details: updatedLinerBookingDetails
+                      }
+                    }
+                  });
+                  console.log("[v0] Original liner booking updated with remaining details");
+                }
+              }
+            }
+
+            // Also handle shipment assignment if present
+            if (currentPlan.shipmentAssignment) {
+              const originalAssignmentData = currentPlan.shipmentAssignment.data as any;
+
+              // Remove the liner booking detail that matches the unmapped equipment
+              if (originalAssignmentData.liner_booking_details && Array.isArray(originalAssignmentData.liner_booking_details)) {
+                const updatedLinerBookingDetails = originalAssignmentData.liner_booking_details.filter(
+                  (detail: any) => detail.liner_booking_number !== unmappingRequest.linerBookingNumber
+                );
+
+                console.log("[v0] Individual unmapping - updating original assignment", {
+                  originalDetailsCount: originalAssignmentData.liner_booking_details.length,
+                  updatedDetailsCount: updatedLinerBookingDetails.length,
+                  removedLinerBookingNumber: unmappingRequest.linerBookingNumber
+                });
+
+                // If no liner booking details remain, unlink the entire assignment
+                if (updatedLinerBookingDetails.length === 0) {
+                  await prisma.shipmentAssignment.update({
+                    where: { id: currentPlan.shipmentAssignment.id },
+                    data: {
+                      data: {
+                        ...originalAssignmentData,
+                        liner_booking_details: [],
+                        carrier_booking_status: "Ready for Re-linking"
+                      },
+                      shipmentPlanId: null // Unlink from shipment plan
+                    }
+                  });
+                  console.log("[v0] Original assignment fully unlinked (no details remain)");
+                } else {
+                  // Update the assignment with remaining details
+                  await prisma.shipmentAssignment.update({
+                    where: { id: currentPlan.shipmentAssignment.id },
+                    data: {
+                      data: {
+                        ...originalAssignmentData,
+                        liner_booking_details: updatedLinerBookingDetails
+                      }
+                    }
+                  });
+                  console.log("[v0] Original assignment updated with remaining details");
+                }
+              }
             }
           } else {
             // If no available equipment left, mark shipment as awaiting booking
@@ -768,6 +890,73 @@ export async function action({ request, params }: ActionFunctionArgs) {
         }
       }
 
+      // If no more pending requests, revert status from "Partial Unmapping Requested"
+      if (remainingPendingRequests === 0) {
+        console.log("[v0] No more pending unmapping requests, checking status reversion");
+
+        // Re-fetch the current plan to get the latest state after unlinking operations
+        const latestPlan = await prisma.shipmentPlan.findUnique({
+          where: { id: planId },
+          include: { linerBooking: true, shipmentAssignment: true },
+        });
+
+        if (latestPlan) {
+          const planData = latestPlan.data as any;
+
+          // Only revert shipment plan status if it's still in "Partial Unmapping Requested"
+          if (planData.booking_status === "Partial Unmapping Requested") {
+            // Check if there are still linked bookings/assignments with equipment
+            const hasLinkedBookings = latestPlan.linerBooking || latestPlan.shipmentAssignment;
+
+            const updatedPlanData = {
+              ...planData,
+              booking_status: hasLinkedBookings ? "Booked" : "Awaiting Booking"
+            };
+
+            await prisma.shipmentPlan.update({
+              where: { id: planId },
+              data: { data: updatedPlanData }
+            });
+
+            console.log("[v0] Shipment plan status reverted to:", updatedPlanData.booking_status);
+          }
+
+          // Only revert liner booking status if it's still linked to the plan
+          if (latestPlan.linerBooking && latestPlan.linerBooking.shipmentPlanId === planId) {
+            const bookingData = latestPlan.linerBooking.data as any;
+            if (bookingData.carrier_booking_status === "Partial Unmapping Requested") {
+              const updatedBookingData = {
+                ...bookingData,
+                carrier_booking_status: "Booked" // Only revert if still linked
+              };
+
+              await prisma.linerBooking.update({
+                where: { id: latestPlan.linerBooking.id },
+                data: { data: updatedBookingData }
+              });
+              console.log("[v0] Linked liner booking status reverted to 'Booked'");
+            }
+          }
+
+          // Only revert assignment status if it's still linked to the plan
+          if (latestPlan.shipmentAssignment && latestPlan.shipmentAssignment.shipmentPlanId === planId) {
+            const assignmentData = latestPlan.shipmentAssignment.data as any;
+            if (assignmentData.carrier_booking_status === "Partial Unmapping Requested") {
+              const updatedAssignmentData = {
+                ...assignmentData,
+                carrier_booking_status: "Booked" // Only revert if still linked
+              };
+
+              await prisma.shipmentAssignment.update({
+                where: { id: latestPlan.shipmentAssignment.id },
+                data: { data: updatedAssignmentData }
+              });
+              console.log("[v0] Linked assignment status reverted to 'Booked'");
+            }
+          }
+        }
+      }
+
       console.log("[v0] Individual equipment unmapping approved successfully")
       return redirect(`/shipment-plans/${planId}/edit`)
     }
@@ -790,6 +979,77 @@ export async function action({ request, params }: ActionFunctionArgs) {
           rejectionReason: rejectionReason || "No reason provided"
         }
       })
+
+      // Check if there are any other pending unmapping requests for this shipment plan
+      const remainingPendingRequests = await prisma.individualEquipmentUnmappingRequest.count({
+        where: {
+          shipmentPlanId: planId,
+          status: "PENDING"
+        }
+      });
+
+      // If no more pending requests, revert status from "Partial Unmapping Requested"
+      if (remainingPendingRequests === 0) {
+        console.log("[v0] No more pending unmapping requests after rejection, checking status reversion");
+
+        const currentPlan = await prisma.shipmentPlan.findUnique({
+          where: { id: planId },
+          include: { linerBooking: true, shipmentAssignment: true },
+        });
+
+        if (currentPlan) {
+          const planData = currentPlan.data as any;
+
+          // Only revert shipment plan status if it's still in "Partial Unmapping Requested"
+          if (planData.booking_status === "Partial Unmapping Requested") {
+            // For rejection, we should revert to "Booked" since no unmapping occurred
+            const updatedPlanData = {
+              ...planData,
+              booking_status: "Booked" // Revert to Booked after rejection
+            };
+
+            await prisma.shipmentPlan.update({
+              where: { id: planId },
+              data: { data: updatedPlanData }
+            });
+            console.log("[v0] Shipment plan status reverted to 'Booked' after rejection");
+          }
+
+          // Only revert liner booking status if it's still linked to the plan
+          if (currentPlan.linerBooking && currentPlan.linerBooking.shipmentPlanId === planId) {
+            const bookingData = currentPlan.linerBooking.data as any;
+            if (bookingData.carrier_booking_status === "Partial Unmapping Requested") {
+              const updatedBookingData = {
+                ...bookingData,
+                carrier_booking_status: "Booked" // Revert to Booked after rejection
+              };
+
+              await prisma.linerBooking.update({
+                where: { id: currentPlan.linerBooking.id },
+                data: { data: updatedBookingData }
+              });
+              console.log("[v0] Liner booking status reverted to 'Booked' after rejection");
+            }
+          }
+
+          // Only revert assignment status if it's still linked to the plan
+          if (currentPlan.shipmentAssignment && currentPlan.shipmentAssignment.shipmentPlanId === planId) {
+            const assignmentData = currentPlan.shipmentAssignment.data as any;
+            if (assignmentData.carrier_booking_status === "Partial Unmapping Requested") {
+              const updatedAssignmentData = {
+                ...assignmentData,
+                carrier_booking_status: "Booked" // Revert to Booked after rejection
+              };
+
+              await prisma.shipmentAssignment.update({
+                where: { id: currentPlan.shipmentAssignment.id },
+                data: { data: updatedAssignmentData }
+              });
+              console.log("[v0] Assignment status reverted to 'Booked' after rejection");
+            }
+          }
+        }
+      }
 
       console.log("[v0] Individual equipment unmapping rejected successfully")
       return redirect(`/shipment-plans/${planId}/edit`)

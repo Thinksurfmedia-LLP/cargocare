@@ -564,6 +564,34 @@ export async function action({ request, params }: ActionFunctionArgs) {
             requestId: unmappingRequest.id,
             shipmentPlanId: current.shipmentPlan.id
           })
+
+          // Update assignment status to show partial unmapping requested
+          const assignmentData = (current.data as any) || {};
+          const updatedAssignmentData = {
+            ...assignmentData,
+            carrier_booking_status: "Partial Unmapping Requested"
+          };
+
+          await prisma.shipmentAssignment.update({
+            where: { id: current.id },
+            data: { data: updatedAssignmentData }
+          });
+
+          // Update shipment plan status to show partial unmapping requested
+          if (current.shipmentPlan) {
+            const planData = (current.shipmentPlan.data as any) || {};
+            const updatedPlanData = {
+              ...planData,
+              booking_status: "Partial Unmapping Requested"
+            };
+
+            await prisma.shipmentPlan.update({
+              where: { id: current.shipmentPlan.id },
+              data: { data: updatedPlanData }
+            });
+          }
+
+          console.log("[v0] Updated assignment and plan status to 'Partial Unmapping Requested'");
         } catch (error) {
           console.error("Error creating unmapping request:", error)
           return Response.json({ error: "Failed to create unmapping request. The feature may not be fully available yet." }, { status: 500 })
@@ -599,6 +627,34 @@ export async function action({ request, params }: ActionFunctionArgs) {
             requestId: unmappingRequest.id,
             shipmentPlanId: linerBooking.shipmentPlan.id
           })
+
+          // Update liner booking status to show partial unmapping requested
+          const bookingData = (linerBooking.data as any) || {};
+          const updatedBookingData = {
+            ...bookingData,
+            carrier_booking_status: "Partial Unmapping Requested"
+          };
+
+          await prisma.linerBooking.update({
+            where: { id: linerBooking.id },
+            data: { data: updatedBookingData }
+          });
+
+          // Update shipment plan status to show partial unmapping requested
+          if (linerBooking.shipmentPlan) {
+            const planData = (linerBooking.shipmentPlan.data as any) || {};
+            const updatedPlanData = {
+              ...planData,
+              booking_status: "Partial Unmapping Requested"
+            };
+
+            await prisma.shipmentPlan.update({
+              where: { id: linerBooking.shipmentPlan.id },
+              data: { data: updatedPlanData }
+            });
+          }
+
+          console.log("[v0] Updated liner booking and plan status to 'Partial Unmapping Requested'");
         } catch (error) {
           console.error("Error creating unmapping request:", error)
           return Response.json({ error: "Failed to create unmapping request. The feature may not be fully available yet." }, { status: 500 })
