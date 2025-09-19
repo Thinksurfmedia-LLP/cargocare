@@ -1022,18 +1022,113 @@ await prisma.$transaction(async (tx) => {
           },
         })
 
-        // NOTE: Equipment tracking numbers should NOT be updated during link_available
-        // They should only be updated when "All Booking Assigned" is clicked
-        console.log("[DEBUG] link_available - Skipping equipment tracking number updates (should only happen on 'All Booking Assigned')")
+        // Update equipment tracking numbers for linked bookings
+        console.log("[DEBUG] link_available - Starting equipment tracking update process")
 
-        // Ensure plan is marked as linked so loader doesn't clear details
-        await tx.shipmentPlan.update({
-          where: { id: current.shipmentPlan!.id },
-          data: {
-            data: current.shipmentPlan!.data,
-            linkedStatus: 1,
-          },
-        })
+        // Get current shipment plan data
+        let shipmentPlanData = current.shipmentPlan?.data as any
+
+        if (shipmentPlanData?.equipment_details && Array.isArray(shipmentPlanData.equipment_details)) {
+          console.log("[DEBUG] link_available - Current equipment details count:", shipmentPlanData.equipment_details.length)
+
+          // Create a map of equipment types to available tracking numbers that need bookings
+          const availableEquipmentByType = new Map()
+          shipmentPlanData.equipment_details.forEach((equipment: any, idx: number) => {
+            if (!equipment.trackingNumber?.startsWith('LBN') && !equipment.trackingNumber?.startsWith('XYZ')) {
+              // This equipment doesn't have a liner booking number yet
+              const equipmentType = equipment.equipment_type
+              if (!availableEquipmentByType.has(equipmentType)) {
+                availableEquipmentByType.set(equipmentType, [])
+              }
+              availableEquipmentByType.get(equipmentType).push({ index: idx, tracking: equipment.trackingNumber })
+            }
+          })
+
+          console.log("[DEBUG] link_available - Available equipment by type:", Object.fromEntries(availableEquipmentByType))
+
+          // Update equipment details with liner booking numbers
+          let hasUpdates = false
+
+          mergedDetails.forEach((detail: any) => {
+            if (detail.liner_booking_number && detail.liner_booking_number.trim()) {
+              const equipmentType = detail.equipment_type?.includes("|")
+                ? detail.equipment_type.split("|")[0]
+                : detail.equipment_type
+
+              console.log(`[DEBUG] link_available - Processing booking: ${detail.liner_booking_number} for type: ${equipmentType}`)
+
+              // Find the first available equipment of this type to assign the booking to
+              const availableEquipment = availableEquipmentByType.get(equipmentType)
+              if (availableEquipment && availableEquipment.length > 0) {
+                const targetEquipment = availableEquipment.shift() // Take the first available
+                const equipmentIndex = targetEquipment.index
+
+                console.log(`[DEBUG] link_available - Assigning ${detail.liner_booking_number} to equipment ${equipmentIndex} (${targetEquipment.tracking})`)
+
+                // Update the equipment with all liner booking details
+                shipmentPlanData.equipment_details[equipmentIndex] = {
+                  ...shipmentPlanData.equipment_details[equipmentIndex],
+                  trackingNumber: detail.liner_booking_number,
+                  originalTrackingNumber: targetEquipment.tracking,
+                  linerBookingAssigned: true,
+                  // Add all relevant liner booking fields
+                  liner_booking_number: detail.liner_booking_number,
+                  temporary_booking_number: detail.temporary_booking_number,
+                  suffix_for_anticipatory_temporary_booking_number: detail.suffix_for_anticipatory_temporary_booking_number,
+                  mbl_number: detail.mbl_number,
+                  carrier: detail.carrier,
+                  contract: detail.contract,
+                  original_planned_vessel: detail.original_planned_vessel,
+                  e_t_d_of_original_planned_vessel: detail.e_t_d_of_original_planned_vessel,
+                  revised_planned_vessel: detail.revised_planned_vessel,
+                  e_t_d_of_revised_planned_vessel: detail.e_t_d_of_revised_planned_vessel,
+                  loading_port: detail.loading_port,
+                  port_of_discharge: detail.port_of_discharge,
+                  destination_country: detail.destination_country,
+                  vessel_and_voyage: detail.vessel_and_voyage,
+                  cutoff: detail.cutoff,
+                  status: detail.status,
+                  remarks: detail.remarks
+                }
+
+                hasUpdates = true
+              } else {
+                console.log(`[DEBUG] link_available - No available equipment found for type: ${equipmentType}`)
+              }
+            }
+          })
+
+          // Update shipment plan if there were changes
+          if (hasUpdates) {
+            console.log("[DEBUG] link_available - Updating shipment plan with new equipment details")
+            await tx.shipmentPlan.update({
+              where: { id: current.shipmentPlan!.id },
+              data: {
+                data: shipmentPlanData as any,
+                linkedStatus: 1,
+              },
+            })
+            console.log("[DEBUG] link_available - ✅ Equipment details updated successfully")
+          } else {
+            console.log("[DEBUG] link_available - No equipment updates needed, just marking as linked")
+            await tx.shipmentPlan.update({
+              where: { id: current.shipmentPlan!.id },
+              data: {
+                data: current.shipmentPlan!.data as any,
+                linkedStatus: 1,
+              },
+            })
+          }
+        } else {
+          console.log("[DEBUG] link_available - No equipment details found, just marking as linked")
+          await tx.shipmentPlan.update({
+            where: { id: current.shipmentPlan!.id },
+            data: {
+              data: current.shipmentPlan!.data as any,
+              linkedStatus: 1,
+            },
+          })
+        }
       })
 
       return redirect(`/liner-bookings/${params.id}/edit?assignmentId=${assignmentId}`)

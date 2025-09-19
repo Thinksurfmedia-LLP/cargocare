@@ -415,10 +415,18 @@ export function LinerBookingForm({
         // Note: Unmapped equipment should be AVAILABLE for new allocations, so we don't exclude it
         const availableEquipment = allEquipment.filter(
           (eq: any) => {
+            // Check if equipment is already allocated by checking if it has a liner booking number as tracking number
+            const hasLinerBookingNumber = eq.trackingNumber &&
+              (eq.trackingNumber.startsWith('LBN') ||
+               eq.trackingNumber.startsWith('XYZ') ||
+               eq.linerBookingAssigned);
+
+            // Also check traditional selection logic for backwards compatibility
             const isSelected = selectedTrackingNumbers.includes(eq.trackingNumber) ||
                               (eq.originalTrackingNumber && selectedTrackingNumbers.includes(eq.originalTrackingNumber));
 
-            return eq.equipment_type === equipmentType && !isSelected;
+            // Equipment is available if it's the right type AND not already allocated AND not selected
+            return eq.equipment_type === equipmentType && !hasLinerBookingNumber && !isSelected;
           }
         );
 
