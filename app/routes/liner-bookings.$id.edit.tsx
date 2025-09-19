@@ -518,9 +518,21 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const linerBookingDetails: any[] = []
     let detailIndex = 0
     while (formData.get(`liner_booking_details[${detailIndex}][temporary_booking_number]`) !== null) {
-      // In assignment mode, only include allocated booking details
+      // Check if "All Booking Assigned" is being clicked
+      const allBookingAssigned = formData.get("all_booking_assigned") === "true"
+
+      // In assignment mode, only include allocated booking details, UNLESS "All Booking Assigned" is clicked
       const isAllocated = formData.get(`liner_booking_details[${detailIndex}][allocated]`) === "true"
-      if (assignmentId && !isAllocated) {
+
+      console.log(`[DEBUG] Processing liner booking detail ${detailIndex}:`, {
+        allBookingAssigned,
+        isAllocated,
+        assignmentId: !!assignmentId,
+        willSkip: assignmentId && !isAllocated && !allBookingAssigned
+      });
+
+      if (assignmentId && !isAllocated && !allBookingAssigned) {
+        console.log(`[DEBUG] Skipping detail ${detailIndex} - not allocated and not All Booking Assigned`);
         detailIndex++
         continue
       }
@@ -598,17 +610,34 @@ export async function action({ request, params }: ActionFunctionArgs) {
       const errors: string[] = [];
 
       linerBookingDetails.forEach((detail, index) => {
-        if (!detail.liner_booking_number || detail.liner_booking_number.trim() === '') {
-          errors.push(`Liner Booking Number is required for equipment ${index + 1}`);
-        }
-        if (!detail.carrier || detail.carrier.trim() === '') {
-          errors.push(`Carrier is required for equipment ${index + 1}`);
-        }
-        if (!detail.e_t_d_of_original_planned_vessel) {
-          errors.push(`ETD of Original Planned Vessel is required for equipment ${index + 1}`);
-        }
-        if (!detail.empty_pickup_validity_from) {
-          errors.push(`Empty Pickup Validity From is required for equipment ${index + 1}`);
+        // Only validate booking details that have some content (skip empty/unused entries)
+        // A booking detail is considered "in use" if it has a temporary_booking_number, carrier, or equipment_type
+        const isBookingDetailInUse = detail.temporary_booking_number?.trim() ||
+                                     detail.carrier?.trim() ||
+                                     detail.equipment_type?.trim();
+
+        if (isBookingDetailInUse) {
+          if (!detail.liner_booking_number || detail.liner_booking_number.trim() === '') {
+            errors.push(`Liner Booking Number is required for equipment ${index + 1}`);
+          }
+          if (!detail.carrier || detail.carrier.trim() === '') {
+            errors.push(`Carrier is required for equipment ${index + 1}`);
+          }
+          if (!detail.e_t_d_of_original_planned_vessel) {
+            errors.push(`ETD of Original Planned Vessel is required for equipment ${index + 1}`);
+          }
+          if (!detail.empty_pickup_validity_from) {
+            errors.push(`Empty Pickup Validity From is required for equipment ${index + 1}`);
+          }
+          if (!detail.loading_port || detail.loading_port.trim() === '') {
+            errors.push(`Loading Port is required for equipment ${index + 1}`);
+          }
+          if (!detail.destination_country || detail.destination_country.trim() === '') {
+            errors.push(`Destination Country is required for equipment ${index + 1}`);
+          }
+          if (!detail.port_of_discharge || detail.port_of_discharge.trim() === '') {
+            errors.push(`Port of Discharge is required for equipment ${index + 1}`);
+          }
         }
       });
 
@@ -993,149 +1022,113 @@ await prisma.$transaction(async (tx) => {
           },
         })
 
-        // Update equipment tracking numbers in linked shipment plan
+        // Update equipment tracking numbers for linked bookings
         console.log("[DEBUG] link_available - Starting equipment tracking update process")
-        console.log("[DEBUG] link_available - mergedDetails count:", mergedDetails.length)
-        console.log("[DEBUG] link_available - mergedDetails with booking numbers:", mergedDetails.filter(d => d.liner_booking_number).length)
 
-        // Initialize shipmentPlanData with current data
+        // Get current shipment plan data
         let shipmentPlanData = current.shipmentPlan?.data as any
 
-        if (current.shipmentPlan && mergedDetails.some(detail => detail.liner_booking_number)) {
-          console.log("[DEBUG] link_available - Conditions met, proceeding with update")
+        if (shipmentPlanData?.equipment_details && Array.isArray(shipmentPlanData.equipment_details)) {
+          console.log("[DEBUG] link_available - Current equipment details count:", shipmentPlanData.equipment_details.length)
 
-          console.log("[DEBUG] link_available - Current shipment plan ID:", current.shipmentPlan.id)
-          console.log("[DEBUG] link_available - Equipment details count:", shipmentPlanData.equipment_details?.length || 0)
-
-          // Log current equipment details
-          if (shipmentPlanData.equipment_details) {
-            console.log("[DEBUG] link_available - Current equipment details:")
-            shipmentPlanData.equipment_details.forEach((eq: any, idx: number) => {
-              console.log(`[DEBUG]   Equipment ${idx}: ${eq.equipment_type} | ${eq.trackingNumber}`)
-            })
-          }
-
-          // Log liner booking details
-          console.log("[DEBUG] link_available - Merged liner booking details:")
-          mergedDetails.forEach((detail: any, idx: number) => {
-            console.log(`[DEBUG]   Detail ${idx}:`)
-            console.log(`[DEBUG]     - booking_for: "${detail.booking_for}"`)
-            console.log(`[DEBUG]     - equipment_type: "${detail.equipment_type}"`)
-            console.log(`[DEBUG]     - trackingNumber: "${detail.trackingNumber}"`)
-            console.log(`[DEBUG]     - liner_booking_number: "${detail.liner_booking_number}"`)
+          // Create a map of equipment types to available tracking numbers that need bookings
+          const availableEquipmentByType = new Map()
+          shipmentPlanData.equipment_details.forEach((equipment: any, idx: number) => {
+            if (!equipment.trackingNumber?.startsWith('LBN') && !equipment.trackingNumber?.startsWith('XYZ')) {
+              // This equipment doesn't have a liner booking number yet
+              const equipmentType = equipment.equipment_type
+              if (!availableEquipmentByType.has(equipmentType)) {
+                availableEquipmentByType.set(equipmentType, [])
+              }
+              availableEquipmentByType.get(equipmentType).push({ index: idx, tracking: equipment.trackingNumber })
+            }
           })
 
-          // Update equipment tracking numbers with liner booking numbers
-          if (shipmentPlanData.equipment_details && Array.isArray(shipmentPlanData.equipment_details)) {
-            // Create a map of equipmentType -> liner_booking_number
-            const equipmentTypeToBookingMap = new Map()
+          console.log("[DEBUG] link_available - Available equipment by type:", Object.fromEntries(availableEquipmentByType))
 
-            for (const detail of mergedDetails) {
-              if (detail.liner_booking_number && detail.liner_booking_number.trim()) {
-                // Get equipment type from the detail
-                let equipmentType = null
+          // Update equipment details with liner booking numbers
+          let hasUpdates = false
 
-                console.log(`[DEBUG] link_available - Processing detail:`)
-                console.log(`[DEBUG] link_available - equipment_type: "${detail.equipment_type}"`)
-                console.log(`[DEBUG] link_available - booking_for: "${detail.booking_for}"`)
-                console.log(`[DEBUG] link_available - liner_booking_number: "${detail.liner_booking_number}"`)
+          mergedDetails.forEach((detail: any) => {
+            if (detail.liner_booking_number && detail.liner_booking_number.trim()) {
+              const equipmentType = detail.equipment_type?.includes("|")
+                ? detail.equipment_type.split("|")[0]
+                : detail.equipment_type
 
-                // Try to extract equipment type from various fields
-                if (detail.equipment_type && detail.equipment_type.includes("|")) {
-                  equipmentType = detail.equipment_type.split("|")[0].trim()
-                  console.log(`[DEBUG] link_available - Extracted from equipment_type: "${equipmentType}"`)
-                } else if (detail.equipment_type && !detail.equipment_type.includes("|")) {
-                  equipmentType = detail.equipment_type.trim()
-                  console.log(`[DEBUG] link_available - Using equipment_type directly: "${equipmentType}"`)
-                } else if (detail.booking_for && detail.booking_for.includes("|")) {
-                  equipmentType = detail.booking_for.split("|")[0].trim()
-                  console.log(`[DEBUG] link_available - Extracted from booking_for: "${equipmentType}"`)
+              console.log(`[DEBUG] link_available - Processing booking: ${detail.liner_booking_number} for type: ${equipmentType}`)
+
+              // Find the first available equipment of this type to assign the booking to
+              const availableEquipment = availableEquipmentByType.get(equipmentType)
+              if (availableEquipment && availableEquipment.length > 0) {
+                const targetEquipment = availableEquipment.shift() // Take the first available
+                const equipmentIndex = targetEquipment.index
+
+                console.log(`[DEBUG] link_available - Assigning ${detail.liner_booking_number} to equipment ${equipmentIndex} (${targetEquipment.tracking})`)
+
+                // Update the equipment with all liner booking details
+                shipmentPlanData.equipment_details[equipmentIndex] = {
+                  ...shipmentPlanData.equipment_details[equipmentIndex],
+                  trackingNumber: detail.liner_booking_number,
+                  originalTrackingNumber: targetEquipment.tracking,
+                  linerBookingAssigned: true,
+                  // Add all relevant liner booking fields
+                  liner_booking_number: detail.liner_booking_number,
+                  temporary_booking_number: detail.temporary_booking_number,
+                  suffix_for_anticipatory_temporary_booking_number: detail.suffix_for_anticipatory_temporary_booking_number,
+                  mbl_number: detail.mbl_number,
+                  carrier: detail.carrier,
+                  contract: detail.contract,
+                  original_planned_vessel: detail.original_planned_vessel,
+                  e_t_d_of_original_planned_vessel: detail.e_t_d_of_original_planned_vessel,
+                  revised_planned_vessel: detail.revised_planned_vessel,
+                  e_t_d_of_revised_planned_vessel: detail.e_t_d_of_revised_planned_vessel,
+                  loading_port: detail.loading_port,
+                  port_of_discharge: detail.port_of_discharge,
+                  destination_country: detail.destination_country,
+                  vessel_and_voyage: detail.vessel_and_voyage,
+                  cutoff: detail.cutoff,
+                  status: detail.status,
+                  remarks: detail.remarks
                 }
 
-                if (equipmentType) {
-                  // If we don't have a booking number for this equipment type yet, or if we have multiple bookings for same type,
-                  // collect all booking numbers for this equipment type
-                  if (!equipmentTypeToBookingMap.has(equipmentType)) {
-                    equipmentTypeToBookingMap.set(equipmentType, [])
-                  }
-                  equipmentTypeToBookingMap.get(equipmentType).push(detail.liner_booking_number)
-                  console.log(`[DEBUG] link_available - MAPPED equipment type: ${equipmentType} -> ${detail.liner_booking_number}`)
-                } else {
-                  console.log(`[DEBUG] link_available - WARNING: Could not extract equipment type from detail`)
-                }
+                hasUpdates = true
               } else {
-                console.log(`[DEBUG] link_available - Skipping detail without liner_booking_number`)
+                console.log(`[DEBUG] link_available - No available equipment found for type: ${equipmentType}`)
               }
             }
+          })
 
-            console.log(`[DEBUG] link_available - Final mapping has ${equipmentTypeToBookingMap.size} equipment types`)
-            for (const [type, bookings] of equipmentTypeToBookingMap.entries()) {
-              console.log(`[DEBUG] link_available - Equipment type "${type}" has booking numbers:`, bookings)
-            }
-
-            // Update equipment details with liner booking numbers
-            let hasUpdates = false
-            let bookingNumberIndex = new Map() // Track which booking number to use for each equipment type
-
-            shipmentPlanData.equipment_details = shipmentPlanData.equipment_details.map((equipment: any, idx: number) => {
-              const originalTracking = equipment.trackingNumber
-              const equipmentType = equipment.equipment_type
-
-              console.log(`[DEBUG] link_available - Equipment ${idx}: type="${equipmentType}", tracking="${originalTracking}"`)
-
-              // Check if we have booking numbers for this equipment type
-              const bookingNumbers = equipmentTypeToBookingMap.get(equipmentType)
-              if (bookingNumbers && bookingNumbers.length > 0) {
-                // Get the next booking number for this equipment type
-                if (!bookingNumberIndex.has(equipmentType)) {
-                  bookingNumberIndex.set(equipmentType, 0)
-                }
-                const currentIndex = bookingNumberIndex.get(equipmentType)
-                const newBookingNumber = bookingNumbers[currentIndex % bookingNumbers.length]
-
-                // Move to next booking number for this equipment type
-                bookingNumberIndex.set(equipmentType, currentIndex + 1)
-
-                if (originalTracking !== newBookingNumber) {
-                  hasUpdates = true
-                  console.log(`[DEBUG] link_available - UPDATING equipment ${idx}: ${originalTracking} -> ${newBookingNumber}`)
-                  return {
-                    ...equipment,
-                    trackingNumber: newBookingNumber,
-                    originalTrackingNumber: originalTracking // Keep reference to original
-                  }
-                }
-              } else {
-                console.log(`[DEBUG] link_available - No booking numbers found for equipment type "${equipmentType}"`)
-              }
-
-              return equipment
+          // Update shipment plan if there were changes
+          if (hasUpdates) {
+            console.log("[DEBUG] link_available - Updating shipment plan with new equipment details")
+            await tx.shipmentPlan.update({
+              where: { id: current.shipmentPlan!.id },
+              data: {
+                data: shipmentPlanData as any,
+                linkedStatus: 1,
+              },
             })
-
-            console.log(`[DEBUG] link_available - hasUpdates: ${hasUpdates}`)
-
-            // Update the shipment plan data if there were changes
-            if (hasUpdates) {
-              console.log("[DEBUG] link_available - ✅ Equipment tracking numbers updated in shipment plan data")
-            } else {
-              console.log("[DEBUG] link_available - ❌ No equipment tracking number updates made")
-            }
+            console.log("[DEBUG] link_available - ✅ Equipment details updated successfully")
           } else {
-            console.log("[DEBUG] link_available - ❌ No equipment_details array found in shipment plan")
+            console.log("[DEBUG] link_available - No equipment updates needed, just marking as linked")
+            await tx.shipmentPlan.update({
+              where: { id: current.shipmentPlan!.id },
+              data: {
+                data: current.shipmentPlan!.data as any,
+                linkedStatus: 1,
+              },
+            })
           }
         } else {
-          console.log("[DEBUG] link_available - ❌ Conditions not met for equipment update")
-          console.log("[DEBUG] link_available - Missing shipmentPlan or no booking numbers found")
+          console.log("[DEBUG] link_available - No equipment details found, just marking as linked")
+          await tx.shipmentPlan.update({
+            where: { id: current.shipmentPlan!.id },
+            data: {
+              data: current.shipmentPlan!.data as any,
+              linkedStatus: 1,
+            },
+          })
         }
-
-        // Ensure plan is marked as linked so loader doesn't clear details
-        await tx.shipmentPlan.update({
-          where: { id: current.shipmentPlan!.id },
-          data: {
-            data: shipmentPlanData,
-            linkedStatus: 1,
-          },
-        })
       })
 
       return redirect(`/liner-bookings/${params.id}/edit?assignmentId=${assignmentId}`)
@@ -1168,6 +1161,51 @@ await prisma.$transaction(async (tx) => {
       if (detailIndexNum >= 0 && detailIndexNum < linerBookingDetails.length) {
         const detailToAllocate = linerBookingDetails[detailIndexNum]
 
+        // Validate allocation to prevent over-allocation
+        const shipmentPlanData = current.shipmentPlan?.data as any
+        if (shipmentPlanData?.equipment_details) {
+          // Calculate required equipment from shipment plan
+          const requiredEquipment = {} as Record<string, number>
+          shipmentPlanData.equipment_details.forEach((item: any) => {
+            if (item.equipment_type && item.number_of_equipment) {
+              const key = item.equipment_type
+              requiredEquipment[key] = (requiredEquipment[key] || 0) + Number.parseInt(item.number_of_equipment)
+            }
+          })
+
+          // Calculate currently allocated equipment
+          const existingDetails = Array.isArray(assignmentData.liner_booking_details)
+            ? assignmentData.liner_booking_details
+            : []
+
+          const allocatedEquipment = {} as Record<string, number>
+          existingDetails.forEach((detail: any) => {
+            if (detail.equipment_type) {
+              const equipmentType = detail.equipment_type.includes("|")
+                ? detail.equipment_type.split("|")[0]
+                : detail.equipment_type
+              allocatedEquipment[equipmentType] = (allocatedEquipment[equipmentType] || 0) + 1
+            }
+          })
+
+          // Check if this allocation would exceed requirements
+          const allocatingEquipmentType = detailToAllocate.equipment_type?.includes("|")
+            ? detailToAllocate.equipment_type.split("|")[0]
+            : detailToAllocate.equipment_type
+
+          if (allocatingEquipmentType) {
+            const currentlyAllocated = allocatedEquipment[allocatingEquipmentType] || 0
+            const required = requiredEquipment[allocatingEquipmentType] || 0
+
+            if (currentlyAllocated >= required) {
+              console.log(`[DEBUG] allocate_individual - Over-allocation prevented: ${allocatingEquipmentType} already has ${currentlyAllocated}/${required} allocated`)
+              return Response.json({
+                error: `Cannot allocate more ${allocatingEquipmentType}. Already allocated ${currentlyAllocated} of ${required} required units.`
+              }, { status: 400 })
+            }
+          }
+        }
+
         // Update the existing liner_booking_details array or create new one
         const existingDetails = Array.isArray(assignmentData.liner_booking_details)
           ? assignmentData.liner_booking_details
@@ -1177,11 +1215,8 @@ await prisma.$transaction(async (tx) => {
         const updatedDetails = [...existingDetails]
         const updatedDetail = { ...detailToAllocate, allocated: true }
 
-        // If this detail has a liner booking number, use it as the tracking number for matching
-        if (detailToAllocate.liner_booking_number) {
-          updatedDetail.trackingNumber = detailToAllocate.liner_booking_number
-          console.log(`[v0] allocate_individual - Updated detail trackingNumber to liner booking number: ${detailToAllocate.liner_booking_number}`)
-        }
+        // NOTE: trackingNumber should NOT be updated during individual allocation
+        // It should only be updated when "All Booking Assigned" is clicked
 
         updatedDetails[detailIndexNum] = updatedDetail
 
@@ -1197,56 +1232,9 @@ await prisma.$transaction(async (tx) => {
           },
         })
 
-        // Update equipment tracking numbers in linked shipment plan for individual allocation
-        if (current.shipmentPlan && detailToAllocate.liner_booking_number) {
-          console.log("[v0] allocate_individual - Updating equipment tracking numbers with liner booking numbers")
-          
-          const shipmentPlanData = current.shipmentPlan.data as any
-          
-          // Update equipment tracking numbers with liner booking numbers
-          if (shipmentPlanData.equipment_details && Array.isArray(shipmentPlanData.equipment_details)) {
-            // Get tracking number from booking_for field which contains "equipment_type|trackingNumber"
-            let trackingNumber = null
-            
-            if (detailToAllocate.booking_for && detailToAllocate.booking_for.includes("|")) {
-              trackingNumber = detailToAllocate.booking_for.split("|")[1]
-            } else if (detailToAllocate.equipment_type && detailToAllocate.equipment_type.includes("|")) {
-              trackingNumber = detailToAllocate.equipment_type.split("|")[1]
-            } else if (detailToAllocate.trackingNumber) {
-              trackingNumber = detailToAllocate.trackingNumber
-            }
-            
-            if (trackingNumber && detailToAllocate.liner_booking_number.trim()) {
-              console.log(`[v0] allocate_individual - Mapping tracking ${trackingNumber} -> booking ${detailToAllocate.liner_booking_number}`)
-              
-              // Update equipment details with liner booking number
-              let hasUpdates = false
-              shipmentPlanData.equipment_details = shipmentPlanData.equipment_details.map((equipment: any) => {
-                if (equipment.trackingNumber === trackingNumber && equipment.trackingNumber !== detailToAllocate.liner_booking_number) {
-                  hasUpdates = true
-                  console.log(`[v0] allocate_individual - Updating equipment tracking: ${equipment.trackingNumber} -> ${detailToAllocate.liner_booking_number}`)
-                  return {
-                    ...equipment,
-                    trackingNumber: detailToAllocate.liner_booking_number,
-                    originalTrackingNumber: equipment.trackingNumber // Keep reference to original
-                  }
-                }
-                return equipment
-              })
-              
-              // Save the updated shipment plan if there were changes
-              if (hasUpdates) {
-                await prisma.shipmentPlan.update({
-                  where: { id: current.shipmentPlan.id },
-                  data: {
-                    data: shipmentPlanData,
-                  },
-                })
-                console.log("[v0] allocate_individual - Shipment plan equipment tracking number updated")
-              }
-            }
-          }
-        }
+        // NOTE: Equipment tracking numbers should NOT be updated during individual allocation
+        // They should only be updated when "All Booking Assigned" is clicked
+        // This prevents confusion when requesting new bookings for remaining equipment
 
         console.log("[v0] allocate_individual - allocation completed for detail", detailIndexNum)
       }
@@ -1269,6 +1257,41 @@ await prisma.$transaction(async (tx) => {
       const assignmentData = (current.data as any) || {}
       if (assignmentData.carrier_booking_status === "Booked") {
         return Response.json({ error: "Cannot allocate to a booked assignment" }, { status: 400 })
+      }
+
+      // Validate allocation to prevent over-allocation
+      const shipmentPlanData = current.shipmentPlan?.data as any
+      if (shipmentPlanData?.equipment_details && linerBookingDetails.length > 0) {
+        // Calculate required equipment from shipment plan
+        const requiredEquipment = {} as Record<string, number>
+        shipmentPlanData.equipment_details.forEach((item: any) => {
+          if (item.equipment_type && item.number_of_equipment) {
+            const key = item.equipment_type
+            requiredEquipment[key] = (requiredEquipment[key] || 0) + Number.parseInt(item.number_of_equipment)
+          }
+        })
+
+        // Calculate equipment being allocated in this request
+        const allocatingEquipment = {} as Record<string, number>
+        linerBookingDetails.forEach((detail: any) => {
+          if (detail.equipment_type) {
+            const equipmentType = detail.equipment_type.includes("|")
+              ? detail.equipment_type.split("|")[0]
+              : detail.equipment_type
+            allocatingEquipment[equipmentType] = (allocatingEquipment[equipmentType] || 0) + 1
+          }
+        })
+
+        // Check for over-allocation
+        for (const [equipmentType, allocatingCount] of Object.entries(allocatingEquipment)) {
+          const required = requiredEquipment[equipmentType] || 0
+          if (allocatingCount > required) {
+            console.log(`[DEBUG] allocate_requested - Over-allocation prevented: ${equipmentType} trying to allocate ${allocatingCount}/${required}`)
+            return Response.json({
+              error: `Cannot allocate ${allocatingCount} units of ${equipmentType}. Only ${required} units are required.`
+            }, { status: 400 })
+          }
+        }
       }
 
       // Update assignment with the requested booking details
@@ -1317,85 +1340,9 @@ await prisma.$transaction(async (tx) => {
           console.log(`[DEBUG]     - liner_booking_number: "${detail.liner_booking_number}"`)
         })
         
-        // Update equipment tracking numbers with liner booking numbers
-        if (shipmentPlanData.equipment_details && Array.isArray(shipmentPlanData.equipment_details)) {
-          // Create a map of trackingNumber -> liner_booking_number
-          const trackingToBookingMap = new Map()
-          
-          for (const detail of linerBookingDetails) {
-            if (detail.liner_booking_number && detail.liner_booking_number.trim()) {
-              // Get tracking number from booking_for field which contains "equipment_type|trackingNumber"
-              let trackingNumber = null
-              
-              console.log(`[DEBUG] allocate_requested - Processing detail with booking_for: "${detail.booking_for}"`)
-              
-              if (detail.booking_for && detail.booking_for.includes("|")) {
-                trackingNumber = detail.booking_for.split("|")[1]
-                console.log(`[DEBUG] allocate_requested - Extracted from booking_for: "${trackingNumber}"`)
-              } else if (detail.equipment_type && detail.equipment_type.includes("|")) {
-                trackingNumber = detail.equipment_type.split("|")[1]
-                console.log(`[DEBUG] allocate_requested - Extracted from equipment_type: "${trackingNumber}"`)
-              } else if (detail.trackingNumber) {
-                trackingNumber = detail.trackingNumber
-                console.log(`[DEBUG] allocate_requested - Using trackingNumber field: "${trackingNumber}"`)
-              }
-              
-              if (trackingNumber) {
-                trackingToBookingMap.set(trackingNumber, detail.liner_booking_number)
-                console.log(`[DEBUG] allocate_requested - MAPPED: ${trackingNumber} -> ${detail.liner_booking_number}`)
-              } else {
-                console.log(`[DEBUG] allocate_requested - WARNING: Could not extract tracking number from detail`)
-              }
-            } else {
-              console.log(`[DEBUG] allocate_requested - Skipping detail without liner_booking_number`)
-            }
-          }
-          
-          console.log(`[DEBUG] allocate_requested - Final mapping has ${trackingToBookingMap.size} entries`)
-          
-          // Update equipment details with liner booking numbers
-          let hasUpdates = false
-          const originalEquipmentCount = shipmentPlanData.equipment_details.length
-          
-          shipmentPlanData.equipment_details = shipmentPlanData.equipment_details.map((equipment: any, idx: number) => {
-            const originalTracking = equipment.trackingNumber
-            const newBookingNumber = trackingToBookingMap.get(originalTracking)
-            
-            console.log(`[DEBUG] allocate_requested - Equipment ${idx}: checking "${originalTracking}" -> found mapping: "${newBookingNumber}"`)
-            
-            if (newBookingNumber && originalTracking !== newBookingNumber) {
-              hasUpdates = true
-              console.log(`[DEBUG] allocate_requested - UPDATING equipment ${idx}: ${originalTracking} -> ${newBookingNumber}`)
-              return {
-                ...equipment,
-                trackingNumber: newBookingNumber,
-                originalTrackingNumber: originalTracking // Keep reference to original
-              }
-            } else {
-              console.log(`[DEBUG] allocate_requested - No update needed for equipment ${idx}`)
-            }
-            
-            return equipment
-          })
-          
-          console.log(`[DEBUG] allocate_requested - hasUpdates: ${hasUpdates}`)
-          
-          // Save the updated shipment plan if there were changes
-          if (hasUpdates) {
-            console.log("[DEBUG] allocate_requested - Saving updated shipment plan...")
-            await prisma.shipmentPlan.update({
-              where: { id: current.shipmentPlan.id },
-              data: {
-                data: shipmentPlanData,
-              },
-            })
-            console.log("[DEBUG] allocate_requested - ✅ Shipment plan equipment tracking numbers updated successfully")
-          } else {
-            console.log("[DEBUG] allocate_requested - ❌ No updates made to shipment plan")
-          }
-        } else {
-          console.log("[DEBUG] allocate_requested - ❌ No equipment_details array found in shipment plan")
-        }
+        // NOTE: Equipment tracking numbers should NOT be updated during allocate_requested
+        // They should only be updated when "All Booking Assigned" is clicked
+        console.log("[DEBUG] allocate_requested - Skipping equipment tracking number updates (should only happen on 'All Booking Assigned')")
       } else {
         console.log("[DEBUG] allocate_requested - ❌ Conditions not met for equipment update")
         console.log("[DEBUG] allocate_requested - Missing shipmentPlan or no booking numbers found")
@@ -1421,6 +1368,9 @@ await prisma.$transaction(async (tx) => {
       const existingData = (current.data || {}) as any
       const currentStatus = existingData?.carrier_booking_status || "Awaiting MD Approval"
 
+      console.log(`[DEBUG] Assignment update - linerBookingDetails.length: ${linerBookingDetails.length}`);
+      console.log(`[DEBUG] Assignment update - linerBookingDetails:`, linerBookingDetails);
+
       const updatedData: any = {
         ...existingData,
         ...(carrier_booking_status ? { carrier_booking_status } : {}),
@@ -1429,6 +1379,9 @@ await prisma.$transaction(async (tx) => {
         ...(booking_released_to ? { booking_released_to } : {}),
         ...(linerBookingDetails.length > 0 ? { liner_booking_details: linerBookingDetails } : {}),
       }
+
+      console.log(`[DEBUG] Assignment update - updatedData will include liner_booking_details:`, linerBookingDetails.length > 0);
+      console.log(`[DEBUG] Assignment update - updatedData:`, updatedData);
 
       if (allBookingAssigned) {
   console.log("[v0] assignment: All Booking Assigned flow")

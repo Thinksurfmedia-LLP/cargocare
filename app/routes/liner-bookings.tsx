@@ -53,41 +53,48 @@ export async function loader({ request }: LoaderFunctionArgs) {
     const whereCondition: any = {}
 
     if (tab !== "assignments") {
-      whereCondition.OR = [
-        {
-          data: {
-            path: ["carrier_booking_status"],
-            equals: null,
-          },
-        },
-        {
-          data: {
-            path: ["carrier_booking_status"],
-            equals: "Confirmed",
-          },
-        },
-        {
-          data: {
-            path: ["carrier_booking_status"],
-            equals: "Completed",
-          },
-        },
-        {
-          data: {
-            path: ["carrier_booking_status"],
-            equals: "Cancelled",
-          },
-        },
-        {
-          data: {
-            path: ["carrier_booking_status"],
-            equals: "Ready for Re-linking",
-          },
-        },
-        // Include unlinked bookings regardless of status
+      // For the bookings tab, we want to show only available bookings
+      // These should NOT be linked to any shipment plan AND have appropriate status
+      whereCondition.AND = [
+        // First condition: Must not be linked to any shipment plan
         {
           shipmentPlanId: null,
         },
+        // Second condition: Must have appropriate carrier booking status
+        {
+          OR: [
+            {
+              data: {
+                path: ["carrier_booking_status"],
+                equals: null,
+              },
+            },
+            {
+              data: {
+                path: ["carrier_booking_status"],
+                equals: "Confirmed",
+              },
+            },
+            {
+              data: {
+                path: ["carrier_booking_status"],
+                equals: "Completed",
+              },
+            },
+            {
+              data: {
+                path: ["carrier_booking_status"],
+                equals: "Cancelled",
+              },
+            },
+            {
+              data: {
+                path: ["carrier_booking_status"],
+                equals: "Ready for Re-linking",
+              },
+            },
+          ]
+        }
       ]
     }
 
@@ -97,10 +104,23 @@ export async function loader({ request }: LoaderFunctionArgs) {
       // LINER_BOOKING_TEAM members can see bookings/assignments they:
       // 1. Are assigned to (assignBookingId = user.id)
       // 2. Created themselves (userId = user.id)
-      whereCondition.OR = [
-        { assignBookingId: user.id },  // Assigned to them
-        { userId: user.id }           // Created by them
-      ]
+
+      // If we already have AND conditions (from tab filtering), we need to combine properly
+      if (whereCondition.AND) {
+        // Add access control as another AND condition
+        whereCondition.AND.push({
+          OR: [
+            { assignBookingId: user.id },  // Assigned to them
+            { userId: user.id }           // Created by them
+          ]
+        });
+      } else {
+        // No existing AND conditions, just set OR for access control
+        whereCondition.OR = [
+          { assignBookingId: user.id },  // Assigned to them
+          { userId: user.id }           // Created by them
+        ]
+      }
       console.log("LINER_BOOKING_TEAM access control applied: assignBookingId OR userId =", user.id)
     }
     // ADMIN and MD can see all bookings/assignments (no filter applied) // Search functionality
@@ -277,6 +297,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
       // Combine tab filtering, access control filtering, and search conditions
       const existingOrConditions = whereCondition.OR || [];
+      const existingAndConditions = whereCondition.AND || [];
 
       // Check if OR conditions contain access control (contains assignBookingId or userId)
       const hasAccessControl = existingOrConditions.some(
@@ -286,7 +307,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
       // Build final query conditions
       const andConditions = [];
 
-      // Separate tab filtering from access control
+      // If we already have AND conditions (from tab filtering), preserve them
+      if (existingAndConditions.length > 0) {
+        andConditions.push(...existingAndConditions);
+      }
+
+      // Separate OR conditions for tab filtering from access control
       const tabFilteringConditions = existingOrConditions.filter(
         (condition: any) => condition.assignBookingId === undefined && condition.userId === undefined
       );
@@ -294,7 +320,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
         (condition: any) => condition.assignBookingId !== undefined || condition.userId !== undefined
       );
 
-      // Add tab filtering if exists
+      // Add tab filtering if exists (for assignments tab which still uses OR)
       if (tabFilteringConditions.length > 0) {
         andConditions.push({ OR: tabFilteringConditions });
       }
@@ -314,6 +340,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
         whereCondition.AND = andConditions;
         delete whereCondition.OR;
         console.log("Combined tab, access control, and search filtering applied");
+      } else if (andConditions.length === 1) {
+        // If we only have one AND condition, it might be our tab filtering
+        whereCondition.AND = andConditions;
+        delete whereCondition.OR;
       } else if (searchConditions.length > 0 && !hasAccessControl) {
         whereCondition.OR = searchConditions;
       }
