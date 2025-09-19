@@ -191,17 +191,34 @@ export async function action({ request }: ActionFunctionArgs) {
     const errors: string[] = [];
 
     linerBookingDetails.forEach((detail, index) => {
-      if (!detail.liner_booking_number || detail.liner_booking_number.trim() === '') {
-        errors.push(`Liner Booking Number is required for equipment ${index + 1}`);
-      }
-      if (!detail.carrier || detail.carrier.trim() === '') {
-        errors.push(`Carrier is required for equipment ${index + 1}`);
-      }
-      if (!detail.e_t_d_of_original_planned_vessel) {
-        errors.push(`ETD of Original Planned Vessel is required for equipment ${index + 1}`);
-      }
-      if (!detail.empty_pickup_validity_from) {
-        errors.push(`Empty Pickup Validity From is required for equipment ${index + 1}`);
+      // Only validate booking details that have some content (skip empty/unused entries)
+      // A booking detail is considered "in use" if it has a temporary_booking_number, carrier, or equipment_type
+      const isBookingDetailInUse = detail.temporary_booking_number?.trim() ||
+                                   detail.carrier?.trim() ||
+                                   detail.equipment_type?.trim();
+
+      if (isBookingDetailInUse) {
+        if (!detail.liner_booking_number || detail.liner_booking_number.trim() === '') {
+          errors.push(`Liner Booking Number is required for equipment ${index + 1}`);
+        }
+        if (!detail.carrier || detail.carrier.trim() === '') {
+          errors.push(`Carrier is required for equipment ${index + 1}`);
+        }
+        if (!detail.e_t_d_of_original_planned_vessel) {
+          errors.push(`ETD of Original Planned Vessel is required for equipment ${index + 1}`);
+        }
+        if (!detail.empty_pickup_validity_from) {
+          errors.push(`Empty Pickup Validity From is required for equipment ${index + 1}`);
+        }
+        if (!detail.loading_port || detail.loading_port.trim() === '') {
+          errors.push(`Loading Port is required for equipment ${index + 1}`);
+        }
+        if (!detail.destination_country || detail.destination_country.trim() === '') {
+          errors.push(`Destination Country is required for equipment ${index + 1}`);
+        }
+        if (!detail.port_of_discharge || detail.port_of_discharge.trim() === '') {
+          errors.push(`Port of Discharge is required for equipment ${index + 1}`);
+        }
       }
     });
 

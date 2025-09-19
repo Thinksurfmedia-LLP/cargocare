@@ -637,25 +637,19 @@ export async function action({ request, params }: ActionFunctionArgs) {
             if (currentPlan.shipmentAssignment) {
               const assignmentData = currentPlan.shipmentAssignment.data as any
               if (assignmentData.liner_booking_details && Array.isArray(assignmentData.liner_booking_details)) {
-                // Instead of filtering by liner booking number (which removes ALL equipment with same booking number),
-                // check if there are any remaining equipment that still use this liner booking number
-                const remainingEquipmentWithSameBooking = updatedEquipmentDetails.filter((eq: any, idx: number) =>
-                  !eq.unmapped && // Not unmapped
-                  eq.trackingNumber === unmappingRequest.linerBookingNumber // Still using this liner booking number
-                );
+                // For individual unmapping, PRESERVE all liner booking details
+                // The business logic is: only remove a liner booking detail if ALL equipment using that booking are unmapped
 
-                console.log(`[DEBUG] Individual unmapping - Remaining equipment with booking ${unmappingRequest.linerBookingNumber}: ${remainingEquipmentWithSameBooking.length}`);
+                // Count how many equipment are still available (not unmapped)
+                const remainingAvailableEquipment = updatedEquipmentDetails.filter((eq: any) => !eq.unmapped);
 
+                // If there are still available equipment, keep ALL liner booking details
+                // This ensures that remaining equipment can still use any of the existing bookings
                 let updatedLinerBookingDetails = assignmentData.liner_booking_details;
 
-                // Only remove the liner booking detail if NO equipment is using this booking number anymore
-                if (remainingEquipmentWithSameBooking.length === 0) {
-                  console.log(`[DEBUG] Individual unmapping - No remaining equipment with booking ${unmappingRequest.linerBookingNumber}, removing booking details`);
-                  updatedLinerBookingDetails = assignmentData.liner_booking_details.filter(
-                    (detail: any) => detail.liner_booking_number !== unmappingRequest.linerBookingNumber
-                  );
-                } else {
-                  console.log(`[DEBUG] Individual unmapping - ${remainingEquipmentWithSameBooking.length} equipment still using booking ${unmappingRequest.linerBookingNumber}, keeping all booking details`);
+                // Only clear liner booking details if NO equipment remain available
+                if (remainingAvailableEquipment.length === 0) {
+                  updatedLinerBookingDetails = [];
                 }
 
                 await prisma.shipmentAssignment.update({
@@ -780,7 +774,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
               // Remove the liner booking detail that matches the unmapped equipment
               if (originalAssignmentData.liner_booking_details && Array.isArray(originalAssignmentData.liner_booking_details)) {
                 const updatedLinerBookingDetails = originalAssignmentData.liner_booking_details.filter(
-                  (detail: any) => detail.liner_booking_number !== unmappingRequest.linerBookingNumber
+                  (detail: any, index: number) => index !== unmappingRequest.equipmentIndex
                 );
 
                 console.log("[v0] Individual unmapping - updating original assignment", {

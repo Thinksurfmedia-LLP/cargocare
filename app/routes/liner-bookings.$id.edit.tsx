@@ -518,9 +518,21 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const linerBookingDetails: any[] = []
     let detailIndex = 0
     while (formData.get(`liner_booking_details[${detailIndex}][temporary_booking_number]`) !== null) {
-      // In assignment mode, only include allocated booking details
+      // Check if "All Booking Assigned" is being clicked
+      const allBookingAssigned = formData.get("all_booking_assigned") === "true"
+
+      // In assignment mode, only include allocated booking details, UNLESS "All Booking Assigned" is clicked
       const isAllocated = formData.get(`liner_booking_details[${detailIndex}][allocated]`) === "true"
-      if (assignmentId && !isAllocated) {
+
+      console.log(`[DEBUG] Processing liner booking detail ${detailIndex}:`, {
+        allBookingAssigned,
+        isAllocated,
+        assignmentId: !!assignmentId,
+        willSkip: assignmentId && !isAllocated && !allBookingAssigned
+      });
+
+      if (assignmentId && !isAllocated && !allBookingAssigned) {
+        console.log(`[DEBUG] Skipping detail ${detailIndex} - not allocated and not All Booking Assigned`);
         detailIndex++
         continue
       }
@@ -598,17 +610,34 @@ export async function action({ request, params }: ActionFunctionArgs) {
       const errors: string[] = [];
 
       linerBookingDetails.forEach((detail, index) => {
-        if (!detail.liner_booking_number || detail.liner_booking_number.trim() === '') {
-          errors.push(`Liner Booking Number is required for equipment ${index + 1}`);
-        }
-        if (!detail.carrier || detail.carrier.trim() === '') {
-          errors.push(`Carrier is required for equipment ${index + 1}`);
-        }
-        if (!detail.e_t_d_of_original_planned_vessel) {
-          errors.push(`ETD of Original Planned Vessel is required for equipment ${index + 1}`);
-        }
-        if (!detail.empty_pickup_validity_from) {
-          errors.push(`Empty Pickup Validity From is required for equipment ${index + 1}`);
+        // Only validate booking details that have some content (skip empty/unused entries)
+        // A booking detail is considered "in use" if it has a temporary_booking_number, carrier, or equipment_type
+        const isBookingDetailInUse = detail.temporary_booking_number?.trim() ||
+                                     detail.carrier?.trim() ||
+                                     detail.equipment_type?.trim();
+
+        if (isBookingDetailInUse) {
+          if (!detail.liner_booking_number || detail.liner_booking_number.trim() === '') {
+            errors.push(`Liner Booking Number is required for equipment ${index + 1}`);
+          }
+          if (!detail.carrier || detail.carrier.trim() === '') {
+            errors.push(`Carrier is required for equipment ${index + 1}`);
+          }
+          if (!detail.e_t_d_of_original_planned_vessel) {
+            errors.push(`ETD of Original Planned Vessel is required for equipment ${index + 1}`);
+          }
+          if (!detail.empty_pickup_validity_from) {
+            errors.push(`Empty Pickup Validity From is required for equipment ${index + 1}`);
+          }
+          if (!detail.loading_port || detail.loading_port.trim() === '') {
+            errors.push(`Loading Port is required for equipment ${index + 1}`);
+          }
+          if (!detail.destination_country || detail.destination_country.trim() === '') {
+            errors.push(`Destination Country is required for equipment ${index + 1}`);
+          }
+          if (!detail.port_of_discharge || detail.port_of_discharge.trim() === '') {
+            errors.push(`Port of Discharge is required for equipment ${index + 1}`);
+          }
         }
       });
 
@@ -1421,6 +1450,9 @@ await prisma.$transaction(async (tx) => {
       const existingData = (current.data || {}) as any
       const currentStatus = existingData?.carrier_booking_status || "Awaiting MD Approval"
 
+      console.log(`[DEBUG] Assignment update - linerBookingDetails.length: ${linerBookingDetails.length}`);
+      console.log(`[DEBUG] Assignment update - linerBookingDetails:`, linerBookingDetails);
+
       const updatedData: any = {
         ...existingData,
         ...(carrier_booking_status ? { carrier_booking_status } : {}),
@@ -1429,6 +1461,9 @@ await prisma.$transaction(async (tx) => {
         ...(booking_released_to ? { booking_released_to } : {}),
         ...(linerBookingDetails.length > 0 ? { liner_booking_details: linerBookingDetails } : {}),
       }
+
+      console.log(`[DEBUG] Assignment update - updatedData will include liner_booking_details:`, linerBookingDetails.length > 0);
+      console.log(`[DEBUG] Assignment update - updatedData:`, updatedData);
 
       if (allBookingAssigned) {
   console.log("[v0] assignment: All Booking Assigned flow")
