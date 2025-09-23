@@ -109,6 +109,25 @@ class SchedulerService {
     await this.sendDailyReminderEmails();
   }
 
+  // Method to check if scheduler is working
+  getSchedulerStatus() {
+    const tasks = cron.getTasks();
+    console.log(`📋 Scheduler Status:`);
+    console.log(`- Initialized: ${this.isInitialized}`);
+    console.log(`- Active cron tasks: ${tasks.size}`);
+    tasks.forEach((task, index) => {
+      console.log(`- Task ${index + 1}: Running = ${task.running}, Destroyed = ${task.destroyed}`);
+    });
+    return {
+      initialized: this.isInitialized,
+      taskCount: tasks.size,
+      tasks: Array.from(tasks).map(task => ({
+        running: task.running,
+        destroyed: task.destroyed
+      }))
+    };
+  }
+
   stop() {
     cron.getTasks().forEach(task => task.stop());
     this.isInitialized = false;
