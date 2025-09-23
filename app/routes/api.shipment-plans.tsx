@@ -1,6 +1,21 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { requireAuth } from "~/lib/auth.server";
 import { prisma } from "~/lib/prisma.server";
+import { emailService } from "~/lib/email.server";
+import { schedulerService } from "~/lib/scheduler.server";
+
+// Initialize scheduler on first API call
+let schedulerInitialized = false;
+function ensureSchedulerInitialized() {
+  if (!schedulerInitialized) {
+    try {
+      schedulerService.init();
+      schedulerInitialized = true;
+    } catch (error) {
+      console.error("Failed to initialize scheduler:", error);
+    }
+  }
+}
 
 // Helper function to create JSON responses
 function json(data: any, init?: ResponseInit) {
@@ -110,6 +125,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
 export async function action({ request }: ActionFunctionArgs) {
   try {
+    ensureSchedulerInitialized();
     const user = await requireAuth(request);
     const method = request.method;
 
@@ -246,6 +262,48 @@ export async function action({ request }: ActionFunctionArgs) {
           },
         },
       });
+
+      // Send email notification to MDs if this is a new approval request
+      console.log("📧 Checking if email should be sent for booking_status:", data.booking_status);
+      if (data.booking_status === "Awaiting MD Approval") {
+        console.log("✅ Booking status matches 'Awaiting MD Approval' - proceeding with email");
+        try {
+          // Get all MD users
+          const mdUsers = await prisma.user.findMany({
+            where: {
+              role: {
+                name: "MD",
+              },
+              isActive: true,
+            },
+            select: {
+              email: true,
+            },
+          });
+
+          const mdEmails = mdUsers.map((user: any) => user.email);
+          console.log("📋 Found MD users:", mdUsers.length, "emails:", mdEmails);
+
+          if (mdEmails.length > 0) {
+            const baseUrl = process.env.BASE_URL || "http://localhost:5173";
+
+            await emailService.sendNewApprovalNotification(mdEmails, {
+              referenceNumber: data.reference_number || "N/A",
+              customer: data.container_movement?.customer || "N/A",
+              businessBranch: data.bussiness_branch || "N/A",
+              createdBy: shipmentPlan.user.name,
+              pendingApprovalsUrl: `${baseUrl}/pending-approvals`,
+            });
+
+            console.log(`✅ New approval notification sent to ${mdEmails.length} MD(s) for shipment plan ${shipmentPlan.id}`);
+          } else {
+            console.log("⚠️  No MD users found - email not sent");
+          }
+        } catch (emailError) {
+          console.error("❌ Failed to send new approval notification:", emailError);
+          // Don't fail the entire request if email fails
+        }
+      }
 
       return json({ shipmentPlan }, { status: 201 });
     }

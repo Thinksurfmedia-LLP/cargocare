@@ -14,6 +14,7 @@ export default [
   route("shipment-plans/new", "routes/shipment-plans.new.tsx"),
   route("shipment-plans/:id/edit", "routes/shipment-plans.$id.edit.tsx"),
   route("api/shipment-plans", "routes/api.shipment-plans.tsx"),
+  route("api/test-email", "routes/api.test-email.tsx"),
   route("liner-bookings", "routes/liner-bookings.tsx"),
   route("liner-bookings/new", "routes/liner-bookings.new.tsx"),
   route("liner-bookings/:id/edit", "routes/liner-bookings.$id.edit.tsx"),
