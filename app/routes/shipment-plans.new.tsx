@@ -352,6 +352,55 @@ export async function action({ request }: ActionFunctionArgs) {
       })
       console.log("Shipment plan created successfully:", shipmentPlan.id)
 
+      // Send email notification to MDs if this is a new approval request
+      console.log("📧 Checking if email should be sent for booking_status:", shipmentData.booking_status);
+      if (shipmentData.booking_status === "Awaiting MD Approval") {
+        console.log("✅ Booking status matches 'Awaiting MD Approval' - proceeding with email");
+        try {
+          // Dynamic import to avoid module loading issues
+          const { emailService } = await import("~/lib/email.server");
+          const { schedulerService } = await import("~/lib/scheduler.server");
+
+          // Initialize scheduler if not already done
+          schedulerService.init();
+
+          // Get all MD users
+          const mdUsers = await prisma.user.findMany({
+            where: {
+              role: {
+                name: "MD",
+              },
+              isActive: true,
+            },
+            select: {
+              email: true,
+            },
+          });
+
+          const mdEmails = mdUsers.map((user: any) => user.email);
+          console.log("📋 Found MD users:", mdUsers.length, "emails:", mdEmails);
+
+          if (mdEmails.length > 0) {
+            const baseUrl = process.env.BASE_URL || "http://localhost:5173";
+
+            await emailService.sendNewApprovalNotification(mdEmails, {
+              referenceNumber: shipmentData.reference_number || "N/A",
+              customer: shipmentData.container_movement?.customer || "N/A",
+              businessBranch: shipmentData.bussiness_branch || "N/A",
+              createdBy: user.name,
+              pendingApprovalsUrl: `${baseUrl}/pending-approvals`,
+            });
+
+            console.log(`✅ New approval notification sent to ${mdEmails.length} MD(s) for shipment plan ${shipmentPlan.id}`);
+          } else {
+            console.log("⚠️  No MD users found - email not sent");
+          }
+        } catch (emailError) {
+          console.error("❌ Failed to send new approval notification:", emailError);
+          // Don't fail the entire request if email fails
+        }
+      }
+
       return redirect("/shipment-plans")
     } catch (error) {
       console.error("Failed to create shipment plan:", error)

@@ -161,6 +161,44 @@ export function AdminLayout({ user, children }: AdminLayoutProps) {
 
           {roleName === "ADMIN" && (
             <>
+              {/* CSV Export Section */}
+              <div className="space-y-2 pt-2 border-t border-slate-700">
+                <button
+                  onClick={async () => {
+                    try {
+                      const response = await fetch('/api/export-csv', {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                        },
+                      });
+
+                      if (response.ok) {
+                        const blob = await response.blob();
+                        const url = window.URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `shipment-plans-export-${new Date().toISOString().slice(0, 10)}.csv`;
+                        document.body.appendChild(a);
+                        a.click();
+                        window.URL.revokeObjectURL(url);
+                        document.body.removeChild(a);
+                      } else {
+                        alert('Failed to export CSV. Please try again.');
+                      }
+                    } catch (error) {
+                      console.error('Export error:', error);
+                      alert('Failed to export CSV. Please try again.');
+                    }
+                  }}
+                  className="group w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-left transition-all duration-200 text-slate-300 hover:bg-green-600 hover:text-white"
+                >
+                  <span className="text-lg transition-transform duration-200 group-hover:scale-105">📊</span>
+                  <span className="font-medium">Export CSV Report</span>
+                  <span className="ml-auto text-xs bg-green-600 text-white px-2 py-1 rounded-full">Admin</span>
+                </button>
+              </div>
+
               {/* Data Points Section */}
               <div className="space-y-1">
                 <button
