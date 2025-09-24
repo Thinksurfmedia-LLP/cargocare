@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(npm run typecheck:*)",
-      "Bash(rg:*)"
+      "Bash(rg:*)",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []

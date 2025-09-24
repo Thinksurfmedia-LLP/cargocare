@@ -1,6 +1,10 @@
 import type { LoaderFunctionArgs } from "react-router";
 import { redirect } from "react-router";
 import { getUser } from "~/lib/auth.server";
+import { schedulerService } from "~/lib/scheduler.server";
+
+// Initialize scheduler when home route is loaded (happens on every server start)
+schedulerService.init();
 
 export function meta() {
   return [
