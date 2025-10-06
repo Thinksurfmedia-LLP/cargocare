@@ -287,13 +287,32 @@ export async function action({ request }: ActionFunctionArgs) {
           if (mdEmails.length > 0) {
             const baseUrl = process.env.BASE_URL || "http://localhost:5173";
 
-            await emailService.sendNewApprovalNotification(mdEmails, {
+            console.log("📦 DEBUG - Data keys:", Object.keys(data));
+
+            const containerMovement = data.container_movement || {};
+            const equipmentDetails = data.equipment_details || [];
+
+            console.log("📦 DEBUG - Container Movement:", containerMovement);
+            console.log("📦 DEBUG - Equipment Details:", equipmentDetails);
+            console.log("📦 DEBUG - Reference:", data.reference_number);
+            console.log("📦 DEBUG - Branch:", data.bussiness_branch);
+
+            const emailData = {
               referenceNumber: data.reference_number || "N/A",
-              customer: data.container_movement?.customer || "N/A",
+              customer: containerMovement.customer || "N/A",
               businessBranch: data.bussiness_branch || "N/A",
               createdBy: shipmentPlan.user.name,
+              equipmentType: equipmentDetails.map((eq: any) => eq.equipment_type).filter(Boolean).join(", ") || "N/A",
+              numberOfEquipments: equipmentDetails.length || 0,
+              portOfLoading: containerMovement.loading_port || "N/A",
+              portOfDischarge: containerMovement.port_of_discharge || "N/A",
+              finalPlaceOfDelivery: containerMovement.delivery_till || "N/A",
               pendingApprovalsUrl: `${baseUrl}/pending-approvals`,
-            });
+            };
+
+            console.log("📧 Email Data:", emailData);
+
+            await emailService.sendNewApprovalNotification(mdEmails, emailData);
 
             console.log(`✅ New approval notification sent to ${mdEmails.length} MD(s) for shipment plan ${shipmentPlan.id}`);
           } else {

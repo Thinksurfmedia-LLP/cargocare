@@ -49,6 +49,11 @@ class EmailService {
       customer: string;
       businessBranch: string;
       createdBy: string;
+      equipmentType: string;
+      numberOfEquipments: number;
+      portOfLoading: string;
+      portOfDischarge: string;
+      finalPlaceOfDelivery: string;
       pendingApprovalsUrl: string;
     }
   ): Promise<boolean> {
@@ -59,69 +64,175 @@ class EmailService {
       <html>
         <head>
           <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-            .container { max-width: 600px; margin: 0 auto; padding: 20px; background-color: #ffffff; }
-            .header { background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: white; padding: 30px 20px; text-align: center; border-radius: 12px 12px 0 0; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); }
-            .header h1 { margin: 0; font-size: 24px; font-weight: 600; }
-            .content { background-color: #ffffff; padding: 30px; border-radius: 0 0 12px 12px; border: 1px solid #e5e7eb; border-top: none; }
-            .details { background-color: #f9fafb; padding: 24px; border-radius: 8px; margin: 24px 0; border: 1px solid #e5e7eb; }
-            .details h3 { margin-top: 0; margin-bottom: 16px; color: #1e40af; font-size: 18px; font-weight: 600; }
-            .detail-row { display: flex; justify-content: space-between; align-items: center; margin: 12px 0; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }
-            .detail-row:last-child { border-bottom: none; }
-            .detail-label { font-weight: 600; color: #374151; min-width: 140px; }
-            .detail-value { color: #111827; font-weight: 500; }
-            .button { display: inline-block; background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); color: #ffffff !important; padding: 14px 28px; text-decoration: none; border-radius: 8px; margin: 24px 0; font-weight: 600; font-size: 16px; box-shadow: 0 4px 6px rgba(37, 99, 235, 0.25); transition: all 0.2s ease; }
-            .button:hover { background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%); transform: translateY(-1px); box-shadow: 0 6px 8px rgba(37, 99, 235, 0.3); }
-            .footer { text-align: center; color: #6b7280; font-size: 14px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; }
-            .intro-text { color: #4b5563; font-size: 16px; line-height: 1.6; margin-bottom: 20px; }
-            .action-text { color: #374151; font-size: 16px; line-height: 1.6; margin: 20px 0; }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+              line-height: 1.5;
+              color: #1f2937;
+              background-color: #f3f4f6;
+              margin: 0;
+              padding: 0;
+            }
+            .container {
+              max-width: 580px;
+              margin: 20px auto;
+              background-color: #ffffff;
+              border-radius: 8px;
+              overflow: hidden;
+              box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            }
+            .header {
+              background: #1e40af;
+              color: white;
+              padding: 20px;
+              text-align: center;
+            }
+            .header h1 {
+              margin: 0;
+              font-size: 18px;
+              font-weight: 600;
+            }
+            .content {
+              padding: 20px;
+            }
+            .greeting {
+              font-size: 14px;
+              color: #374151;
+              margin: 0 0 16px 0;
+            }
+            .ref-box {
+              background: #eff6ff;
+              border-left: 3px solid #2563eb;
+              padding: 12px 14px;
+              margin: 16px 0;
+            }
+            .ref-box .label {
+              font-size: 11px;
+              font-weight: 600;
+              color: #6b7280;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+            }
+            .ref-box .value {
+              font-size: 16px;
+              font-weight: 700;
+              color: #1e40af;
+              margin-top: 2px;
+            }
+            .details {
+              border: 1px solid #e5e7eb;
+              border-radius: 6px;
+              overflow: hidden;
+              margin: 16px 0;
+            }
+            .detail-row {
+              display: flex;
+              padding: 10px 14px;
+              border-bottom: 1px solid #f3f4f6;
+            }
+            .detail-row:last-child {
+              border-bottom: none;
+            }
+            .detail-row:nth-child(even) {
+              background-color: #f9fafb;
+            }
+            .detail-label {
+              font-size: 12px;
+              font-weight: 600;
+              color: #6b7280;
+              width: 140px;
+              flex-shrink: 0;
+            }
+            .detail-value {
+              font-size: 13px;
+              color: #111827;
+              font-weight: 500;
+              flex: 1;
+            }
+            .btn-container {
+              text-align: center;
+              margin: 20px 0 16px 0;
+            }
+            .btn {
+              display: inline-block;
+              background: #2563eb;
+              color: #ffffff !important;
+              padding: 12px 28px;
+              text-decoration: none;
+              border-radius: 6px;
+              font-weight: 600;
+              font-size: 13px;
+            }
+            .footer {
+              text-align: center;
+              color: #9ca3af;
+              font-size: 12px;
+              padding: 16px;
+              background-color: #f9fafb;
+              border-top: 1px solid #e5e7eb;
+            }
+            @media only screen and (max-width: 600px) {
+              .detail-row {
+                flex-direction: column;
+                gap: 2px;
+              }
+              .detail-label {
+                width: 100%;
+              }
+            }
           </style>
         </head>
         <body>
           <div class="container">
             <div class="header">
-              <h1>🚢 New Shipment Approval Required</h1>
+              <h1>New Shipment Approval Required</h1>
             </div>
             <div class="content">
-              <p class="intro-text">Dear MD,</p>
+              <p class="greeting">Dear MD,</p>
 
-              <p class="intro-text">A new shipment plan has been submitted and requires your approval.</p>
+              <div class="ref-box">
+                <div class="label">Reference Number</div>
+                <div class="value">${shipmentData.referenceNumber}</div>
+              </div>
 
               <div class="details">
-                <h3>📋 Shipment Details</h3>
                 <div class="detail-row">
-                  <span class="detail-label">Reference Number:</span>
-                  <span class="detail-value"><strong>${shipmentData.referenceNumber}</strong></span>
+                  <span class="detail-label">Customer</span>
+                  <span class="detail-value">${shipmentData.customer || 'N/A'}</span>
                 </div>
                 <div class="detail-row">
-                  <span class="detail-label">Customer:</span>
-                  <span class="detail-value">${shipmentData.customer}</span>
+                  <span class="detail-label">Branch</span>
+                  <span class="detail-value">${shipmentData.businessBranch || 'N/A'}</span>
                 </div>
                 <div class="detail-row">
-                  <span class="detail-label">Business Branch:</span>
-                  <span class="detail-value">${shipmentData.businessBranch}</span>
+                  <span class="detail-label">Equipment</span>
+                  <span class="detail-value">${shipmentData.equipmentType || 'N/A'}${shipmentData.numberOfEquipments ? ` (${shipmentData.numberOfEquipments} units)` : ''}</span>
                 </div>
                 <div class="detail-row">
-                  <span class="detail-label">Created By:</span>
-                  <span class="detail-value">${shipmentData.createdBy}</span>
+                  <span class="detail-label">POL</span>
+                  <span class="detail-value">${shipmentData.portOfLoading || 'N/A'}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">POD</span>
+                  <span class="detail-value">${shipmentData.portOfDischarge || 'N/A'}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Final Delivery</span>
+                  <span class="detail-value">${shipmentData.finalPlaceOfDelivery || 'N/A'}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Created By</span>
+                  <span class="detail-value">${shipmentData.createdBy || 'System Administrator'}</span>
                 </div>
               </div>
 
-              <p class="action-text">Please review and approve or reject this shipment plan at your earliest convenience.</p>
-
-              <div style="text-align: center;">
-                <a href="${shipmentData.pendingApprovalsUrl}" class="button" style="color: #ffffff !important;">
-                  📝 Review Pending Approvals
-                </a>
+              <div class="btn-container">
+                <a href="${shipmentData.pendingApprovalsUrl}" class="btn">Review Pending Approvals</a>
               </div>
-
-              <div class="footer">
-                <p>This is an automated notification from Cargo Care System</p>
-                <p style="margin-top: 8px; font-size: 12px; color: #9ca3af;">
-                  Please do not reply to this email. For support, contact your system administrator.
-                </p>
-              </div>
+            </div>
+            <div class="footer">
+              <p style="margin: 0;">Cargo Care System · Automated Notification</p>
             </div>
           </div>
         </body>
@@ -137,6 +248,11 @@ Shipment Details:
 - Reference Number: ${shipmentData.referenceNumber}
 - Customer: ${shipmentData.customer}
 - Business Branch: ${shipmentData.businessBranch}
+- Equipment Type: ${shipmentData.equipmentType}
+- No. of Equipments: ${shipmentData.numberOfEquipments}
+- Port of Loading: ${shipmentData.portOfLoading}
+- Port of Discharge: ${shipmentData.portOfDischarge}
+- Final Place of Delivery: ${shipmentData.finalPlaceOfDelivery}
 - Created By: ${shipmentData.createdBy}
 
 Please visit ${shipmentData.pendingApprovalsUrl} to review and approve or reject this shipment plan.
@@ -159,24 +275,53 @@ This is an automated notification from Cargo Care System.
       referenceNumber: string;
       customer: string;
       businessBranch: string;
+      equipmentType: string;
+      numberOfEquipments: number;
+      portOfLoading: string;
+      portOfDischarge: string;
+      finalPlaceOfDelivery: string;
       createdAt: string;
     }>,
     pendingApprovalsUrl: string
   ): Promise<boolean> {
     const subject = `Daily Reminder: ${pendingCount} Shipment${pendingCount > 1 ? 's' : ''} Pending Approval`;
 
-    const shipmentsList = shipments.map(shipment => `
-      <div style="border-left: 4px solid #fbbf24; padding: 10px; margin: 10px 0; background-color: #fffbeb;">
-        <strong>${shipment.referenceNumber}</strong><br>
-        Customer: ${shipment.customer}<br>
-        Branch: ${shipment.businessBranch}<br>
-        Submitted: ${new Date(shipment.createdAt).toLocaleDateString('en-US', {
-          year: 'numeric',
-          month: 'short',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit'
-        })}
+    const shipmentsList = shipments.map((shipment, index) => `
+      <div style="background: #ffffff; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; margin-bottom: 16px;">
+        <div style="background: #fef3c7; padding: 12px 16px; border-bottom: 1px solid #fde68a;">
+          <div style="font-size: 11px; font-weight: 600; color: #92400e; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Shipment ${index + 1}</div>
+          <div style="font-size: 16px; font-weight: 700; color: #78350f;">${shipment.referenceNumber}</div>
+        </div>
+        <div style="padding: 16px;">
+          <div style="display: grid; grid-template-columns: 140px 1fr; gap: 10px; font-size: 13px;">
+            <div style="color: #6b7280; font-weight: 600;">Customer</div>
+            <div style="color: #111827;">${shipment.customer}</div>
+
+            <div style="color: #6b7280; font-weight: 600;">Branch</div>
+            <div style="color: #111827;">${shipment.businessBranch}</div>
+
+            <div style="color: #6b7280; font-weight: 600;">Equipment</div>
+            <div style="color: #111827;">${shipment.equipmentType} (${shipment.numberOfEquipments} units)</div>
+
+            <div style="color: #6b7280; font-weight: 600;">POL</div>
+            <div style="color: #111827;">${shipment.portOfLoading}</div>
+
+            <div style="color: #6b7280; font-weight: 600;">POD</div>
+            <div style="color: #111827;">${shipment.portOfDischarge}</div>
+
+            <div style="color: #6b7280; font-weight: 600;">Final Delivery</div>
+            <div style="color: #111827;">${shipment.finalPlaceOfDelivery}</div>
+
+            <div style="color: #6b7280; font-weight: 600;">Submitted</div>
+            <div style="color: #111827;">${new Date(shipment.createdAt).toLocaleDateString('en-US', {
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            })}</div>
+          </div>
+        </div>
       </div>
     `).join('');
 
@@ -185,44 +330,132 @@ This is an automated notification from Cargo Care System.
       <html>
         <head>
           <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-            .header { background-color: #f59e0b; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
-            .content { background-color: #fef3c7; padding: 30px; border-radius: 0 0 8px 8px; }
-            .summary { background-color: white; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: center; }
-            .count { font-size: 48px; font-weight: bold; color: #f59e0b; margin: 10px 0; }
-            .button { display: inline-block; background-color: #f59e0b; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0; }
-            .footer { text-align: center; color: #6b7280; font-size: 14px; margin-top: 30px; }
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+              line-height: 1.6;
+              color: #1f2937;
+              background-color: #f3f4f6;
+              margin: 0;
+              padding: 0;
+            }
+            .container {
+              max-width: 600px;
+              margin: 40px auto;
+              background-color: #ffffff;
+              border-radius: 8px;
+              overflow: hidden;
+              box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            }
+            .header {
+              background: #f59e0b;
+              color: white;
+              padding: 32px 24px;
+              text-align: center;
+            }
+            .header h1 {
+              margin: 0;
+              font-size: 20px;
+              font-weight: 600;
+              letter-spacing: -0.5px;
+            }
+            .content {
+              padding: 32px 24px;
+              background-color: #fffbeb;
+            }
+            .summary {
+              background: #ffffff;
+              border: 2px solid #fbbf24;
+              padding: 24px;
+              border-radius: 8px;
+              margin: 24px 0;
+              text-align: center;
+            }
+            .count {
+              font-size: 48px;
+              font-weight: 700;
+              color: #f59e0b;
+              margin: 0;
+              line-height: 1;
+            }
+            .count-label {
+              font-size: 14px;
+              font-weight: 600;
+              color: #92400e;
+              margin-top: 8px;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+            }
+            .shipments-section {
+              margin: 24px 0;
+            }
+            .section-title {
+              font-size: 15px;
+              font-weight: 600;
+              color: #374151;
+              margin-bottom: 16px;
+            }
+            .button-container {
+              text-align: center;
+              margin: 32px 0 24px 0;
+            }
+            .button {
+              display: inline-block;
+              background: #f59e0b;
+              color: #ffffff !important;
+              padding: 14px 32px;
+              text-decoration: none;
+              border-radius: 6px;
+              font-weight: 600;
+              font-size: 14px;
+              transition: background 0.2s ease;
+            }
+            .button:hover {
+              background: #d97706;
+            }
+            .footer {
+              text-align: center;
+              color: #9ca3af;
+              font-size: 13px;
+              padding: 24px;
+              background-color: #f9fafb;
+              border-top: 1px solid #e5e7eb;
+            }
+            .greeting {
+              font-size: 15px;
+              color: #374151;
+              margin-bottom: 8px;
+            }
           </style>
         </head>
         <body>
           <div class="container">
             <div class="header">
-              <h1>⏰ Daily Approval Reminder</h1>
+              <h1>Daily Approval Reminder</h1>
             </div>
             <div class="content">
-              <p>Dear MD,</p>
+              <p class="greeting">Dear MD,</p>
 
               <div class="summary">
                 <div class="count">${pendingCount}</div>
-                <p><strong>Shipment${pendingCount > 1 ? 's' : ''} Awaiting Your Approval</strong></p>
+                <div class="count-label">Shipment${pendingCount > 1 ? 's' : ''} Awaiting Approval</div>
               </div>
 
-              <p>The following shipment plans are pending your approval:</p>
-
-              ${shipmentsList}
-
-              <p>Please take a moment to review these pending approvals to keep operations running smoothly.</p>
-
-              <a href="${pendingApprovalsUrl}" class="button">
-                Review All Pending Approvals
-              </a>
-
-              <div class="footer">
-                <p>This is an automated daily reminder from Cargo Care System</p>
-                <p>You receive this reminder every day at 12:00 PM IST when there are pending approvals</p>
+              <div class="shipments-section">
+                <div class="section-title">Pending Shipments:</div>
+                ${shipmentsList}
               </div>
+
+              <div class="button-container">
+                <a href="${pendingApprovalsUrl}" class="button">
+                  Review All Pending Approvals
+                </a>
+              </div>
+            </div>
+            <div class="footer">
+              <p style="margin: 0 0 8px 0;">Cargo Care System - Daily Reminder</p>
+              <p style="margin: 0; font-size: 12px; color: #d1d5db;">Sent daily at 12:00 PM IST when approvals are pending</p>
             </div>
           </div>
         </body>
@@ -235,7 +468,14 @@ Daily Approval Reminder
 ${pendingCount} shipment${pendingCount > 1 ? 's' : ''} awaiting your approval:
 
 ${shipments.map(shipment => `
-- ${shipment.referenceNumber} | ${shipment.customer} | ${shipment.businessBranch} | ${new Date(shipment.createdAt).toLocaleDateString()}
+- ${shipment.referenceNumber}
+  Customer: ${shipment.customer}
+  Branch: ${shipment.businessBranch}
+  Equipment: ${shipment.equipmentType} (${shipment.numberOfEquipments} units)
+  POL: ${shipment.portOfLoading}
+  POD: ${shipment.portOfDischarge}
+  Final Delivery: ${shipment.finalPlaceOfDelivery}
+  Submitted: ${new Date(shipment.createdAt).toLocaleDateString()}
 `).join('')}
 
 Please visit ${pendingApprovalsUrl} to review all pending approvals.

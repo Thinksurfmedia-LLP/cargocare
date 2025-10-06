@@ -75,10 +75,18 @@ class SchedulerService {
       // Prepare shipment data for email
       const shipments = pendingApprovals.map((plan: any) => {
         const planData = plan.data as any;
+        const containerMovement = planData.container_movement || {};
+        const equipmentDetails = planData.equipment_details || [];
+
         return {
           referenceNumber: planData.reference_number || "N/A",
-          customer: planData.container_movement?.customer || "N/A",
+          customer: containerMovement.customer || "N/A",
           businessBranch: planData.bussiness_branch || "N/A",
+          equipmentType: equipmentDetails.map((eq: any) => eq.equipment_type).filter(Boolean).join(", ") || "N/A",
+          numberOfEquipments: equipmentDetails.length || 0,
+          portOfLoading: containerMovement.loading_port || "N/A",
+          portOfDischarge: containerMovement.port_of_discharge || "N/A",
+          finalPlaceOfDelivery: containerMovement.final_place_of_delivery ?? "N/A",
           createdAt: plan.createdAt.toISOString(),
         };
       });

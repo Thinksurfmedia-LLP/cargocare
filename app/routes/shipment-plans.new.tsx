@@ -383,11 +383,19 @@ export async function action({ request }: ActionFunctionArgs) {
           if (mdEmails.length > 0) {
             const baseUrl = process.env.BASE_URL || "http://localhost:5173";
 
+            const containerMovement = shipmentData.container_movement || {};
+            const equipmentDetails = shipmentData.equipment_details || [];
+
             await emailService.sendNewApprovalNotification(mdEmails, {
               referenceNumber: shipmentData.reference_number || "N/A",
-              customer: shipmentData.container_movement?.customer || "N/A",
+              customer: containerMovement.customer || "N/A",
               businessBranch: shipmentData.bussiness_branch || "N/A",
               createdBy: user.name,
+              equipmentType: equipmentDetails.map((eq: any) => eq.equipment_type).filter(Boolean).join(", ") || "N/A",
+              numberOfEquipments: equipmentDetails.length || 0,
+              portOfLoading: containerMovement.loading_port || "N/A",
+              portOfDischarge: containerMovement.port_of_discharge || "N/A",
+              finalPlaceOfDelivery: containerMovement.delivery_till || "N/A",
               pendingApprovalsUrl: `${baseUrl}/pending-approvals`,
             });
 

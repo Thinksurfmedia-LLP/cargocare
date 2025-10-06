@@ -3,7 +3,9 @@
     "allow": [
       "Bash(npm run typecheck:*)",
       "Bash(rg:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(cat:*)",
+      "Bash(taskkill:*)"
     ],
     "deny": [],
     "ask": []
