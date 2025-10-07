@@ -297,12 +297,25 @@ export async function action({ request }: ActionFunctionArgs) {
             console.log("📦 DEBUG - Reference:", data.reference_number);
             console.log("📦 DEBUG - Branch:", data.bussiness_branch);
 
+            // Group equipment by type and count
+            const equipmentCounts = equipmentDetails.reduce((acc: any, eq: any) => {
+              if (eq.equipment_type) {
+                acc[eq.equipment_type] = (acc[eq.equipment_type] || 0) + 1;
+              }
+              return acc;
+            }, {});
+
+            // Format equipment as "Type (X units)" for each type
+            const formattedEquipment = Object.entries(equipmentCounts)
+              .map(([type, count]) => `${type} (${count} unit${count !== 1 ? 's' : ''})`)
+              .join(", ") || "N/A";
+
             const emailData = {
               referenceNumber: data.reference_number || "N/A",
               customer: containerMovement.customer || "N/A",
               businessBranch: data.bussiness_branch || "N/A",
               createdBy: shipmentPlan.user.name,
-              equipmentType: equipmentDetails.map((eq: any) => eq.equipment_type).filter(Boolean).join(", ") || "N/A",
+              equipmentType: formattedEquipment,
               numberOfEquipments: equipmentDetails.length || 0,
               portOfLoading: containerMovement.loading_port || "N/A",
               portOfDischarge: containerMovement.port_of_discharge || "N/A",

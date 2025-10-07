@@ -207,7 +207,7 @@ class EmailService {
                 </div>
                 <div class="detail-row">
                   <span class="detail-label">Equipment</span>
-                  <span class="detail-value">${shipmentData.equipmentType || 'N/A'}${shipmentData.numberOfEquipments ? ` (${shipmentData.numberOfEquipments} units)` : ''}</span>
+                  <span class="detail-value" style="white-space: pre-line;">${(shipmentData.equipmentType || 'N/A').split(', ').join('\n')}</span>
                 </div>
                 <div class="detail-row">
                   <span class="detail-label">POL</span>
@@ -301,7 +301,7 @@ This is an automated notification from Cargo Care System.
             <div style="color: #111827;">${shipment.businessBranch}</div>
 
             <div style="color: #6b7280; font-weight: 600;">Equipment</div>
-            <div style="color: #111827;">${shipment.equipmentType} (${shipment.numberOfEquipments} units)</div>
+            <div style="color: #111827; white-space: pre-line;">${shipment.equipmentType.split(', ').join('\n')}</div>
 
             <div style="color: #6b7280; font-weight: 600;">POL</div>
             <div style="color: #111827;">${shipment.portOfLoading}</div>

@@ -13,9 +13,11 @@ class SchedulerService {
 
     console.log('Initializing email scheduler...');
 
-    // Schedule daily reminder at 12:00 PM IST (6:30 AM UTC)
+    // Schedule daily reminder at 12:00 PM IST (noon)
     // Cron format: minute hour day month dayOfWeek
-    cron.schedule('30 6 * * *', async () => {
+    // Using local server time, not UTC
+    cron.schedule('0 12 * * *', async () => {
+      console.log('⏰ Cron job triggered at:', new Date().toLocaleString());
       await this.sendDailyReminderEmails();
     });
 
@@ -78,11 +80,24 @@ class SchedulerService {
         const containerMovement = planData.container_movement || {};
         const equipmentDetails = planData.equipment_details || [];
 
+        // Group equipment by type and count
+        const equipmentCounts = equipmentDetails.reduce((acc: any, eq: any) => {
+          if (eq.equipment_type) {
+            acc[eq.equipment_type] = (acc[eq.equipment_type] || 0) + 1;
+          }
+          return acc;
+        }, {});
+
+        // Format equipment as "Type (X units)" for each type
+        const formattedEquipment = Object.entries(equipmentCounts)
+          .map(([type, count]) => `${type} (${count} unit${count !== 1 ? 's' : ''})`)
+          .join(", ") || "N/A";
+
         return {
           referenceNumber: planData.reference_number || "N/A",
           customer: containerMovement.customer || "N/A",
           businessBranch: planData.bussiness_branch || "N/A",
-          equipmentType: equipmentDetails.map((eq: any) => eq.equipment_type).filter(Boolean).join(", ") || "N/A",
+          equipmentType: formattedEquipment,
           numberOfEquipments: equipmentDetails.length || 0,
           portOfLoading: containerMovement.loading_port || "N/A",
           portOfDischarge: containerMovement.port_of_discharge || "N/A",
