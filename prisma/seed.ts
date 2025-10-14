@@ -163,16 +163,17 @@ async function seedDataPoints() {
 
   // Business Branches
   const businessBranches = [
-    { name: "Head Office", code: "HO" },
-    { name: "Karachi Branch", code: "KHI" },
-    { name: "Lahore Branch", code: "LHE" },
-    { name: "Islamabad Branch", code: "ISB" },
-    { name: "Faisalabad Branch", code: "FSD" },
-    { name: "Multan Branch", code: "MLT" },
-    { name: "Peshawar Branch", code: "PSH" },
-    { name: "Quetta Branch", code: "QTA" },
-    { name: "Sialkot Branch", code: "SKT" },
-    { name: "Gujranwala Branch", code: "GJR" },
+    { name: "Mumbai", code: "MUM" },
+    { name: "Kochi", code: "KOC" },
+    { name: "Chennai", code: "CHE" },
+    { name: "Tuticorin", code: "TUT" },
+    { name: "Goa", code: "GOA" },
+    { name: "Bengaluru", code: "BEN" },
+    { name: "Vizag", code: "VIZ" },
+    { name: "Vadodara", code: "VAD" },
+    { name: "Ahmedabad", code: "AHM" },
+    { name: "Delhi", code: "DEL" },
+    { name: "Kolkata", code: "KOL" },
   ];
 
   for (const branch of businessBranches) {
@@ -359,7 +360,7 @@ async function seedDataPoints() {
   // Ports of Discharge
   const portsOfDischarge = [
     // { name: "Port of Hamburg", country: "Germany" },
-    { name: "Puerto Quetzal", country:  "Guatemala" },
+    { name: "Puerto Quetzal (GTPRQ)", country:  "Guatemala" },
 { name:   "Felixstowe (GBFXT)",  country:  "United Kingdom"  },
 { name:   "Port Klang (MYPKG)",  country:  "Malaysia"  },
 { name:   "Colombo (LKCMB)",  country:  "Sri Lanka"  },
@@ -1278,8 +1279,7 @@ async function seedDataPoints() {
 { name: "TO ORDER OF SHIPPER", orgTypes: ["Consignee", "Customer"] },
 { name: "GLOBAL GIFTS & NOVELTIES LLC", orgTypes: ["Consignee", "Customer"] },
 { name: "WORLD MARKET MANAGEMENT SERVICES LLC", orgTypes: ["Consignee", "Customer"] },
-{ name: "WILD BULL SERVICES, INC.", orgTypes:
- ["Consignee", "Customer"] },
+{ name: "WILD BULL SERVICES, INC.", orgTypes: ["Consignee", "Customer"] },
 { name: "TO ORDER OF BANK", orgTypes: ["Consignee", "Customer"] },
 { name: "MC POLYSAN LTD", orgTypes: ["Consignee", "Customer"] },
 { name: "WILD BULL SERVICES, INC", orgTypes: ["Consignee", "Customer"] },
