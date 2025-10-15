@@ -5,7 +5,8 @@
       "Bash(rg:*)",
       "Bash(curl:*)",
       "Bash(cat:*)",
-      "Bash(taskkill:*)"
+      "Bash(taskkill:*)",
+      "Bash(npm run build)"
     ],
     "deny": [],
     "ask": []

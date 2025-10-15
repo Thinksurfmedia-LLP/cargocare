@@ -4,7 +4,11 @@ import { defineConfig } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 
 export default defineConfig({
-  plugins: [tailwindcss(), reactRouter(), tsconfigPaths()],
+  plugins: [
+    tsconfigPaths(),
+    tailwindcss(),
+    reactRouter(),
+  ],
   optimizeDeps: {
     exclude: [
       "nodemailer",
@@ -15,5 +19,10 @@ export default defineConfig({
   },
   ssr: {
     external: ["nodemailer", "node-cron"],
+  },
+  resolve: {
+    alias: {
+      "~": "/app",
+    },
   },
 });
