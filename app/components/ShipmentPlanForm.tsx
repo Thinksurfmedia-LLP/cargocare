@@ -28,6 +28,7 @@ interface ShipmentPlanFormProps {
   planData?: any;
   shipmentPlan?: any;
   user: any;
+  defaultSalesPersonId?: string | null;
 }
 
 export function ShipmentPlanForm({
@@ -38,6 +39,7 @@ export function ShipmentPlanForm({
   planData = {},
   shipmentPlan,
   user,
+  defaultSalesPersonId,
 }: ShipmentPlanFormProps) {
   const [specificStuffing, setSpecificStuffing] = useState(
     planData.container_movement?.specific_stuffing_requirement || false
@@ -1906,11 +1908,12 @@ export function ShipmentPlanForm({
                         defaultValue={
                           actionData?.formData?.sales_person_id ||
                           shipmentPlan?.salesPersonId ||
-                          user.id
+                          defaultSalesPersonId ||
+                          ""
                         }
-                        options={dataPoints.allUsers?.map((u: any) => ({
-                          value: u.id,
-                          label: `👤 ${u.name} (${u.businessBranch?.name || 'No Branch'})`,
+                        options={dataPoints.salesPersons?.map((sp: any) => ({
+                          value: sp.id,
+                          label: sp.name,
                         })) || []}
                         placeholder="Select sales person"
                         className="border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"

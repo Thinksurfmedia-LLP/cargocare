@@ -29,7 +29,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       vessels,
       carriers,
       organizations,
-      allUsers,
+      salesPersons,
     ] = await Promise.all([
       prisma.businessBranch.findMany({ orderBy: { name: "asc" } }),
       prisma.commodity.findMany({ orderBy: { name: "asc" } }),
@@ -40,11 +40,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       prisma.vessel.findMany({ orderBy: { name: "asc" } }),
       prisma.carrier.findMany({ orderBy: { name: "asc" } }),
       prisma.organization.findMany({ orderBy: { name: "asc" } }),
-      prisma.user.findMany({
-        where: { isActive: true },
-        include: { role: true, businessBranch: true },
-        orderBy: { name: "asc" }
-      }),
+      prisma.salesPerson.findMany({ orderBy: { name: "asc" } }),
     ])
 
     // Filter business branches based on user's role and assigned branch
@@ -55,8 +51,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
     }
     // ADMIN users can create shipment plans for any business branch
 
+    // Find matching sales person for current user (by name)
+    const defaultSalesPerson = salesPersons.find(sp => sp.name === user.name);
+
     return {
       user,
+      defaultSalesPersonId: defaultSalesPerson?.id || null,
       dataPoints: {
         businessBranches,
         commodities,
@@ -67,7 +67,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
         vessels,
         carriers,
         organizations,
-        allUsers,
+        salesPersons,
       },
     }
   } catch (error) {
@@ -355,7 +355,7 @@ export async function action({ request }: ActionFunctionArgs) {
         data: {
           data: shipmentData,
           userId: user.id,
-          salesPersonId: sales_person_id || user.id, // Default to creator if not specified
+          salesPersonId: sales_person_id || null,
           linkedStatus: 0,
         },
       })
@@ -409,17 +409,21 @@ export async function action({ request }: ActionFunctionArgs) {
               .join(", ") || "N/A";
 
             // Get sales person name
-            const salesPersonData = await prisma.user.findUnique({
-              where: { id: sales_person_id || user.id },
-              select: { name: true }
-            });
+            let salesPersonName = "Not Assigned";
+            if (sales_person_id) {
+              const salesPersonData = await prisma.salesPerson.findUnique({
+                where: { id: sales_person_id },
+                select: { name: true }
+              });
+              salesPersonName = salesPersonData?.name || "Not Assigned";
+            }
 
             await emailService.sendNewApprovalNotification(mdEmails, {
               referenceNumber: shipmentData.reference_number || "N/A",
               customer: containerMovement.customer || "N/A",
               businessBranch: shipmentData.bussiness_branch || "N/A",
               createdBy: user.name,
-              salesPerson: salesPersonData?.name || user.name,
+              salesPerson: salesPersonName,
               equipmentType: formattedEquipment,
               numberOfEquipments: equipmentDetails.length || 0,
               portOfLoading: containerMovement.loading_port || "N/A",
@@ -453,7 +457,7 @@ export async function action({ request }: ActionFunctionArgs) {
 }
 
 export default function NewShipmentPlan() {
-  const { user, dataPoints } = useLoaderData<typeof loader>()
+  const { user, dataPoints, defaultSalesPersonId } = useLoaderData<typeof loader>()
   const actionData = useActionData<typeof action>()
   const navigation = useNavigation()
 
@@ -508,6 +512,7 @@ export default function NewShipmentPlan() {
             actionData={actionData}
             isSubmitting={isSubmitting}
             user={user}
+            defaultSalesPersonId={defaultSalesPersonId}
           />
         </div>
       </div>

@@ -94,7 +94,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       carriers,
       organizations,
       linerBookingUsers,
-      allUsers,
+      salesPersons,
     ] = await Promise.all([
       prisma.businessBranch.findMany({ orderBy: { name: "asc" } }),
       prisma.commodity.findMany({ orderBy: { name: "asc" } }),
@@ -119,11 +119,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
           name: "asc",
         },
       }),
-      prisma.user.findMany({
-        where: { isActive: true },
-        include: { role: true, businessBranch: true },
-        orderBy: { name: "asc" }
-      }),
+      prisma.salesPerson.findMany({ orderBy: { name: "asc" } }),
     ])
 
     // Fetch individual equipment unmapping requests for this shipment plan
@@ -154,10 +150,14 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     }
     // ADMIN users can edit any business branch
 
+    // Find matching sales person for current user (by name)
+    const defaultSalesPerson = salesPersons.find(sp => sp.name === user.name);
+
     return {
       user,
       shipmentPlan,
       individualUnmappingRequests,
+      defaultSalesPersonId: defaultSalesPerson?.id || null,
       dataPoints: {
         businessBranches,
         commodities,
@@ -169,7 +169,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         carriers,
         organizations,
         linerBookingUsers,
-        allUsers,
+        salesPersons,
       },
     }
   } catch (error) {
@@ -1253,7 +1253,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
           where: { id: planId },
           data: {
             data: shipmentData,
-            salesPersonId: sales_person_id || existingPlan.salesPersonId || user.id,
+            salesPersonId: sales_person_id || existingPlan.salesPersonId || null,
           },
         })
       }
@@ -1274,7 +1274,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 }
 
 export default function EditShipmentPlan() {
-  const { user, shipmentPlan, dataPoints, individualUnmappingRequests } = useLoaderData<typeof loader>()
+  const { user, shipmentPlan, dataPoints, individualUnmappingRequests, defaultSalesPersonId } = useLoaderData<typeof loader>()
   const actionData = useActionData<typeof action>()
   const navigation = useNavigation()
 
@@ -1533,6 +1533,7 @@ export default function EditShipmentPlan() {
             planData={planData}
             shipmentPlan={shipmentPlan}
             user={user}
+            defaultSalesPersonId={defaultSalesPersonId}
           />
         </div>
       </div>

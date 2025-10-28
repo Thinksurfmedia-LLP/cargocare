@@ -234,6 +234,10 @@ class EmailService {
                   <span class="detail-label">Created By</span>
                   <span class="detail-value">${shipmentData.createdBy || 'System Administrator'}</span>
                 </div>
+                <div class="detail-row">
+                  <span class="detail-label">Sales Person</span>
+                  <span class="detail-value">${shipmentData.salesPerson || 'Not Assigned'}</span>
+                </div>
               </div>
 
               <div class="btn-container">
@@ -257,13 +261,13 @@ Shipment Details:
 - Reference Number: ${shipmentData.referenceNumber}
 - Customer: ${shipmentData.customer}
 - Business Branch: ${shipmentData.businessBranch}
-- Sales Person: ${shipmentData.salesPerson}
 - Equipment Type: ${shipmentData.equipmentType}
 - No. of Equipments: ${shipmentData.numberOfEquipments}
 - Port of Loading: ${shipmentData.portOfLoading}
 - Port of Discharge: ${shipmentData.portOfDischarge}
 - Final Place of Delivery: ${shipmentData.finalPlaceOfDelivery}
 - Created By: ${shipmentData.createdBy}
+- Sales Person: ${shipmentData.salesPerson || 'Not Assigned'}
 
 Please visit ${shipmentData.pendingApprovalsUrl} to review and approve or reject this shipment plan.
 
