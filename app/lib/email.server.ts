@@ -53,6 +53,7 @@ class EmailService {
       customer: string;
       businessBranch: string;
       createdBy: string;
+      salesPerson: string;
       equipmentType: string;
       numberOfEquipments: number;
       portOfLoading: string;
@@ -193,7 +194,7 @@ class EmailService {
               <h1>New Shipment Approval Required</h1>
             </div>
             <div class="content">
-              <p class="greeting">Dear MD,</p>
+              <p class="greeting">Dear Joy Sir,</p>
 
               <div class="ref-box">
                 <div class="label">Reference Number</div>
@@ -208,6 +209,10 @@ class EmailService {
                 <div class="detail-row">
                   <span class="detail-label">Branch</span>
                   <span class="detail-value">${shipmentData.businessBranch || 'N/A'}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Sales Person</span>
+                  <span class="detail-value">${shipmentData.salesPerson || 'N/A'}</span>
                 </div>
                 <div class="detail-row">
                   <span class="detail-label">Equipment</span>
@@ -236,7 +241,7 @@ class EmailService {
               </div>
             </div>
             <div class="footer">
-              <p style="margin: 0;">Cargo Care System · Automated Notification</p>
+              <p style="margin: 0;">Cargocare Booking Management System · Automated Notification</p>
             </div>
           </div>
         </body>
@@ -252,6 +257,7 @@ Shipment Details:
 - Reference Number: ${shipmentData.referenceNumber}
 - Customer: ${shipmentData.customer}
 - Business Branch: ${shipmentData.businessBranch}
+- Sales Person: ${shipmentData.salesPerson}
 - Equipment Type: ${shipmentData.equipmentType}
 - No. of Equipments: ${shipmentData.numberOfEquipments}
 - Port of Loading: ${shipmentData.portOfLoading}
@@ -261,7 +267,7 @@ Shipment Details:
 
 Please visit ${shipmentData.pendingApprovalsUrl} to review and approve or reject this shipment plan.
 
-This is an automated notification from Cargo Care System.
+This is an automated notification from Cargocare Booking Management System.
     `;
 
     return await this.sendEmail({
@@ -439,7 +445,7 @@ This is an automated notification from Cargo Care System.
               <h1>Daily Approval Reminder</h1>
             </div>
             <div class="content">
-              <p class="greeting">Dear MD,</p>
+              <p class="greeting">Dear Joy Sir,</p>
 
               <div class="summary">
                 <div class="count">${pendingCount}</div>
@@ -458,8 +464,7 @@ This is an automated notification from Cargo Care System.
               </div>
             </div>
             <div class="footer">
-              <p style="margin: 0 0 8px 0;">Cargo Care System - Daily Reminder</p>
-              <p style="margin: 0; font-size: 12px; color: #d1d5db;">Sent daily at 12:00 PM IST when approvals are pending</p>
+              <p style="margin: 0 0 8px 0;">Cargocare Booking Management System - Daily Reminder</p>
             </div>
           </div>
         </body>

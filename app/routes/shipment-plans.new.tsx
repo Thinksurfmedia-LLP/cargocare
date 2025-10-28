@@ -29,6 +29,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       vessels,
       carriers,
       organizations,
+      allUsers,
     ] = await Promise.all([
       prisma.businessBranch.findMany({ orderBy: { name: "asc" } }),
       prisma.commodity.findMany({ orderBy: { name: "asc" } }),
@@ -39,6 +40,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
       prisma.vessel.findMany({ orderBy: { name: "asc" } }),
       prisma.carrier.findMany({ orderBy: { name: "asc" } }),
       prisma.organization.findMany({ orderBy: { name: "asc" } }),
+      prisma.user.findMany({
+        where: { isActive: true },
+        include: { role: true, businessBranch: true },
+        orderBy: { name: "asc" }
+      }),
     ])
 
     // Filter business branches based on user's role and assigned branch
@@ -61,6 +67,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
         vessels,
         carriers,
         organizations,
+        allUsers,
       },
     }
   } catch (error) {
@@ -161,6 +168,7 @@ export async function action({ request }: ActionFunctionArgs) {
     const loading_port = formData.get("loading_port") as string
     const destination_country = formData.get("destination_country") as string
     const customer = formData.get("customer") as string
+    const sales_person_id = formData.get("sales_person_id") as string
 
     // Validate required fields
     if (!bussiness_branch) {
@@ -347,6 +355,7 @@ export async function action({ request }: ActionFunctionArgs) {
         data: {
           data: shipmentData,
           userId: user.id,
+          salesPersonId: sales_person_id || user.id, // Default to creator if not specified
           linkedStatus: 0,
         },
       })
@@ -399,11 +408,18 @@ export async function action({ request }: ActionFunctionArgs) {
               .map(([type, count]) => `${type} (${count} unit${count !== 1 ? 's' : ''})`)
               .join(", ") || "N/A";
 
+            // Get sales person name
+            const salesPersonData = await prisma.user.findUnique({
+              where: { id: sales_person_id || user.id },
+              select: { name: true }
+            });
+
             await emailService.sendNewApprovalNotification(mdEmails, {
               referenceNumber: shipmentData.reference_number || "N/A",
               customer: containerMovement.customer || "N/A",
               businessBranch: shipmentData.bussiness_branch || "N/A",
               createdBy: user.name,
+              salesPerson: salesPersonData?.name || user.name,
               equipmentType: formattedEquipment,
               numberOfEquipments: equipmentDetails.length || 0,
               portOfLoading: containerMovement.loading_port || "N/A",

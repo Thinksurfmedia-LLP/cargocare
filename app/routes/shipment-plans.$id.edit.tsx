@@ -94,6 +94,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       carriers,
       organizations,
       linerBookingUsers,
+      allUsers,
     ] = await Promise.all([
       prisma.businessBranch.findMany({ orderBy: { name: "asc" } }),
       prisma.commodity.findMany({ orderBy: { name: "asc" } }),
@@ -117,6 +118,11 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         orderBy: {
           name: "asc",
         },
+      }),
+      prisma.user.findMany({
+        where: { isActive: true },
+        include: { role: true, businessBranch: true },
+        orderBy: { name: "asc" }
       }),
     ])
 
@@ -163,6 +169,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         carriers,
         organizations,
         linerBookingUsers,
+        allUsers,
       },
     }
   } catch (error) {
@@ -1030,6 +1037,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const loading_port = formData.get("loading_port") as string
     const destination_country = formData.get("destination_country") as string
     const customer = formData.get("customer") as string
+    const sales_person_id = formData.get("sales_person_id") as string
 
     // Parse package details from form data
     const packageDetails: any[] = []
@@ -1234,6 +1242,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
             where: { id: planId },
             data: {
               data: shipmentData,
+              salesPersonId: sales_person_id || existingPlan.salesPersonId || user.id,
               shipmentAssignmentId: assignment.id,
               linkedStatus: 1, // Set linked status
             },
@@ -1244,6 +1253,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
           where: { id: planId },
           data: {
             data: shipmentData,
+            salesPersonId: sales_person_id || existingPlan.salesPersonId || user.id,
           },
         })
       }

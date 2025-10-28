@@ -84,6 +84,7 @@ async function main() {
 
   let plannerUser: any = null;
   let bookingUser: any = null;
+  let salesUser: any = null;
 
   if (shipmentPlanRole) {
     const shipmentUserEmail = "planner@cargocare.com";
@@ -122,7 +123,7 @@ async function main() {
 
     if (!existingBookingUser) {
       const passwordHash = await bcrypt.hash("booking123", 12);
-      
+
       bookingUser = await prisma.user.create({
         data: {
           email: bookingUserEmail,
@@ -135,11 +136,41 @@ async function main() {
           roleId: linerBookingRole.id,
         },
       });
-      
+
       console.log(`✅ Created liner booking user: ${bookingUserEmail} (password: booking123)`);
     } else {
       bookingUser = existingBookingUser;
       console.log(`ℹ️  Liner booking user already exists: ${bookingUserEmail}`);
+    }
+  }
+
+  // Create a sales person user for testing
+  if (shipmentPlanRole) {
+    const salesUserEmail = "sales@cargocare.com";
+    const existingSalesUser = await prisma.user.findUnique({
+      where: { email: salesUserEmail },
+    });
+
+    if (!existingSalesUser) {
+      const passwordHash = await bcrypt.hash("sales123", 12);
+
+      salesUser = await prisma.user.create({
+        data: {
+          email: salesUserEmail,
+          passwordHash,
+          name: "Mike Sales",
+          firstName: "Mike",
+          lastName: "Sales",
+          isActive: true,
+          emailVerified: true,
+          roleId: shipmentPlanRole.id,
+        },
+      });
+
+      console.log(`✅ Created sales user: ${salesUserEmail} (password: sales123)`);
+    } else {
+      salesUser = existingSalesUser;
+      console.log(`ℹ️  Sales user already exists: ${salesUserEmail}`);
     }
   }
 
@@ -148,7 +179,7 @@ async function main() {
 
   // Create sample shipment plans and liner bookings if users exist
   if (plannerUser) {
-    await createSampleShipmentPlans(plannerUser.id);
+    await createSampleShipmentPlans(plannerUser.id, salesUser?.id);
   }
 
   if (bookingUser) {
@@ -247,6 +278,60 @@ async function seedDataPoints() {
     });
   }
   console.log(`✅ Created ${carriers.length} carriers`);
+
+  // Sales Persons
+  const salesPersons = [
+    "Namita Shivnekar",
+    "Sujith Sada",
+    "Neha Ambegaonkar",
+    "Bony Kurien",
+    "Alan Biju",
+    "Jessy Thomas",
+    "Antony Joseph",
+    "JP Tharian",
+    "Kumar MS",
+    "Fibin Varghese",
+    "Shaji",
+    "Manoj Pillai",
+    "Jahana Madanan",
+    "Ameet Dedhia",
+    "Gokul Raj",
+    "Mohamed Meeran P",
+    "John Prabhakar",
+    "Mahalingam N",
+    "Karudappan P U",
+    "Saravanan R",
+    "Sankar R",
+    "Rejin Frances",
+    "Abhilash C",
+    "Akshay C",
+    "Venantius A",
+    "Ananthakrishnan A",
+    "Merlin Benny",
+    "Udayan P K",
+    "Sheeja V",
+    "Seena Sujesh",
+    "Sreeni R S",
+    "Venkat Rao",
+    "JK Nair",
+    "Sanjai Nair",
+    "Avnish",
+    "Harnish Patel",
+    "Prashant Ahir",
+    "Kunal Goswami",
+    "Debasish Chatterjee",
+    "Shaibal Mukherjee",
+    "Uttam Kumar",
+  ];
+
+  for (const salesPersonName of salesPersons) {
+    await prisma.salesPerson.upsert({
+      where: { name: salesPersonName },
+      update: {},
+      create: { name: salesPersonName },
+    });
+  }
+  console.log(`✅ Created ${salesPersons.length} sales persons`);
 
   // Commodities
   const commodities = [
@@ -2868,8 +2953,15 @@ async function seedDataPoints() {
   console.log(`✅ Created ${organizations.length} organizations`);
 }
 
-async function createSampleShipmentPlans(userId: string) {
+async function createSampleShipmentPlans(userId: string, salesPersonId?: string) {
   console.log("🌱 Creating sample shipment plans...");
+
+  // Get all sales persons to assign randomly
+  const salesPersons = await prisma.salesPerson.findMany();
+  const getRandomSalesPerson = () => {
+    if (salesPersons.length === 0) return undefined;
+    return salesPersons[Math.floor(Math.random() * salesPersons.length)].id;
+  };
 
   const sampleShipmentPlans = [
     {
@@ -3256,13 +3348,17 @@ async function createSampleShipmentPlans(userId: string) {
         created_by: "John Planner",
         status: "DRAFT"
       },
-      userId
+      userId,
+      salesPersonId
     }
   ];
 
   for (const planData of sampleShipmentPlans) {
     await prisma.shipmentPlan.create({
-      data: planData,
+      data: {
+        ...planData,
+        salesPersonId: getRandomSalesPerson(),
+      },
     });
   }
 

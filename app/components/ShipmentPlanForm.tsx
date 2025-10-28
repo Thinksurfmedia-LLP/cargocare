@@ -1892,6 +1892,33 @@ export function ShipmentPlanForm({
                           : ""}
                       </p>
                     </div>
+
+                    <div className="space-y-2">
+                      <Label
+                        htmlFor="sales_person_id"
+                        className="text-sm font-semibold text-gray-700"
+                      >
+                        Sales Person
+                      </Label>
+                      <SearchableSelect
+                        id="sales_person_id"
+                        name="sales_person_id"
+                        defaultValue={
+                          actionData?.formData?.sales_person_id ||
+                          shipmentPlan?.salesPersonId ||
+                          user.id
+                        }
+                        options={dataPoints.allUsers?.map((u: any) => ({
+                          value: u.id,
+                          label: `👤 ${u.name} (${u.businessBranch?.name || 'No Branch'})`,
+                        })) || []}
+                        placeholder="Select sales person"
+                        className="border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
+                      />
+                      <p className="text-xs text-gray-500">
+                        Optional - defaults to the person creating this shipment plan
+                      </p>
+                    </div>
                   </div>
                 </div>
               )}

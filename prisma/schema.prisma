@@ -54,12 +54,14 @@ model ShipmentPlan {
   createdAt            DateTime            @default(now())
   updatedAt            DateTime            @updatedAt
   userId               String
+  salesPersonId        String?
   linerBookingId       String?             @unique
   linkedStatus         Int                 @default(0)
   shipmentAssignmentId String?             @unique
   linerBooking                             LinerBooking?                         @relation(fields: [linerBookingId], references: [id])
   shipmentAssignment                       ShipmentAssignment?                   @relation(fields: [shipmentAssignmentId], references: [id])
   user                                     User                                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  salesPerson                              SalesPerson?                          @relation(fields: [salesPersonId], references: [id])
   individualEquipmentUnmappingRequests     IndividualEquipmentUnmappingRequest[]
 
   @@map("shipment_plans")
@@ -166,6 +168,16 @@ model Carrier {
   updatedAt DateTime @updatedAt
 
   @@map("carriers")
+}
+
+model SalesPerson {
+  id             String         @id @default(cuid())
+  name           String         @unique
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  shipmentPlans  ShipmentPlan[]
+
+  @@map("sales_persons")
 }
 
 model ShipmentAssignment {
