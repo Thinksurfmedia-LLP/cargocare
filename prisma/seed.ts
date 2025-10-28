@@ -72,6 +72,68 @@ async function main() {
     }
   }
 
+  // Create MD user
+  const mdRole = await prisma.role.findUnique({
+    where: { name: "MD" },
+  });
+
+  if (mdRole) {
+    const mdEmail = "fibin@cargocarelogistics.in";
+    const existingMD = await prisma.user.findUnique({
+      where: { email: mdEmail },
+    });
+
+    if (!existingMD) {
+      const passwordHash = await bcrypt.hash("FIBI1234", 12);
+
+      await prisma.user.create({
+        data: {
+          email: mdEmail,
+          passwordHash,
+          name: "Fibin Varghese",
+          firstName: "Fibin",
+          lastName: "Varghese",
+          isActive: true,
+          emailVerified: true,
+          roleId: mdRole.id,
+        },
+      });
+
+      console.log(`✅ Created MD user: ${mdEmail} (password: FIBI1234)`);
+    } else {
+      console.log(`ℹ️  MD user already exists: ${mdEmail}`);
+    }
+  }
+
+  // Create additional admin user
+  if (adminRole) {
+    const rejinEmail = "rejin@cargocarelogistics.in";
+    const existingRejin = await prisma.user.findUnique({
+      where: { email: rejinEmail },
+    });
+
+    if (!existingRejin) {
+      const passwordHash = await bcrypt.hash("REJI1234", 12);
+
+      await prisma.user.create({
+        data: {
+          email: rejinEmail,
+          passwordHash,
+          name: "Rejin Frances",
+          firstName: "Rejin",
+          lastName: "Frances",
+          isActive: true,
+          emailVerified: true,
+          roleId: adminRole.id,
+        },
+      });
+
+      console.log(`✅ Created admin user: ${rejinEmail} (password: REJI1234)`);
+    } else {
+      console.log(`ℹ️  Admin user already exists: ${rejinEmail}`);
+    }
+  }
+
   // Create a shipment plan team user for testing
   const shipmentPlanRole = await prisma.role.findUnique({
     where: { name: "SHIPMENT_PLAN_TEAM" },
@@ -171,6 +233,415 @@ async function main() {
     } else {
       salesUser = existingSalesUser;
       console.log(`ℹ️  Sales user already exists: ${salesUserEmail}`);
+    }
+  }
+
+  // Create additional users - Liner Booking Team
+  const additionalUsers = [
+    {
+      email: "namita@cargocarelogistics.in",
+      password: "NAMI1234",
+      name: "Namita Shivnekar",
+      firstName: "Namita",
+      lastName: "Shivnekar",
+      role: "LINER_BOOKING_TEAM",
+      branch: "Mumbai",
+      isActive: true,
+    },
+    {
+      email: "info@cargocarelogistics.in",
+      password: "SUJI1234",
+      name: "Sujith Sada",
+      firstName: "Sujith",
+      lastName: "Sada",
+      role: "LINER_BOOKING_TEAM",
+      branch: "Mumbai",
+      isActive: true,
+    },
+    {
+      email: "bony@cargocarelogistics.in",
+      password: "BONY1234",
+      name: "Bony Kurien",
+      firstName: "Bony",
+      lastName: "Kurien",
+      role: "LINER_BOOKING_TEAM",
+      branch: "Mumbai",
+      isActive: true,
+    },
+    {
+      email: "alan@cargocarelogistics.in",
+      password: "ALAN1234",
+      name: "Alan Biju",
+      firstName: "Alan",
+      lastName: "Biju",
+      role: "LINER_BOOKING_TEAM",
+      branch: "Mumbai",
+      isActive: true,
+    },
+    {
+      email: "jessy@cargocarelogistics.in",
+      password: "JESS1234",
+      name: "Jessy Thomas",
+      firstName: "Jessy",
+      lastName: "Thomas",
+      role: "LINER_BOOKING_TEAM",
+      branch: "Mumbai",
+      isActive: true,
+    },
+    {
+      email: "gokul@cargocarelogistics.in",
+      password: "GOKU1234",
+      name: "Gokul Raj",
+      firstName: "Gokul",
+      lastName: "Raj",
+      role: "LINER_BOOKING_TEAM",
+      branch: "Tuticorin",
+      isActive: true,
+    },
+    {
+      email: "meeran@cargocarelogistics.in",
+      password: "MOHA1234",
+      name: "Mohamed Meeran P",
+      firstName: "Mohamed Meeran",
+      lastName: "P",
+      role: "LINER_BOOKING_TEAM",
+      branch: "Tuticorin",
+      isActive: true,
+    },
+    {
+      email: "docstuty@cargocarelogistics.in",
+      password: "JOHN1234",
+      name: "John Prabhakar",
+      firstName: "John",
+      lastName: "Prabhakar",
+      role: "LINER_BOOKING_TEAM",
+      branch: "Tuticorin",
+      isActive: true,
+    },
+    {
+      email: "chndoc@cargocarelogistics.in",
+      password: "ANAN1234",
+      name: "Ananthakrishnan A",
+      firstName: "Ananthakrishnan",
+      lastName: "A",
+      role: "LINER_BOOKING_TEAM",
+      branch: "Chennai",
+      isActive: true,
+    },
+    {
+      email: "maadoc@cargocarelogistics.in",
+      password: "MERL1234",
+      name: "Merlin Benny",
+      firstName: "Merlin",
+      lastName: "Benny",
+      role: "LINER_BOOKING_TEAM",
+      branch: "Chennai",
+      isActive: true,
+    },
+    {
+      email: "seena@cargocarelogistics.in",
+      password: "SEEN1234",
+      name: "Seena Sujesh",
+      firstName: "Seena",
+      lastName: "Sujesh",
+      role: "LINER_BOOKING_TEAM",
+      branch: "Kochi",
+      isActive: true,
+    },
+    {
+      email: "cokcsd@cargocarelogistics.in",
+      password: "SREE1234",
+      name: "Sreeni R S",
+      firstName: "Sreeni",
+      lastName: "R S",
+      role: "LINER_BOOKING_TEAM",
+      branch: "Kochi",
+      isActive: true,
+    },
+    {
+      email: "support@cargocarelogistics.in",
+      password: "SHAI1234",
+      name: "Shaibal Mukherjee",
+      firstName: "Shaibal",
+      lastName: "Mukherjee",
+      role: "LINER_BOOKING_TEAM",
+      branch: "Kolkata",
+      isActive: true,
+    },
+    {
+      email: "uttam@cargocarelogistics.in",
+      password: "UTTA1234",
+      name: "Uttam Kumar",
+      firstName: "Uttam",
+      lastName: "Kumar",
+      role: "LINER_BOOKING_TEAM",
+      branch: "Kolkata",
+      isActive: true,
+    },
+    // Shipment Plan Team
+    {
+      email: "jp@cargocarelogistics.in",
+      password: "JPTH1234",
+      name: "JP Tharian",
+      firstName: "JP",
+      lastName: "Tharian",
+      role: "SHIPMENT_PLAN_TEAM",
+      branch: "Mumbai",
+      isActive: true,
+    },
+    {
+      email: "kumar@cargocarelogistics.in",
+      password: "KUMA1234",
+      name: "Kumar MS",
+      firstName: "Kumar",
+      lastName: "MS",
+      role: "SHIPMENT_PLAN_TEAM",
+      branch: "Mumbai",
+      isActive: true,
+    },
+    {
+      email: "shaji@cargocarelogistics.in",
+      password: "SHAJ1234",
+      name: "Shaji",
+      firstName: "Shaji",
+      lastName: "",
+      role: "SHIPMENT_PLAN_TEAM",
+      branch: "Mumbai",
+      isActive: true,
+    },
+    {
+      email: "manoj@cargocarelogistics.in",
+      password: "MANO1234",
+      name: "Manoj Pillai",
+      firstName: "Manoj",
+      lastName: "Pillai",
+      role: "SHIPMENT_PLAN_TEAM",
+      branch: "Mumbai",
+      isActive: true,
+    },
+    {
+      email: "jahana@cargocarelogistics.in",
+      password: "JAHA1234",
+      name: "Jahana Madanan",
+      firstName: "Jahana",
+      lastName: "Madanan",
+      role: "SHIPMENT_PLAN_TEAM",
+      branch: "Mumbai",
+      isActive: true,
+    },
+    {
+      email: "ameet@cargocarelogistics.in",
+      password: "AMEE1234",
+      name: "Ameet Dedhia",
+      firstName: "Ameet",
+      lastName: "Dedhia",
+      role: "SHIPMENT_PLAN_TEAM",
+      branch: "Mumbai",
+      isActive: true,
+    },
+    {
+      email: "mahalingamn@cargocarelogistics.in",
+      password: "MAHA1234",
+      name: "Mahalingam N",
+      firstName: "Mahalingam",
+      lastName: "N",
+      role: "SHIPMENT_PLAN_TEAM",
+      branch: "Tuticorin",
+      isActive: true,
+    },
+    {
+      email: "karudappan@cargocarelogistics.in",
+      password: "KARU1234",
+      name: "Karudappan P U",
+      firstName: "Karudappan",
+      lastName: "P U",
+      role: "SHIPMENT_PLAN_TEAM",
+      branch: "Tuticorin",
+      isActive: true,
+    },
+    {
+      email: "saravananr@cargocarelogistics.in",
+      password: "SARA1234",
+      name: "Saravanan R",
+      firstName: "Saravanan",
+      lastName: "R",
+      role: "SHIPMENT_PLAN_TEAM",
+      branch: "Tuticorin",
+      isActive: true,
+    },
+    {
+      email: "sankar@cargocarelogistics.in",
+      password: "SANK1234",
+      name: "Sankar R",
+      firstName: "Sankar",
+      lastName: "R",
+      role: "SHIPMENT_PLAN_TEAM",
+      branch: "Tuticorin",
+      isActive: true,
+    },
+    {
+      email: "abhilash@cargocarelogistics.in",
+      password: "ABHI1234",
+      name: "Abhilash C",
+      firstName: "Abhilash",
+      lastName: "C",
+      role: "SHIPMENT_PLAN_TEAM",
+      branch: "Chennai",
+      isActive: true,
+    },
+    {
+      email: "salesmaa@cargocarelogistics.in",
+      password: "VENA1234",
+      name: "Venantius A",
+      firstName: "Venantius",
+      lastName: "A",
+      role: "SHIPMENT_PLAN_TEAM",
+      branch: "Chennai",
+      isActive: true,
+    },
+    {
+      email: "udayan@cargocarelogistics.in",
+      password: "UDAY1234",
+      name: "Udayan P K",
+      firstName: "Udayan",
+      lastName: "P K",
+      role: "SHIPMENT_PLAN_TEAM",
+      branch: "Bengaluru",
+      isActive: true,
+    },
+    {
+      email: "sheeja@cargocarelogistics.in",
+      password: "SHEE1234",
+      name: "Sheeja V",
+      firstName: "Sheeja",
+      lastName: "V",
+      role: "SHIPMENT_PLAN_TEAM",
+      branch: "Kochi",
+      isActive: true,
+    },
+    {
+      email: "goa@cargocarelogistics.in",
+      password: "VENK1234",
+      name: "Venkat Rao",
+      firstName: "Venkat",
+      lastName: "Rao",
+      role: "SHIPMENT_PLAN_TEAM",
+      branch: "Goa",
+      isActive: true,
+    },
+    {
+      email: "jk@cargocarelogistics.in",
+      password: "JKNA1234",
+      name: "JK Nair",
+      firstName: "JK",
+      lastName: "Nair",
+      role: "SHIPMENT_PLAN_TEAM",
+      branch: "Ahmedabad",
+      isActive: true,
+    },
+    {
+      email: "ahmedabadsales@cargocarelogistics.in",
+      password: "SANJ1234",
+      name: "Sanjai Nair",
+      firstName: "Sanjai",
+      lastName: "Nair",
+      role: "SHIPMENT_PLAN_TEAM",
+      branch: "Ahmedabad",
+      isActive: true,
+    },
+    // {
+    //   email: "avnish@cargocarelogistics.in",
+    //   password: "AVNI1234",
+    //   name: "Avnish",
+    //   firstName: "Avnish",
+    //   lastName: "",
+    //   role: "SHIPMENT_PLAN_TEAM",
+    //   branch: "Baroda",
+    //   isActive: true,
+    // },
+    // {
+    //   email: "harnish@cargocarelogistics.in",
+    //   password: "HARN1234",
+    //   name: "Harnish Patel",
+    //   firstName: "Harnish",
+    //   lastName: "Patel",
+    //   role: "SHIPMENT_PLAN_TEAM",
+    //   branch: "Baroda",
+    //   isActive: true,
+    // },
+    // {
+    //   email: "prashant@cargocarelogistics.in",
+    //   password: "PRAS1234",
+    //   name: "Prashant Ahir",
+    //   firstName: "Prashant",
+    //   lastName: "Ahir",
+    //   role: "SHIPMENT_PLAN_TEAM",
+    //   branch: "Baroda",
+    //   isActive: true,
+    // },
+    {
+      email: "kunal@cargocarelogistics.in",
+      password: "KUNA1234",
+      name: "Kunal Goswami",
+      firstName: "Kunal",
+      lastName: "Goswami",
+      role: "SHIPMENT_PLAN_TEAM",
+      branch: "Kolkata",
+      isActive: true,
+    },
+    {
+      email: "debasish@cargocarelogistics.in",
+      password: "DEBA1234",
+      name: "Debasish Chatterjee",
+      firstName: "Debasish",
+      lastName: "Chatterjee",
+      role: "SHIPMENT_PLAN_TEAM",
+      branch: "Kolkata",
+      isActive: true,
+    },
+  ];
+
+  console.log("🌱 Creating additional users...");
+
+  for (const userData of additionalUsers) {
+    const existingUser = await prisma.user.findUnique({
+      where: { email: userData.email },
+    });
+
+    if (!existingUser) {
+      // Get the role
+      const userRole = await prisma.role.findUnique({
+        where: { name: userData.role as any },
+      });
+
+      // Get the branch by name (need to use findFirst since name is not unique)
+      const userBranch = await prisma.businessBranch.findFirst({
+        where: { name: userData.branch },
+      });
+
+      if (userRole) {
+        const passwordHash = await bcrypt.hash(userData.password, 12);
+
+        await prisma.user.create({
+          data: {
+            email: userData.email,
+            passwordHash,
+            name: userData.name,
+            firstName: userData.firstName,
+            lastName: userData.lastName,
+            isActive: userData.isActive,
+            emailVerified: true,
+            roleId: userRole.id,
+            branchId: userBranch?.id || null,
+          },
+        });
+
+        console.log(`✅ Created user: ${userData.email} (password: ${userData.password}) - ${userData.role} at ${userData.branch}`);
+      } else {
+        console.log(`⚠️  Role ${userData.role} not found, skipping user ${userData.email}`);
+      }
+    } else {
+      console.log(`ℹ️  User already exists: ${userData.email}`);
     }
   }
 
