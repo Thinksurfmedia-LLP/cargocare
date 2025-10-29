@@ -234,10 +234,6 @@ class EmailService {
                   <span class="detail-label">Created By</span>
                   <span class="detail-value">${shipmentData.createdBy || 'System Administrator'}</span>
                 </div>
-                <div class="detail-row">
-                  <span class="detail-label">Sales Person</span>
-                  <span class="detail-value">${shipmentData.salesPerson || 'Not Assigned'}</span>
-                </div>
               </div>
 
               <div class="btn-container">
