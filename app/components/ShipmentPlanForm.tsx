@@ -812,8 +812,19 @@ export function ShipmentPlanForm({
 
   // Handle form submission with validation
   const handleFormSubmit = (e: React.FormEvent) => {
+    // Get the submit button that was clicked
+    const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
+    const submitAction = submitter?.value;
+    const isDraft = submitAction === "draft";
+
+    // For drafts, skip validation (formNoValidate on button handles native validation)
+    if (isDraft) {
+      setIsFormSubmitting(true);
+      return;
+    }
+
     if (mode === "create") {
-      // For create mode, validate required fields
+      // For create mode (not draft), validate required fields
       if (!validateRequiredFields()) {
         e.preventDefault();
         return;
@@ -3618,6 +3629,28 @@ export function ShipmentPlanForm({
                 <>
                   <Button
                     type="submit"
+                    name="submitAction"
+                    value="draft"
+                    formNoValidate
+                    disabled={isSubmitting || isFormSubmitting}
+                    className="px-6 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium transition-all duration-200 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isSubmitting || isFormSubmitting ? (
+                      <div className="flex items-center space-x-2">
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        <span>Saving...</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center space-x-2">
+                        <span>📝</span>
+                        <span>Save as Draft</span>
+                      </div>
+                    )}
+                  </Button>
+                  <Button
+                    type="submit"
+                    name="submitAction"
+                    value="submit"
                     disabled={isSubmitting || isFormSubmitting}
                     className="px-8 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium transition-all duration-200 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                   >

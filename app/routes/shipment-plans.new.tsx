@@ -164,67 +164,82 @@ export async function action({ request }: ActionFunctionArgs) {
     // Get form values
     const bussiness_branch = formData.get("bussiness_branch") as string
     const shipment_type = formData.get("shipment_type") as string
-    const booking_status = "Awaiting MD Approval" // Always set to default value for new plans
+    const submitAction = formData.get("submitAction") as string
+    const isDraft = submitAction === "draft"
+    const booking_status = isDraft ? "Draft" : "Awaiting MD Approval" // Set to Draft if saving as draft
     const loading_port = formData.get("loading_port") as string
     const destination_country = formData.get("destination_country") as string
     const customer = formData.get("customer") as string
     const sales_person_id = formData.get("sales_person_id") as string
 
-    // Validate required fields
-    if (!bussiness_branch) {
+    // Validate required fields - business branch is always required for reference number generation
+    // For drafts, we're more lenient with other fields
+    if (!bussiness_branch && !isDraft) {
       return {
         error: "Business branch is required to generate reference number",
         formData: Object.fromEntries(formData),
       }
     }
 
-    // Get business branch details to extract code
-    const businessBranch = await prisma.businessBranch.findFirst({
-      where: { name: bussiness_branch },
-    })
+    // For drafts without business branch, use a temporary reference number
+    let reference_number = ""
+    let branchCode = "DRAFT"
+    
+    if (bussiness_branch) {
+      // Get business branch details to extract code
+      const businessBranch = await prisma.businessBranch.findFirst({
+        where: { name: bussiness_branch },
+      })
 
-    if (!businessBranch) {
-      return { error: "Invalid business branch selected", formData: Object.fromEntries(formData) }
-    }
-
-    // Generate reference number: {BusinessCode}{Year}{4-digit sequence}
-    const currentYear = new Date().getFullYear()
-    const branchCode = businessBranch.code.toUpperCase()
-
-    // Find the highest sequence number for this branch and year
-    const existingPlans = await prisma.shipmentPlan.findMany({
-      where: {
-        data: {
-          path: ["reference_number"],
-          string_starts_with: `${branchCode}${currentYear}`,
-        },
-      },
-      orderBy: { createdAt: "desc" },
-    })
-
-    let nextSequence = 1
-    if (existingPlans.length > 0) {
-      // Extract sequence numbers from existing reference numbers
-      const sequences = existingPlans
-        .map((plan: any) => {
-          const refNum = plan.data?.reference_number
-          if (refNum && typeof refNum === "string") {
-            const sequencePart = refNum.slice(`${branchCode}${currentYear}`.length)
-            const num = Number.parseInt(sequencePart, 10)
-            return isNaN(num) ? 0 : num
-          }
-          return 0
-        })
-        .filter((num) => num > 0)
-
-      if (sequences.length > 0) {
-        nextSequence = Math.max(...sequences) + 1
+      if (!businessBranch) {
+        return { error: "Invalid business branch selected", formData: Object.fromEntries(formData) }
       }
-    }
 
-    // Format sequence as 4-digit number
-    const sequenceString = nextSequence.toString().padStart(4, "0")
-    const reference_number = `${branchCode}${currentYear}${sequenceString}`
+      branchCode = businessBranch.code.toUpperCase()
+
+      // Generate reference number: {BusinessCode}{Year}{4-digit sequence}
+      const currentYear = new Date().getFullYear()
+
+      // Find the highest sequence number for this branch and year
+      const existingPlans = await prisma.shipmentPlan.findMany({
+        where: {
+          data: {
+            path: ["reference_number"],
+            string_starts_with: `${branchCode}${currentYear}`,
+          },
+        },
+        orderBy: { createdAt: "desc" },
+      })
+
+      let nextSequence = 1
+      if (existingPlans.length > 0) {
+        // Extract sequence numbers from existing reference numbers
+        const sequences = existingPlans
+          .map((plan: any) => {
+            const refNum = plan.data?.reference_number
+            if (refNum && typeof refNum === "string") {
+              const sequencePart = refNum.slice(`${branchCode}${currentYear}`.length)
+              const num = Number.parseInt(sequencePart, 10)
+              return isNaN(num) ? 0 : num
+            }
+            return 0
+          })
+          .filter((num) => num > 0)
+
+        if (sequences.length > 0) {
+          nextSequence = Math.max(...sequences) + 1
+        }
+      }
+
+      // Format sequence as 4-digit number
+      const sequenceString = nextSequence.toString().padStart(4, "0")
+      reference_number = `${branchCode}${currentYear}${sequenceString}`
+    } else {
+      // For drafts without business branch, generate a temporary reference number
+      const currentYear = new Date().getFullYear()
+      const timestamp = Date.now().toString().slice(-6)
+      reference_number = `DRAFT${currentYear}${timestamp}`
+    }
 
     console.log(`Generated reference number: ${reference_number}`)
 
@@ -361,9 +376,9 @@ export async function action({ request }: ActionFunctionArgs) {
       })
       console.log("Shipment plan created successfully:", shipmentPlan.id)
 
-      // Send email notification to MDs if this is a new approval request
+      // Send email notification to MDs if this is a new approval request (not for drafts)
       console.log("📧 Checking if email should be sent for booking_status:", shipmentData.booking_status);
-      if (shipmentData.booking_status === "Awaiting MD Approval") {
+      if (shipmentData.booking_status === "Awaiting MD Approval" && !isDraft) {
         console.log("✅ Booking status matches 'Awaiting MD Approval' - proceeding with email");
         try {
           // Dynamic import to avoid module loading issues

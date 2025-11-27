@@ -1130,6 +1130,12 @@ export default function ShipmentPlans() {
       string,
       { color: string; bg: string; border: string; icon: string }
     > = {
+      "Draft": {
+        color: "text-gray-700",
+        bg: "bg-gradient-to-r from-gray-200 to-gray-100",
+        border: "border-gray-300",
+        icon: "📝",
+      },
       "Awaiting MD Approval": {
         color: "text-orange-800",
         bg: "bg-gradient-to-r from-orange-100 to-orange-50",

@@ -1033,7 +1033,17 @@ export async function action({ request, params }: ActionFunctionArgs) {
     // Get form values and preserve existing values if form fields are empty
     const bussiness_branch = (formData.get("bussiness_branch") as string) || (existingPlan.data as any).bussiness_branch
     const shipment_type = (formData.get("shipment_type") as string) || (existingPlan.data as any).shipment_type
-    const booking_status = formData.get("booking_status") as string
+    const submitAction = formData.get("submitAction") as string
+    const isDraft = submitAction === "draft"
+    const existingPlanDataForStatus = existingPlan.data as any
+    // If editing a draft and submitting (not saving as draft), change status from Draft to Awaiting MD Approval
+    let booking_status = formData.get("booking_status") as string
+    if (isDraft) {
+      booking_status = "Draft"
+    } else if (existingPlanDataForStatus.booking_status === "Draft" && submitAction === "submit") {
+      // If submitting a draft for approval, change status to Awaiting MD Approval
+      booking_status = "Awaiting MD Approval"
+    }
     const loading_port = formData.get("loading_port") as string
     const destination_country = formData.get("destination_country") as string
     const customer = formData.get("customer") as string
@@ -1259,6 +1269,89 @@ export async function action({ request, params }: ActionFunctionArgs) {
       }
 
       console.log("Shipment plan updated successfully")
+
+      // Send email notification to MDs if a draft was submitted for approval
+      const wasDraft = existingPlanDataForStatus.booking_status === "Draft"
+      const isNowAwaitingApproval = shipmentData.booking_status === "Awaiting MD Approval"
+      
+      if (wasDraft && isNowAwaitingApproval) {
+        console.log("📧 Draft submitted for approval - sending email notification");
+        try {
+          // Dynamic import to avoid module loading issues
+          const { emailService } = await import("~/lib/email.server");
+          const { schedulerService } = await import("~/lib/scheduler.server");
+
+          // Initialize scheduler if not already done
+          schedulerService.init();
+
+          // Get all MD users
+          const mdUsers = await prisma.user.findMany({
+            where: {
+              role: {
+                name: "MD",
+              },
+              isActive: true,
+            },
+            select: {
+              email: true,
+            },
+          });
+
+          const mdEmails = mdUsers.map((u: any) => u.email);
+          console.log("📋 Found MD users:", mdUsers.length, "emails:", mdEmails);
+
+          if (mdEmails.length > 0) {
+            const baseUrl = process.env.BASE_URL || "http://localhost:5173";
+
+            const containerMovement = shipmentData.container_movement || {};
+            const equipmentDetailsData = shipmentData.equipment_details || [];
+
+            // Group equipment by type and count
+            const equipmentCounts = equipmentDetailsData.reduce((acc: any, eq: any) => {
+              if (eq.equipment_type) {
+                acc[eq.equipment_type] = (acc[eq.equipment_type] || 0) + 1;
+              }
+              return acc;
+            }, {});
+
+            // Format equipment as "Type (X units)" for each type
+            const formattedEquipment = Object.entries(equipmentCounts)
+              .map(([type, count]) => `${type} (${count} unit${count !== 1 ? 's' : ''})`)
+              .join(", ") || "N/A";
+
+            // Get sales person name
+            let salesPersonName = "Not Assigned";
+            if (sales_person_id) {
+              const salesPersonData = await prisma.salesPerson.findUnique({
+                where: { id: sales_person_id },
+                select: { name: true }
+              });
+              salesPersonName = salesPersonData?.name || "Not Assigned";
+            }
+
+            await emailService.sendNewApprovalNotification(mdEmails, {
+              referenceNumber: shipmentData.reference_number || "N/A",
+              customer: containerMovement.customer || "N/A",
+              businessBranch: shipmentData.bussiness_branch || "N/A",
+              createdBy: user.name,
+              salesPerson: salesPersonName,
+              equipmentType: formattedEquipment,
+              numberOfEquipments: equipmentDetailsData.length || 0,
+              portOfLoading: containerMovement.loading_port || "N/A",
+              portOfDischarge: containerMovement.port_of_discharge || "N/A",
+              finalPlaceOfDelivery: containerMovement.delivery_till || "N/A",
+              pendingApprovalsUrl: `${baseUrl}/pending-approvals`,
+            });
+
+            console.log(`✅ Draft submission notification sent to ${mdEmails.length} MD(s) for shipment plan ${planId}`);
+          } else {
+            console.log("⚠️  No MD users found - email not sent");
+          }
+        } catch (emailError) {
+          console.error("❌ Failed to send draft submission notification:", emailError);
+          // Don't fail the entire request if email fails
+        }
+      }
     } catch (error) {
       console.error("Failed to update shipment plan:", error)
       return {
