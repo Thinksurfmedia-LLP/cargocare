@@ -385,6 +385,25 @@ export async function loader({ request }: LoaderFunctionArgs) {
       })
     }
 
+    // Debug: Log whereCondition before query
+    console.log("[DEBUG] Liner Bookings Query - Tab:", tab)
+    console.log("[DEBUG] Liner Bookings Query - whereCondition:", JSON.stringify(whereCondition, null, 2))
+
+    // Debug: First check what's in the database without filters
+    const allBookings = await prisma.linerBooking.findMany({
+      select: {
+        id: true,
+        shipmentPlanId: true,
+        data: true,
+      },
+      take: 10,
+    })
+    console.log("[DEBUG] All liner bookings in DB (first 10):", allBookings.map(b => ({
+      id: b.id,
+      shipmentPlanId: b.shipmentPlanId,
+      carrier_booking_status: (b.data as any)?.carrier_booking_status,
+    })))
+
     const [linerBookings, totalCount] = await Promise.all([
       prisma.linerBooking.findMany({
         where: whereCondition,

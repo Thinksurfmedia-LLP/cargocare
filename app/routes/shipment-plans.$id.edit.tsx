@@ -330,30 +330,66 @@ export async function action({ request, params }: ActionFunctionArgs) {
         console.log("[CANCEL] Liner booking unlinked and marked as Ready for Re-linking")
       }
 
-      // If there's a linked shipment assignment, unlink it
+      // If there's a linked shipment assignment, extract liner bookings and delete assignment
       if (currentPlan.shipmentAssignment) {
         const assignmentData = currentPlan.shipmentAssignment.data as any
 
-        console.log("[CANCEL] Unlinking shipment assignment:", currentPlan.shipmentAssignment.id)
+        console.log("[CANCEL] Processing shipment assignment:", currentPlan.shipmentAssignment.id)
+        console.log("[CANCEL] Assignment userId:", currentPlan.shipmentAssignment.userId)
+        console.log("[CANCEL] Assignment assignBookingId:", currentPlan.shipmentAssignment.assignBookingId)
 
-        // Mark the assignment as orphaned since the plan is being cancelled
-        await prisma.shipmentAssignment.update({
+        // Extract liner booking details from the assignment and create individual available liner bookings
+        if (assignmentData.liner_booking_details && Array.isArray(assignmentData.liner_booking_details)) {
+          console.log("[CANCEL] Found", assignmentData.liner_booking_details.length, "liner booking details to convert")
+
+          for (const linerDetail of assignmentData.liner_booking_details) {
+            // Create an individual available liner booking from each detail
+            // Use assignBookingId if available (the liner booking team member), otherwise use userId
+            const linerBookingUserId = currentPlan.shipmentAssignment.assignBookingId || currentPlan.shipmentAssignment.userId
+
+            // Build the liner booking detail with all necessary fields
+            const enrichedLinerDetail = {
+              ...linerDetail,
+              // Ensure key fields are populated from either the detail or the assignment data
+              carrier: linerDetail.carrier || assignmentData.carrier || planData?.container_movement?.carrier_and_vessel_preference?.carrier,
+              original_planned_vessel: linerDetail.original_planned_vessel || linerDetail.vessel || assignmentData.vessel || planData?.container_movement?.carrier_and_vessel_preference?.vessel,
+              e_t_d_of_original_planned_vessel: linerDetail.e_t_d_of_original_planned_vessel || linerDetail.etd || assignmentData.etd || planData?.container_movement?.carrier_and_vessel_preference?.preferred_etd,
+              temporary_booking_number: linerDetail.temporary_booking_number || linerDetail.temporaryBookingNumber || linerDetail.trackingNumber,
+              loading_port: linerDetail.loading_port || assignmentData.loading_port || planData?.container_movement?.loading_port,
+              port_of_discharge: linerDetail.port_of_discharge || assignmentData.port_of_discharge || planData?.container_movement?.port_of_discharge,
+              destination_country: linerDetail.destination_country || assignmentData.destination_country || planData?.container_movement?.destination_country,
+              equipment_type: linerDetail.equipment_type || assignmentData.equipment_type,
+              equipment_quantity: linerDetail.equipment_quantity || 1,
+              liner_booking_number: linerDetail.liner_booking_number || "",
+              mbl_number: linerDetail.mbl_number || "",
+              contract: linerDetail.contract || "",
+            }
+
+            await prisma.linerBooking.create({
+              data: {
+                userId: linerBookingUserId,
+                assignBookingId: currentPlan.shipmentAssignment.assignBookingId, // Preserve the assigned liner booking team member
+                shipmentPlanId: null, // Available, not linked
+                data: {
+                  carrier_booking_status: "Ready for Re-linking",
+                  cancelled_from_plan: planData?.reference_number || planId,
+                  cancelled_at: new Date().toISOString(),
+                  // Store as liner_booking_details array for consistency with how the UI reads it
+                  liner_booking_details: [enrichedLinerDetail],
+                },
+              },
+            })
+
+            console.log("[CANCEL] Created available liner booking from detail:", enrichedLinerDetail.temporary_booking_number, "for user:", linerBookingUserId)
+          }
+        }
+
+        // Delete the shipment assignment since we've extracted the liner bookings
+        await prisma.shipmentAssignment.delete({
           where: { id: currentPlan.shipmentAssignment.id },
-          data: {
-            shipmentPlanId: null, // Unlink from shipment plan
-            isOrphaned: true,
-            orphanedAt: new Date(),
-            orphanedReason: `Parent shipment plan ${planData?.reference_number || planId} was cancelled`,
-            data: {
-              ...assignmentData,
-              carrier_booking_status: "Ready for Re-linking",
-              cancelled_from_plan: planData?.reference_number || planId,
-              cancelled_at: new Date().toISOString(),
-            },
-          },
         })
 
-        console.log("[CANCEL] Shipment assignment unlinked and marked as orphaned")
+        console.log("[CANCEL] Deleted shipment assignment:", currentPlan.shipmentAssignment.id)
       }
 
       // Also find any liner bookings that might be linked via shipmentPlanId (not the one-to-one relation)

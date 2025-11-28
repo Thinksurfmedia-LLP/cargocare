@@ -166,6 +166,14 @@ export function LinerBookingForm({
       ? data.liner_booking_details
       : linerBookingDetails;
 
+    // Get the liner booking numbers that are already linked
+    const alreadyLinkedBookingNumbers = new Set<string>();
+    allExistingDetails.forEach((detail: any) => {
+      if (detail.liner_booking_number) {
+        alreadyLinkedBookingNumbers.add(detail.liner_booking_number);
+      }
+    });
+
     // Get selected equipment from existing details (filter out unmapped ones)
     const selectedFromExisting = allExistingDetails
       .filter((detail: any) => {
@@ -195,13 +203,37 @@ export function LinerBookingForm({
           .filter(Boolean)
       : [];
 
-    const selectedEquipment = [...selectedFromExisting, ...selectedFromRequested];
+    // Equipment is considered "already linked" if its trackingNumber matches a liner booking number 
+    // from the existing details - use actual linked booking numbers, not just the prefix
+    const equipmentWithLinerBookingsAssigned = allEquipment
+      .filter((eq: any) => {
+        const trackingNumber = eq.trackingNumber || '';
+        // Check if equipment tracking number is ACTUALLY in the linked booking numbers
+        const isLinkedByNumber = alreadyLinkedBookingNumbers.has(trackingNumber);
+        // If tracking looks like LBN/XYZ but isn't actually linked, DON'T filter it out
+        return isLinkedByNumber;
+      })
+      .map((eq: any) => eq.trackingNumber || eq.originalTrackingNumber)
+      .filter(Boolean);
 
-    return allEquipment.filter(
-      (equipment: any) =>
-        !selectedEquipment.includes(equipment.trackingNumber) &&
-        !equipment.unmapped // Also exclude unmapped equipment
-    );
+    const selectedEquipment = [...selectedFromExisting, ...selectedFromRequested, ...equipmentWithLinerBookingsAssigned];
+    
+    console.log("[DEBUG] getAvailableEquipmentForBookingDetail - selectedEquipment:", selectedEquipment);
+    console.log("[DEBUG] getAvailableEquipmentForBookingDetail - alreadyLinkedBookingNumbers:", Array.from(alreadyLinkedBookingNumbers));
+    console.log("[DEBUG] getAvailableEquipmentForBookingDetail - equipmentWithLinerBookingsAssigned:", equipmentWithLinerBookingsAssigned);
+
+    return allEquipment.filter((equipment: any) => {
+      const trackingNumber = equipment.trackingNumber;
+      // Equipment is available if:
+      // 1. Its tracking number is not in the list of selected equipment
+      // 2. It's not unmapped
+      // 3. Its tracking number is not a liner booking number that's already linked
+      const isSelected = selectedEquipment.includes(trackingNumber);
+      const isUnmapped = equipment.unmapped === true;
+      const isLinkedLinerBooking = alreadyLinkedBookingNumbers.has(trackingNumber);
+      
+      return !isSelected && !isUnmapped && !isLinkedLinerBooking;
+    });
   };
 
   // Calculate total equipment required from shipment plan
@@ -332,6 +364,16 @@ export function LinerBookingForm({
     const allEquipment = getShipmentPlanEquipment();
     const unallocated: any[] = [];
 
+    console.log("[DEBUG] getUnallocatedEquipmentTypes - START");
+    console.log("[DEBUG] getUnallocatedEquipmentTypes - allEquipment:", allEquipment.map((eq: any) => ({
+      trackingNumber: eq.trackingNumber,
+      originalTrackingNumber: eq.originalTrackingNumber,
+      equipment_type: eq.equipment_type,
+      linerBookingAssigned: eq.linerBookingAssigned
+    })));
+    console.log("[DEBUG] getUnallocatedEquipmentTypes - required:", required);
+    console.log("[DEBUG] getUnallocatedEquipmentTypes - allocated:", allocated);
+
     // Get all existing liner booking details (same as in calculateAllocatedEquipment)
     const allExistingDetails = isAssignment && data?.liner_booking_details
       ? data.liner_booking_details
@@ -405,31 +447,61 @@ export function LinerBookingForm({
         }),
     ].filter(Boolean);
 
+    console.log("[DEBUG] getUnallocatedEquipmentTypes - selectedTrackingNumbers:", selectedTrackingNumbers);
+
+    // Get all liner booking numbers that are actually linked (from assignment's liner_booking_details)
+    const actualLinkedBookingNumbers = new Set<string>();
+    allExistingDetails.forEach((detail: any) => {
+      if (detail.liner_booking_number) {
+        actualLinkedBookingNumbers.add(detail.liner_booking_number);
+      }
+    });
 
     for (const [equipmentType, requiredQty] of Object.entries(required)) {
       const allocatedQty = allocated[equipmentType] || 0;
       const remaining = requiredQty - allocatedQty;
+
+      console.log(`[DEBUG] getUnallocatedEquipmentTypes - Processing type: ${equipmentType}, required: ${requiredQty}, allocated: ${allocatedQty}, remaining: ${remaining}`);
+      console.log(`[DEBUG] getUnallocatedEquipmentTypes - actualLinkedBookingNumbers:`, Array.from(actualLinkedBookingNumbers));
 
       if (remaining > 0) {
         // Find available equipment of this type that hasn't been selected
         // Note: Unmapped equipment should be AVAILABLE for new allocations, so we don't exclude it
         const availableEquipment = allEquipment.filter(
           (eq: any) => {
-            // Check if equipment is already allocated by checking if it has a liner booking number as tracking number
-            const hasLinerBookingNumber = eq.trackingNumber &&
-              (eq.trackingNumber.startsWith('LBN') ||
-               eq.trackingNumber.startsWith('XYZ') ||
-               eq.linerBookingAssigned);
+            // Equipment is allocated if its tracking number is a liner booking number that's actually linked
+            const trackingNumber = eq.trackingNumber || '';
+            const originalTrackingNumber = eq.originalTrackingNumber || '';
+            
+            // Check if this tracking number is an ACTUAL linked booking
+            const isTrackingLinkedBookingNumber = actualLinkedBookingNumbers.has(trackingNumber);
+            
+            // If tracking starts with LBN/XYZ but is NOT in actualLinkedBookingNumbers, 
+            // the booking was unlinked but equipment wasn't restored - treat as available
+            const trackingStartsWithLBN = trackingNumber.startsWith('LBN');
+            const trackingStartsWithXYZ = trackingNumber.startsWith('XYZ');
+            const looksLikeBookingNumber = trackingStartsWithLBN || trackingStartsWithXYZ;
+            
+            // Equipment is ALLOCATED only if tracking is an ACTUAL linked booking number
+            // If tracking looks like LBN but isn't linked, it's available (use originalTrackingNumber)
+            const hasLinerBookingNumber = isTrackingLinkedBookingNumber;
 
             // Also check traditional selection logic for backwards compatibility
-            const isSelected = selectedTrackingNumbers.includes(eq.trackingNumber) ||
-                              (eq.originalTrackingNumber && selectedTrackingNumbers.includes(eq.originalTrackingNumber));
+            // Use originalTrackingNumber for comparison if tracking looks like a booking number but isn't linked
+            const trackingToCheck = (looksLikeBookingNumber && !isTrackingLinkedBookingNumber && originalTrackingNumber) 
+              ? originalTrackingNumber 
+              : trackingNumber;
+            const isSelected = selectedTrackingNumbers.includes(trackingToCheck) ||
+                              (originalTrackingNumber && selectedTrackingNumbers.includes(originalTrackingNumber));
 
-            // Equipment is available if it's the right type AND not already allocated AND not selected
+            console.log(`[DEBUG] getUnallocatedEquipmentTypes - Equipment ${trackingNumber} (orig: ${originalTrackingNumber}): type=${eq.equipment_type}, isActuallyLinked=${isTrackingLinkedBookingNumber}, looksLikeBookingNumber=${looksLikeBookingNumber}, isSelected=${isSelected}, matchesType=${eq.equipment_type === equipmentType}, AVAILABLE=${eq.equipment_type === equipmentType && !hasLinerBookingNumber && !isSelected}`);
+
+            // Equipment is available if it's the right type AND not actually allocated AND not selected
             return eq.equipment_type === equipmentType && !hasLinerBookingNumber && !isSelected;
           }
         );
 
+        console.log(`[DEBUG] getUnallocatedEquipmentTypes - availableEquipment for ${equipmentType}:`, availableEquipment.map((eq: any) => eq.trackingNumber));
 
         // Add up to the remaining quantity needed
         for (
@@ -439,9 +511,12 @@ export function LinerBookingForm({
         ) {
           unallocated.push(availableEquipment[i]);
         }
+        
+        console.log(`[DEBUG] getUnallocatedEquipmentTypes - unallocated after adding:`, unallocated.map((eq: any) => eq.trackingNumber));
       }
     }
 
+    console.log("[DEBUG] getUnallocatedEquipmentTypes - FINAL unallocated:", unallocated);
     return unallocated;
   };
 

@@ -607,6 +607,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
     // Validate mandatory fields for liner booking team (for regular operations, not special actions)
     if (!specialAction || specialAction === '') {
+      const allBookingAssigned = formData.get("all_booking_assigned") === "true"
+      console.log("[DEBUG] Validation - specialAction:", specialAction, "allBookingAssigned:", allBookingAssigned)
+      
       const errors: string[] = [];
 
       linerBookingDetails.forEach((detail, index) => {
@@ -615,6 +618,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
         const isBookingDetailInUse = detail.temporary_booking_number?.trim() ||
                                      detail.carrier?.trim() ||
                                      detail.equipment_type?.trim();
+
+        console.log(`[DEBUG] Validation - Detail ${index}: isInUse=${isBookingDetailInUse}, equipment_type="${detail.equipment_type}", liner_booking_number="${detail.liner_booking_number}"`);
 
         if (isBookingDetailInUse) {
           if (!detail.liner_booking_number || detail.liner_booking_number.trim() === '') {
@@ -642,10 +647,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
       });
 
       if (errors.length > 0) {
+        console.log("[DEBUG] Validation - ERRORS:", errors);
         return Response.json({
           error: errors.join('; ')
         }, { status: 400 });
       }
+      
+      console.log("[DEBUG] Validation - PASSED, no errors");
     }
 
     // Handle individual equipment unmapping request
@@ -880,6 +888,54 @@ export async function action({ request, params }: ActionFunctionArgs) {
         // Unlink the booking and set status to make it available again
         const bookingData = (bookingToUnlink.data as any) || {}
 
+        // Get the liner booking numbers being unlinked
+        const linerBookingNumbersToUnlink = new Set<string>()
+        bookingDetails.forEach((detail: any) => {
+          if (detail.liner_booking_number) {
+            linerBookingNumbersToUnlink.add(detail.liner_booking_number)
+          }
+        })
+
+        console.log("[DEBUG] unlink_booking - Liner booking numbers to unlink:", Array.from(linerBookingNumbersToUnlink))
+
+        // Update shipment plan equipment to restore original tracking numbers
+        if (current.shipmentPlan && linerBookingNumbersToUnlink.size > 0) {
+          const shipmentPlanData = JSON.parse(JSON.stringify(current.shipmentPlan.data || {}))
+          
+          if (shipmentPlanData.equipment_details && Array.isArray(shipmentPlanData.equipment_details)) {
+            let equipmentUpdated = false
+            
+            shipmentPlanData.equipment_details = shipmentPlanData.equipment_details.map((equipment: any) => {
+              // Check if this equipment's tracking number matches any of the unlinked booking numbers
+              if (equipment.trackingNumber && linerBookingNumbersToUnlink.has(equipment.trackingNumber)) {
+                console.log(`[DEBUG] unlink_booking - Restoring equipment: ${equipment.trackingNumber} -> ${equipment.originalTrackingNumber}`)
+                equipmentUpdated = true
+                return {
+                  ...equipment,
+                  trackingNumber: equipment.originalTrackingNumber || equipment.trackingNumber,
+                  linerBookingAssigned: false,
+                  // Clear the liner booking fields
+                  liner_booking_number: undefined,
+                  temporary_booking_number: undefined,
+                  mbl_number: undefined,
+                  // Keep originalTrackingNumber for reference but it's no longer needed
+                }
+              }
+              return equipment
+            })
+
+            if (equipmentUpdated) {
+              console.log("[DEBUG] unlink_booking - Updating shipment plan with restored equipment details")
+              await tx.shipmentPlan.update({
+                where: { id: current.shipmentPlan.id },
+                data: {
+                  data: shipmentPlanData as any,
+                },
+              })
+            }
+          }
+        }
+
         console.log("[DEBUG] unlink_booking - Original booking data before unlinking:", {
           bookingId: bookingIdToUnlink,
           fullBookingData: bookingData,
@@ -974,21 +1030,40 @@ export async function action({ request, params }: ActionFunctionArgs) {
       const existingDetails = Array.isArray(existingData.liner_booking_details)
         ? existingData.liner_booking_details
         : []
+      
+      // Collect details from selected bookings, including their source booking ID for uniqueness
       const selectedDetails = bookings.flatMap((b) => {
         const d = ((b.data as any)?.liner_booking_details || []) as any[]
-        return Array.isArray(d) ? d : []
+        // Add sourceBookingId to each detail to ensure uniqueness
+        return Array.isArray(d) ? d.map(detail => ({
+          ...detail,
+          sourceBookingId: b.id // Track which booking this detail came from
+        })) : []
       })
 
-      // Deduplicate by temporary_booking_number or liner_booking_number
+      // Deduplicate by a combination of factors to ensure uniqueness
+      // Use sourceBookingId + (temporary_booking_number OR liner_booking_number) as the key
       const seen = new Set<string>()
       const mergedDetails = [...existingDetails]
+      
+      // First, mark existing details as seen
+      for (const d of existingDetails) {
+        const key = d?.sourceBookingId 
+          ? `${d.sourceBookingId}-${d?.temporary_booking_number || d?.liner_booking_number}`
+          : (d?.temporary_booking_number || d?.liner_booking_number || JSON.stringify(d))
+        if (key) seen.add(key)
+      }
+      
+      // Then add new details if not already present
       for (const d of selectedDetails) {
-        const key = (d?.temporary_booking_number || d?.liner_booking_number || JSON.stringify(d)) as string
+        const key = `${d.sourceBookingId}-${d?.temporary_booking_number || d?.liner_booking_number || 'no-id'}`
         if (key && !seen.has(key)) {
           seen.add(key)
           mergedDetails.push(d)
         }
       }
+
+      console.log("[DEBUG] link_available - mergedDetails count:", mergedDetails.length, "from", bookings.length, "selected bookings")
 
       // Transaction: link bookings to shipment plan, update assignment and mark plan as linked
       // Transaction: link bookings to shipment plan, update assignment and mark plan as linked
@@ -1025,37 +1100,68 @@ await prisma.$transaction(async (tx) => {
         // Update equipment tracking numbers for linked bookings
         console.log("[DEBUG] link_available - Starting equipment tracking update process")
 
-        // Get current shipment plan data
-        let shipmentPlanData = current.shipmentPlan?.data as any
+        // Get current shipment plan data - make a deep copy to track updates
+        let shipmentPlanData = JSON.parse(JSON.stringify(current.shipmentPlan?.data || {}))
 
         if (shipmentPlanData?.equipment_details && Array.isArray(shipmentPlanData.equipment_details)) {
           console.log("[DEBUG] link_available - Current equipment details count:", shipmentPlanData.equipment_details.length)
 
-          // Create a map of equipment types to available tracking numbers that need bookings
-          const availableEquipmentByType = new Map()
+          // Get the liner booking numbers that are ALREADY linked (from existingDetails, not mergedDetails)
+          const alreadyLinkedBookingNumbers = new Set<string>()
+          existingDetails.forEach((detail: any) => {
+            if (detail.liner_booking_number) {
+              alreadyLinkedBookingNumbers.add(detail.liner_booking_number)
+            }
+          })
+          console.log("[DEBUG] link_available - Already linked booking numbers:", Array.from(alreadyLinkedBookingNumbers))
+
+          // Get the NEW booking numbers being linked in this operation (from selectedDetails)
+          const newBookingNumbers = new Set<string>()
+          selectedDetails.forEach((detail: any) => {
+            if (detail.liner_booking_number && !alreadyLinkedBookingNumbers.has(detail.liner_booking_number)) {
+              newBookingNumbers.add(detail.liner_booking_number)
+            }
+          })
+          console.log("[DEBUG] link_available - New booking numbers being linked:", Array.from(newBookingNumbers))
+
+          // Create a map of equipment types to available equipment indices that need bookings
+          // An equipment is "available" if its trackingNumber is NOT already linked to a booking
+          const availableEquipmentByType = new Map<string, Array<{ index: number, tracking: string }>>()
           shipmentPlanData.equipment_details.forEach((equipment: any, idx: number) => {
-            if (!equipment.trackingNumber?.startsWith('LBN') && !equipment.trackingNumber?.startsWith('XYZ')) {
-              // This equipment doesn't have a liner booking number yet
+            const currentTracking = equipment.trackingNumber || ''
+            // Check if this equipment's tracking number matches any already-linked booking
+            const isAlreadyLinked = alreadyLinkedBookingNumbers.has(currentTracking)
+            
+            if (!isAlreadyLinked) {
+              // This equipment doesn't have a liner booking assigned yet (or has original tracking)
               const equipmentType = equipment.equipment_type
               if (!availableEquipmentByType.has(equipmentType)) {
                 availableEquipmentByType.set(equipmentType, [])
               }
-              availableEquipmentByType.get(equipmentType).push({ index: idx, tracking: equipment.trackingNumber })
+              // Use originalTrackingNumber if available (for re-linking), otherwise use current trackingNumber
+              const trackingToUse = equipment.originalTrackingNumber || equipment.trackingNumber
+              availableEquipmentByType.get(equipmentType)!.push({ index: idx, tracking: trackingToUse })
             }
           })
 
           console.log("[DEBUG] link_available - Available equipment by type:", Object.fromEntries(availableEquipmentByType))
 
-          // Update equipment details with liner booking numbers
+          // Update equipment details with liner booking numbers - ONLY process NEW bookings (selectedDetails)
           let hasUpdates = false
 
-          mergedDetails.forEach((detail: any) => {
+          selectedDetails.forEach((detail: any) => {
             if (detail.liner_booking_number && detail.liner_booking_number.trim()) {
+              // Skip if this booking was already linked before
+              if (alreadyLinkedBookingNumbers.has(detail.liner_booking_number)) {
+                console.log(`[DEBUG] link_available - Skipping already linked booking: ${detail.liner_booking_number}`)
+                return
+              }
+
               const equipmentType = detail.equipment_type?.includes("|")
                 ? detail.equipment_type.split("|")[0]
                 : detail.equipment_type
 
-              console.log(`[DEBUG] link_available - Processing booking: ${detail.liner_booking_number} for type: ${equipmentType}`)
+              console.log(`[DEBUG] link_available - Processing NEW booking: ${detail.liner_booking_number} for type: ${equipmentType}`)
 
               // Find the first available equipment of this type to assign the booking to
               const availableEquipment = availableEquipmentByType.get(equipmentType)
