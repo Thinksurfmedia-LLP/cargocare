@@ -127,82 +127,39 @@ export async function loader({ request }: LoaderFunctionArgs) {
     if (search) {
       const searchConditions = []
 
-      // NON-ARRAY FIELDS (use Prisma's path syntax - these work fine)
-      searchConditions.push(
-        // Search in carrier booking status
-        {
-          data: {
-            path: ["carrier_booking_status"],
-            string_contains: search,
-          },
-        },
-        // Search in booking released to
-        {
-          data: {
-            path: ["booking_released_to"],
-            string_contains: search,
-          },
-        },
-        // Search in unmapping reason
-        {
-          data: {
-            path: ["unmapping_reason"],
-            string_contains: search,
-          },
-        },
-        // Search in shipment plan reference number
-        {
-          shipmentPlan: {
-            data: {
-              path: ["reference_number"],
-              string_contains: search,
-            },
-          },
-        },
-        // Search in shipment plan business branch
-        {
-          shipmentPlan: {
-            data: {
-              path: ["bussiness_branch"],
-              string_contains: search,
-            },
-          },
-        },
-        // Search in shipment plan customer
-        {
-          shipmentPlan: {
-            data: {
-              path: ["container_movement", "customer"],
-              string_contains: search,
-            },
-          },
-        },
-        // Search in shipment plan consignee
-        {
-          shipmentPlan: {
-            data: {
-              path: ["container_movement", "consignee"],
-              string_contains: search,
-            },
-          },
-        },
-        // Search in created user name
-        {
-          user: {
-            name: {
-              contains: search,
-              mode: "insensitive",
-            },
-          },
-        },
-      )
-
-      // ARRAY FIELDS (use raw SQL - these need to be converted)
+      // Use raw SQL with ILIKE for case-insensitive JSON field searches
       try {
         // Dynamically target the correct table for array-field raw SQL searches
         const table = tab === "assignments" ? "shipment_assignments" : "liner_bookings"
 
-        // temporary_booking_number
+        // Search in carrier booking status (case-insensitive)
+        const statusMatches = await prisma.$queryRawUnsafe(
+          `SELECT id FROM "${table}" WHERE data->>'carrier_booking_status' ILIKE $1`,
+          `%${search}%`,
+        )
+        if ((statusMatches as any[]).length > 0) {
+          searchConditions.push({ id: { in: (statusMatches as any[]).map((row: any) => row.id) } })
+        }
+
+        // Search in booking released to (case-insensitive)
+        const releasedToMatches = await prisma.$queryRawUnsafe(
+          `SELECT id FROM "${table}" WHERE data->>'booking_released_to' ILIKE $1`,
+          `%${search}%`,
+        )
+        if ((releasedToMatches as any[]).length > 0) {
+          searchConditions.push({ id: { in: (releasedToMatches as any[]).map((row: any) => row.id) } })
+        }
+
+        // Search in unmapping reason (case-insensitive)
+        const unmappingMatches = await prisma.$queryRawUnsafe(
+          `SELECT id FROM "${table}" WHERE data->>'unmapping_reason' ILIKE $1`,
+          `%${search}%`,
+        )
+        if ((unmappingMatches as any[]).length > 0) {
+          searchConditions.push({ id: { in: (unmappingMatches as any[]).map((row: any) => row.id) } })
+        }
+
+        // temporary_booking_number (case-insensitive)
         const tempBookingMatches = await prisma.$queryRawUnsafe(
           `SELECT id FROM "${table}" WHERE data->'liner_booking_details'->0->>'temporary_booking_number' ILIKE $1`,
           `%${search}%`,
@@ -211,7 +168,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
           searchConditions.push({ id: { in: (tempBookingMatches as any[]).map((row: any) => row.id) } })
         }
 
-        // liner_booking_number
+        // liner_booking_number (case-insensitive)
         const linerBookingMatches = await prisma.$queryRawUnsafe(
           `SELECT id FROM "${table}" WHERE data->'liner_booking_details'->0->>'liner_booking_number' ILIKE $1`,
           `%${search}%`,
@@ -220,7 +177,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
           searchConditions.push({ id: { in: (linerBookingMatches as any[]).map((row: any) => row.id) } })
         }
 
-        // carrier
+        // carrier (case-insensitive)
         const carrierMatches = await prisma.$queryRawUnsafe(
           `SELECT id FROM "${table}" WHERE data->'liner_booking_details'->0->>'carrier' ILIKE $1`,
           `%${search}%`,
@@ -229,7 +186,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
           searchConditions.push({ id: { in: (carrierMatches as any[]).map((row: any) => row.id) } })
         }
 
-        // original_planned_vessel
+        // original_planned_vessel (case-insensitive)
         const vesselMatches = await prisma.$queryRawUnsafe(
           `SELECT id FROM "${table}" WHERE data->'liner_booking_details'->0->>'original_planned_vessel' ILIKE $1`,
           `%${search}%`,
@@ -238,7 +195,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
           searchConditions.push({ id: { in: (vesselMatches as any[]).map((row: any) => row.id) } })
         }
 
-        // revised_vessel
+        // revised_vessel (case-insensitive)
         const revisedVesselMatches = await prisma.$queryRawUnsafe(
           `SELECT id FROM "${table}" WHERE data->'liner_booking_details'->0->>'revised_vessel' ILIKE $1`,
           `%${search}%`,
@@ -247,7 +204,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
           searchConditions.push({ id: { in: (revisedVesselMatches as any[]).map((row: any) => row.id) } })
         }
 
-        // mbl_number
+        // mbl_number (case-insensitive)
         const mblMatches = await prisma.$queryRawUnsafe(
           `SELECT id FROM "${table}" WHERE data->'liner_booking_details'->0->>'mbl_number' ILIKE $1`,
           `%${search}%`,
@@ -256,7 +213,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
           searchConditions.push({ id: { in: (mblMatches as any[]).map((row: any) => row.id) } })
         }
 
-        // contract
+        // contract (case-insensitive)
         const contractMatches = await prisma.$queryRawUnsafe(
           `SELECT id FROM "${table}" WHERE data->'liner_booking_details'->0->>'contract' ILIKE $1`,
           `%${search}%`,
@@ -265,7 +222,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
           searchConditions.push({ id: { in: (contractMatches as any[]).map((row: any) => row.id) } })
         }
 
-        // equipment_type
+        // equipment_type (case-insensitive)
         const equipmentTypeMatches = await prisma.$queryRawUnsafe(
           `SELECT id FROM "${table}" WHERE data->'liner_booking_details'->0->>'equipment_type' ILIKE $1`,
           `%${search}%`,
@@ -274,7 +231,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
           searchConditions.push({ id: { in: (equipmentTypeMatches as any[]).map((row: any) => row.id) } })
         }
 
-        // equipment_quantity
+        // equipment_quantity (case-insensitive)
         const equipmentQtyMatches = await prisma.$queryRawUnsafe(
           `SELECT id FROM "${table}" WHERE data->'liner_booking_details'->0->>'equipment_quantity' ILIKE $1`,
           `%${search}%`,
@@ -291,9 +248,59 @@ export async function loader({ request }: LoaderFunctionArgs) {
         if ((remarksMatches as any[]).length > 0) {
           searchConditions.push({ id: { in: (remarksMatches as any[]).map((row: any) => row.id) } })
         }
+
+        // Search in shipment plan reference number (case-insensitive via join)
+        const refMatches = await prisma.$queryRaw`
+          SELECT lb.id FROM "liner_bookings" lb
+          JOIN "shipment_plans" sp ON lb."shipmentPlanId" = sp.id
+          WHERE sp.data->>'reference_number' ILIKE ${`%${search}%`}
+        `;
+        if ((refMatches as any[]).length > 0) {
+          searchConditions.push({ id: { in: (refMatches as any[]).map((row: any) => row.id) } })
+        }
+
+        // Search in shipment plan business branch (case-insensitive via join)
+        const branchMatches = await prisma.$queryRaw`
+          SELECT lb.id FROM "liner_bookings" lb
+          JOIN "shipment_plans" sp ON lb."shipmentPlanId" = sp.id
+          WHERE sp.data->>'bussiness_branch' ILIKE ${`%${search}%`}
+        `;
+        if ((branchMatches as any[]).length > 0) {
+          searchConditions.push({ id: { in: (branchMatches as any[]).map((row: any) => row.id) } })
+        }
+
+        // Search in shipment plan customer (case-insensitive via join)
+        const customerMatches = await prisma.$queryRaw`
+          SELECT lb.id FROM "liner_bookings" lb
+          JOIN "shipment_plans" sp ON lb."shipmentPlanId" = sp.id
+          WHERE sp.data->'container_movement'->>'customer' ILIKE ${`%${search}%`}
+        `;
+        if ((customerMatches as any[]).length > 0) {
+          searchConditions.push({ id: { in: (customerMatches as any[]).map((row: any) => row.id) } })
+        }
+
+        // Search in shipment plan consignee (case-insensitive via join)
+        const consigneeMatches = await prisma.$queryRaw`
+          SELECT lb.id FROM "liner_bookings" lb
+          JOIN "shipment_plans" sp ON lb."shipmentPlanId" = sp.id
+          WHERE sp.data->'container_movement'->>'consignee' ILIKE ${`%${search}%`}
+        `;
+        if ((consigneeMatches as any[]).length > 0) {
+          searchConditions.push({ id: { in: (consigneeMatches as any[]).map((row: any) => row.id) } })
+        }
       } catch (error) {
         console.error("Error in raw SQL search:", error)
       }
+
+      // Search in created user name (case-insensitive - Prisma native)
+      searchConditions.push({
+        user: {
+          name: {
+            contains: search,
+            mode: "insensitive",
+          },
+        },
+      });
 
       // Combine tab filtering, access control filtering, and search conditions
       const existingOrConditions = whereCondition.OR || [];

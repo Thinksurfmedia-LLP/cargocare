@@ -57,74 +57,29 @@ export async function loader({ request }: LoaderFunctionArgs) {
       },
     };
 
-    // Search functionality
+    // Search functionality - use raw SQL with ILIKE for case-insensitive search
     if (search) {
-      const searchConditions = [];
+      try {
+        // Get IDs that match search criteria with case-insensitive search
+        const matchingIds = await prisma.$queryRaw`
+          SELECT id FROM "shipment_plans" 
+          WHERE data->>'booking_status' = 'Awaiting MD Approval'
+          AND (
+            data->>'reference_number' ILIKE ${`%${search}%`}
+            OR data->>'bussiness_branch' ILIKE ${`%${search}%`}
+            OR data->'container_movement'->>'customer' ILIKE ${`%${search}%`}
+          )
+        `;
 
-      // Search in reference number
-      searchConditions.push({
-        AND: [
-          {
+        const ids = (matchingIds as any[]).map((row: any) => row.id);
+
+        // Also search by user name (case-insensitive via Prisma)
+        const userMatches = await prisma.shipmentPlan.findMany({
+          where: {
             data: {
               path: ["booking_status"],
               equals: "Awaiting MD Approval",
             },
-          },
-          {
-            data: {
-              path: ["reference_number"],
-              string_contains: search,
-            },
-          },
-        ],
-      });
-
-      // Search in business branch
-      searchConditions.push({
-        AND: [
-          {
-            data: {
-              path: ["booking_status"],
-              equals: "Awaiting MD Approval",
-            },
-          },
-          {
-            data: {
-              path: ["bussiness_branch"],
-              string_contains: search,
-            },
-          },
-        ],
-      });
-
-      // Search in customer name
-      searchConditions.push({
-        AND: [
-          {
-            data: {
-              path: ["booking_status"],
-              equals: "Awaiting MD Approval",
-            },
-          },
-          {
-            data: {
-              path: ["container_movement", "customer"],
-              string_contains: search,
-            },
-          },
-        ],
-      });
-
-      // Search in created user name
-      searchConditions.push({
-        AND: [
-          {
-            data: {
-              path: ["booking_status"],
-              equals: "Awaiting MD Approval",
-            },
-          },
-          {
             user: {
               name: {
                 contains: search,
@@ -132,12 +87,25 @@ export async function loader({ request }: LoaderFunctionArgs) {
               },
             },
           },
-        ],
-      });
+          select: { id: true },
+        });
 
-      whereCondition = {
-        OR: searchConditions,
-      };
+        const userMatchIds = userMatches.map((m) => m.id);
+        const allMatchingIds = [...new Set([...ids, ...userMatchIds])];
+
+        if (allMatchingIds.length > 0) {
+          whereCondition = {
+            id: { in: allMatchingIds },
+          };
+        } else {
+          // No matches found, return empty result
+          whereCondition = {
+            id: { in: [] },
+          };
+        }
+      } catch (error) {
+        console.error("Error in search:", error);
+      }
     }
 
     const [shipmentPlans, totalCount] = await Promise.all([

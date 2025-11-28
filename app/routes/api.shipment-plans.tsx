@@ -44,46 +44,39 @@ export async function loader({ request }: LoaderFunctionArgs) {
       whereCondition.userId = user.id;
     }
 
-    // Search functionality - search within JSONB data
+    // Search functionality - use raw SQL with ILIKE for case-insensitive search
     if (search) {
-      whereCondition.OR = [
-        {
-          data: {
-            path: ["loadingPort"],
-            string_contains: search,
-          },
-        },
-        {
-          data: {
-            path: ["destinationCountry"],
-            string_contains: search,
-          },
-        },
-        {
-          data: {
-            path: ["customer"],
-            string_contains: search,
-          },
-        },
-        {
-          data: {
-            path: ["portOfDischarge"],
-            string_contains: search,
-          },
-        },
-        {
-          data: {
-            path: ["carrierName"],
-            string_contains: search,
-          },
-        },
-        {
-          data: {
-            path: ["vesselName"],
-            string_contains: search,
-          },
-        },
-      ];
+      try {
+        const matchingIds = await prisma.$queryRaw`
+          SELECT id FROM "shipment_plans" 
+          WHERE data->>'loadingPort' ILIKE ${`%${search}%`}
+          OR data->>'destinationCountry' ILIKE ${`%${search}%`}
+          OR data->>'customer' ILIKE ${`%${search}%`}
+          OR data->>'portOfDischarge' ILIKE ${`%${search}%`}
+          OR data->>'carrierName' ILIKE ${`%${search}%`}
+          OR data->>'vesselName' ILIKE ${`%${search}%`}
+        `;
+
+        const ids = (matchingIds as any[]).map((row: any) => row.id);
+        
+        if (ids.length > 0) {
+          if (whereCondition.userId) {
+            // If we have user filtering, combine with search
+            whereCondition.AND = [
+              { userId: whereCondition.userId },
+              { id: { in: ids } }
+            ];
+            delete whereCondition.userId;
+          } else {
+            whereCondition.id = { in: ids };
+          }
+        } else {
+          // No matches found
+          whereCondition.id = { in: [] };
+        }
+      } catch (error) {
+        console.error("Error in search:", error);
+      }
     }
 
     const [shipmentPlans, totalCount] = await Promise.all([

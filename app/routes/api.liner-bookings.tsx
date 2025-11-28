@@ -27,54 +27,42 @@ export async function loader({ request }: LoaderFunctionArgs) {
     // Role-based access control
     if (user.role.name !== "ADMIN") {
       whereCondition.userId = user.id;
-    }    // Search functionality - search within JSONB data
+    }
+
+    // Search functionality - use raw SQL with ILIKE for case-insensitive search
     if (search) {
-      whereCondition.OR = [
-        {
-          shipmentPlan: {
-            data: {
-              path: ["reference_number"],
-              string_contains: search,
-            },
-          },
-        },
-        {
-          data: {
-            path: ["carrier_booking_status"],
-            string_contains: search,
-          },
-        },
-        {
-          data: {
-            path: ["booking_released_to"],
-            string_contains: search,
-          },
-        },
-        {
-          data: {
-            path: ["liner_booking_details"],
-            array_contains: [{
-              temporary_booking_number: { contains: search }
-            }]
-          },
-        },
-        {
-          data: {
-            path: ["liner_booking_details"],
-            array_contains: [{
-              carrier: { contains: search }
-            }]
-          },
-        },
-        {
-          data: {
-            path: ["liner_booking_details"],
-            array_contains: [{
-              liner_booking_number: { contains: search }
-            }]
-          },
-        },
-      ];
+      try {
+        const matchingIds = await prisma.$queryRaw`
+          SELECT lb.id FROM "liner_bookings" lb
+          LEFT JOIN "shipment_plans" sp ON lb."shipmentPlanId" = sp.id
+          WHERE lb.data->>'carrier_booking_status' ILIKE ${`%${search}%`}
+          OR lb.data->>'booking_released_to' ILIKE ${`%${search}%`}
+          OR lb.data->'liner_booking_details'->0->>'temporary_booking_number' ILIKE ${`%${search}%`}
+          OR lb.data->'liner_booking_details'->0->>'carrier' ILIKE ${`%${search}%`}
+          OR lb.data->'liner_booking_details'->0->>'liner_booking_number' ILIKE ${`%${search}%`}
+          OR sp.data->>'reference_number' ILIKE ${`%${search}%`}
+        `;
+
+        const ids = (matchingIds as any[]).map((row: any) => row.id);
+        
+        if (ids.length > 0) {
+          if (whereCondition.userId) {
+            // If we have user filtering, combine with search
+            whereCondition.AND = [
+              { userId: whereCondition.userId },
+              { id: { in: ids } }
+            ];
+            delete whereCondition.userId;
+          } else {
+            whereCondition.id = { in: ids };
+          }
+        } else {
+          // No matches found
+          whereCondition.id = { in: [] };
+        }
+      } catch (error) {
+        console.error("Error in search:", error);
+      }
     }
 
     const [linerBookings, totalCount] = await Promise.all([

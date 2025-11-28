@@ -278,6 +278,129 @@ export async function action({ request, params }: ActionFunctionArgs) {
     }
     const formData = await request.formData()
 
+    // Check if cancel shipment plan was requested
+    const cancelShipmentPlan = formData.get("cancel_shipment_plan") === "true"
+
+    if (cancelShipmentPlan) {
+      console.log("[CANCEL] Cancel shipment plan requested for planId:", planId)
+
+      // Only allow SHIPMENT_PLAN_TEAM and ADMIN to cancel
+      if (user.role.name !== "SHIPMENT_PLAN_TEAM" && user.role.name !== "ADMIN") {
+        return { error: "You don't have permission to cancel this shipment plan" }
+      }
+
+      // Get the current plan with all related data
+      const currentPlan = await prisma.shipmentPlan.findUnique({
+        where: { id: planId },
+        include: {
+          linerBooking: true,
+          shipmentAssignment: true,
+        },
+      })
+
+      if (!currentPlan) {
+        return { error: "Shipment plan not found" }
+      }
+
+      const planData = currentPlan.data as any
+      console.log("[CANCEL] Plan status:", planData?.booking_status)
+      console.log("[CANCEL] Has liner booking:", !!currentPlan.linerBooking)
+      console.log("[CANCEL] Has shipment assignment:", !!currentPlan.shipmentAssignment)
+
+      // If there's a linked liner booking, unlink it to make it available again
+      if (currentPlan.linerBooking) {
+        const linerBookingData = currentPlan.linerBooking.data as any
+
+        console.log("[CANCEL] Unlinking liner booking:", currentPlan.linerBooking.id)
+
+        // Update the liner booking to be available again
+        await prisma.linerBooking.update({
+          where: { id: currentPlan.linerBooking.id },
+          data: {
+            shipmentPlanId: null, // Unlink from shipment plan
+            data: {
+              ...linerBookingData,
+              carrier_booking_status: "Ready for Re-linking", // Mark as ready to be linked to another plan
+              cancelled_from_plan: planData?.reference_number || planId,
+              cancelled_at: new Date().toISOString(),
+            },
+          },
+        })
+
+        console.log("[CANCEL] Liner booking unlinked and marked as Ready for Re-linking")
+      }
+
+      // If there's a linked shipment assignment, unlink it
+      if (currentPlan.shipmentAssignment) {
+        const assignmentData = currentPlan.shipmentAssignment.data as any
+
+        console.log("[CANCEL] Unlinking shipment assignment:", currentPlan.shipmentAssignment.id)
+
+        // Mark the assignment as orphaned since the plan is being cancelled
+        await prisma.shipmentAssignment.update({
+          where: { id: currentPlan.shipmentAssignment.id },
+          data: {
+            shipmentPlanId: null, // Unlink from shipment plan
+            isOrphaned: true,
+            orphanedAt: new Date(),
+            orphanedReason: `Parent shipment plan ${planData?.reference_number || planId} was cancelled`,
+            data: {
+              ...assignmentData,
+              carrier_booking_status: "Ready for Re-linking",
+              cancelled_from_plan: planData?.reference_number || planId,
+              cancelled_at: new Date().toISOString(),
+            },
+          },
+        })
+
+        console.log("[CANCEL] Shipment assignment unlinked and marked as orphaned")
+      }
+
+      // Also find any liner bookings that might be linked via shipmentPlanId (not the one-to-one relation)
+      const linkedLinerBookings = await prisma.linerBooking.findMany({
+        where: { shipmentPlanId: planId },
+      })
+
+      if (linkedLinerBookings.length > 0) {
+        console.log("[CANCEL] Found", linkedLinerBookings.length, "additional linked liner bookings")
+
+        for (const booking of linkedLinerBookings) {
+          const bookingData = booking.data as any
+
+          await prisma.linerBooking.update({
+            where: { id: booking.id },
+            data: {
+              shipmentPlanId: null,
+              data: {
+                ...bookingData,
+                carrier_booking_status: "Ready for Re-linking",
+                cancelled_from_plan: planData?.reference_number || planId,
+                cancelled_at: new Date().toISOString(),
+              },
+            },
+          })
+        }
+
+        console.log("[CANCEL] All linked liner bookings unlinked")
+      }
+
+      // Delete any pending unmapping requests for this plan
+      await prisma.individualEquipmentUnmappingRequest.deleteMany({
+        where: { shipmentPlanId: planId },
+      })
+
+      console.log("[CANCEL] Deleted any pending unmapping requests")
+
+      // Finally, delete the shipment plan
+      await prisma.shipmentPlan.delete({
+        where: { id: planId },
+      })
+
+      console.log("[CANCEL] Shipment plan deleted successfully")
+
+      return redirect("/shipment-plans?cancelled=true")
+    }
+
     // Check if unmapping approval or rejection was requested
     const approveUnmapping = formData.get("approve_unmapping") === "true"
     const rejectUnmapping = formData.get("reject_unmapping") === "true"

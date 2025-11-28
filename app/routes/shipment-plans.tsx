@@ -33,6 +33,7 @@ import { ColumnSelectorModal } from "~/components/ui/column-selector-modal";
 import { BulkEditModal } from "~/components/ui/bulk-edit-modal";
 import { ShipmentDeletionConfirmationModal } from "~/components/ui/shipment-deletion-confirmation-modal";
 import { useColumnPreferences } from "~/hooks/useColumnPreferences";
+import { useToast } from "~/components/ui/toast";
 import { useState, useEffect } from "react";
 
 export const meta: MetaFunction = () => {
@@ -96,213 +97,192 @@ export async function loader({ request }: LoaderFunctionArgs) {
     if (search) {
       const searchConditions = [];
 
-      // NON-ARRAY FIELDS (use Prisma's path syntax - these work fine)
-      searchConditions.push(
-        // Search in reference number
-        {
-          data: {
-            path: ["reference_number"],
-            string_contains: search,
-          },
-        },
-        // Search in business branch
-        {
-          data: {
-            path: ["bussiness_branch"],
-            string_contains: search,
-          },
-        },
-        // Search in shipment type
-        {
-          data: {
-            path: ["shipment_type"],
-            string_contains: search,
-          },
-        },
-        // Search in booking status
-        {
-          data: {
-            path: ["booking_status"],
-            string_contains: search,
-          },
-        },
-        // Search in container movement - loading port
-        {
-          data: {
-            path: ["container_movement", "loading_port"],
-            string_contains: search,
-          },
-        },
-        // Search in container movement - destination country
-        {
-          data: {
-            path: ["container_movement", "destination_country"],
-            string_contains: search,
-          },
-        },
-        // Search in container movement - customer
-        {
-          data: {
-            path: ["container_movement", "customer"],
-            string_contains: search,
-          },
-        },
-        // Search in container movement - consignee
-        {
-          data: {
-            path: ["container_movement", "consignee"],
-            string_contains: search,
-          },
-        },
-        // Search in container movement - port of discharge
-        {
-          data: {
-            path: ["container_movement", "port_of_discharge"],
-            string_contains: search,
-          },
-        },
-        // Search in container movement - final place of delivery
-        {
-          data: {
-            path: ["container_movement", "final_place_of_delivery"],
-            string_contains: search,
-          },
-        },
-        // Search in carrier and vessel preference - carrier
-        {
-          data: {
-            path: [
-              "container_movement",
-              "carrier_and_vessel_preference",
-              "carrier",
-            ],
-            string_contains: search,
-          },
-        },
-        // Search in carrier and vessel preference - vessel
-        {
-          data: {
-            path: [
-              "container_movement",
-              "carrier_and_vessel_preference",
-              "vessel",
-            ],
-            string_contains: search,
-          },
-        },
-        // Search in created user name
-        {
-          user: {
-            name: {
-              contains: search,
-              mode: "insensitive",
-            },
-          },
-        }
-      );
-
-      // ARRAY FIELDS (use raw SQL - these need to be converted)
+      // Use raw SQL with ILIKE for case-insensitive JSON field searches
       try {
-        // Search in package details - shipper
+        // Search in reference number (case-insensitive)
+        const refMatches = await prisma.$queryRaw`
+          SELECT id FROM "shipment_plans" 
+          WHERE data->>'reference_number' ILIKE ${`%${search}%`}
+        `;
+        if ((refMatches as any[]).length > 0) {
+          searchConditions.push({ id: { in: (refMatches as any[]).map((row: any) => row.id) } });
+        }
+
+        // Search in business branch (case-insensitive)
+        const branchMatches = await prisma.$queryRaw`
+          SELECT id FROM "shipment_plans" 
+          WHERE data->>'bussiness_branch' ILIKE ${`%${search}%`}
+        `;
+        if ((branchMatches as any[]).length > 0) {
+          searchConditions.push({ id: { in: (branchMatches as any[]).map((row: any) => row.id) } });
+        }
+
+        // Search in shipment type (case-insensitive)
+        const typeMatches = await prisma.$queryRaw`
+          SELECT id FROM "shipment_plans" 
+          WHERE data->>'shipment_type' ILIKE ${`%${search}%`}
+        `;
+        if ((typeMatches as any[]).length > 0) {
+          searchConditions.push({ id: { in: (typeMatches as any[]).map((row: any) => row.id) } });
+        }
+
+        // Search in booking status (case-insensitive)
+        const statusMatches = await prisma.$queryRaw`
+          SELECT id FROM "shipment_plans" 
+          WHERE data->>'booking_status' ILIKE ${`%${search}%`}
+        `;
+        if ((statusMatches as any[]).length > 0) {
+          searchConditions.push({ id: { in: (statusMatches as any[]).map((row: any) => row.id) } });
+        }
+
+        // Search in container movement - loading port (case-insensitive)
+        const loadingPortMatches = await prisma.$queryRaw`
+          SELECT id FROM "shipment_plans" 
+          WHERE data->'container_movement'->>'loading_port' ILIKE ${`%${search}%`}
+        `;
+        if ((loadingPortMatches as any[]).length > 0) {
+          searchConditions.push({ id: { in: (loadingPortMatches as any[]).map((row: any) => row.id) } });
+        }
+
+        // Search in container movement - destination country (case-insensitive)
+        const destCountryMatches = await prisma.$queryRaw`
+          SELECT id FROM "shipment_plans" 
+          WHERE data->'container_movement'->>'destination_country' ILIKE ${`%${search}%`}
+        `;
+        if ((destCountryMatches as any[]).length > 0) {
+          searchConditions.push({ id: { in: (destCountryMatches as any[]).map((row: any) => row.id) } });
+        }
+
+        // Search in container movement - customer (case-insensitive)
+        const customerMatches = await prisma.$queryRaw`
+          SELECT id FROM "shipment_plans" 
+          WHERE data->'container_movement'->>'customer' ILIKE ${`%${search}%`}
+        `;
+        if ((customerMatches as any[]).length > 0) {
+          searchConditions.push({ id: { in: (customerMatches as any[]).map((row: any) => row.id) } });
+        }
+
+        // Search in container movement - consignee (case-insensitive)
+        const consigneeMatches = await prisma.$queryRaw`
+          SELECT id FROM "shipment_plans" 
+          WHERE data->'container_movement'->>'consignee' ILIKE ${`%${search}%`}
+        `;
+        if ((consigneeMatches as any[]).length > 0) {
+          searchConditions.push({ id: { in: (consigneeMatches as any[]).map((row: any) => row.id) } });
+        }
+
+        // Search in container movement - port of discharge (case-insensitive)
+        const podMatches = await prisma.$queryRaw`
+          SELECT id FROM "shipment_plans" 
+          WHERE data->'container_movement'->>'port_of_discharge' ILIKE ${`%${search}%`}
+        `;
+        if ((podMatches as any[]).length > 0) {
+          searchConditions.push({ id: { in: (podMatches as any[]).map((row: any) => row.id) } });
+        }
+
+        // Search in container movement - final place of delivery (case-insensitive)
+        const fpdMatches = await prisma.$queryRaw`
+          SELECT id FROM "shipment_plans" 
+          WHERE data->'container_movement'->>'final_place_of_delivery' ILIKE ${`%${search}%`}
+        `;
+        if ((fpdMatches as any[]).length > 0) {
+          searchConditions.push({ id: { in: (fpdMatches as any[]).map((row: any) => row.id) } });
+        }
+
+        // Search in carrier and vessel preference - carrier (case-insensitive)
+        const carrierMatches = await prisma.$queryRaw`
+          SELECT id FROM "shipment_plans" 
+          WHERE data->'container_movement'->'carrier_and_vessel_preference'->>'carrier' ILIKE ${`%${search}%`}
+        `;
+        if ((carrierMatches as any[]).length > 0) {
+          searchConditions.push({ id: { in: (carrierMatches as any[]).map((row: any) => row.id) } });
+        }
+
+        // Search in carrier and vessel preference - vessel (case-insensitive)
+        const vesselMatches = await prisma.$queryRaw`
+          SELECT id FROM "shipment_plans" 
+          WHERE data->'container_movement'->'carrier_and_vessel_preference'->>'vessel' ILIKE ${`%${search}%`}
+        `;
+        if ((vesselMatches as any[]).length > 0) {
+          searchConditions.push({ id: { in: (vesselMatches as any[]).map((row: any) => row.id) } });
+        }
+
+        // Search in package details - shipper (case-insensitive)
         const shipperMatches = await prisma.$queryRaw`
-      SELECT id FROM "shipment_plans" 
-      WHERE data->'package_details'->0->>'shipper' ILIKE ${`%${search}%`}
-    `;
-
-        if (shipperMatches.length > 0) {
-          searchConditions.push({
-            id: {
-              in: shipperMatches.map((row: any) => row.id),
-            },
-          });
+          SELECT id FROM "shipment_plans" 
+          WHERE data->'package_details'->0->>'shipper' ILIKE ${`%${search}%`}
+        `;
+        if ((shipperMatches as any[]).length > 0) {
+          searchConditions.push({ id: { in: (shipperMatches as any[]).map((row: any) => row.id) } });
         }
 
-        // Search in package details - commodity
+        // Search in package details - commodity (case-insensitive)
         const commodityMatches = await prisma.$queryRaw`
-      SELECT id FROM "shipment_plans" 
-      WHERE data->'package_details'->0->>'commodity' ILIKE ${`%${search}%`}
-    `;
-
-        if (commodityMatches.length > 0) {
-          searchConditions.push({
-            id: {
-              in: commodityMatches.map((row: any) => row.id),
-            },
-          });
+          SELECT id FROM "shipment_plans" 
+          WHERE data->'package_details'->0->>'commodity' ILIKE ${`%${search}%`}
+        `;
+        if ((commodityMatches as any[]).length > 0) {
+          searchConditions.push({ id: { in: (commodityMatches as any[]).map((row: any) => row.id) } });
         }
 
-        // Search in package details - invoice number
+        // Search in package details - invoice number (case-insensitive)
         const invoiceMatches = await prisma.$queryRaw`
-      SELECT id FROM "shipment_plans" 
-      WHERE data->'package_details'->0->>'invoice_number' ILIKE ${`%${search}%`}
-    `;
-
-        if (invoiceMatches.length > 0) {
-          searchConditions.push({
-            id: {
-              in: invoiceMatches.map((row: any) => row.id),
-            },
-          });
+          SELECT id FROM "shipment_plans" 
+          WHERE data->'package_details'->0->>'invoice_number' ILIKE ${`%${search}%`}
+        `;
+        if ((invoiceMatches as any[]).length > 0) {
+          searchConditions.push({ id: { in: (invoiceMatches as any[]).map((row: any) => row.id) } });
         }
 
-        // Search in package details - PO number
+        // Search in package details - PO number (case-insensitive)
         const poMatches = await prisma.$queryRaw`
-      SELECT id FROM "shipment_plans" 
-      WHERE data->'package_details'->0->>'p_o_number' ILIKE ${`%${search}%`}
-    `;
-
-        if (poMatches.length > 0) {
-          searchConditions.push({
-            id: {
-              in: poMatches.map((row: any) => row.id),
-            },
-          });
+          SELECT id FROM "shipment_plans" 
+          WHERE data->'package_details'->0->>'p_o_number' ILIKE ${`%${search}%`}
+        `;
+        if ((poMatches as any[]).length > 0) {
+          searchConditions.push({ id: { in: (poMatches as any[]).map((row: any) => row.id) } });
         }
 
-        // Search in equipment details - equipment type
+        // Search in equipment details - equipment type (case-insensitive)
         const equipmentTypeMatches = await prisma.$queryRaw`
-      SELECT id FROM "shipment_plans" 
-      WHERE data->'equipment_details'->0->>'equipment_type' ILIKE ${`%${search}%`}
-    `;
-
-        if (equipmentTypeMatches.length > 0) {
-          searchConditions.push({
-            id: {
-              in: equipmentTypeMatches.map((row: any) => row.id),
-            },
-          });
+          SELECT id FROM "shipment_plans" 
+          WHERE data->'equipment_details'->0->>'equipment_type' ILIKE ${`%${search}%`}
+        `;
+        if ((equipmentTypeMatches as any[]).length > 0) {
+          searchConditions.push({ id: { in: (equipmentTypeMatches as any[]).map((row: any) => row.id) } });
         }
 
-        // Search in equipment details - stuffing point
+        // Search in equipment details - stuffing point (case-insensitive)
         const stuffingPointMatches = await prisma.$queryRaw`
-      SELECT id FROM "shipment_plans" 
-      WHERE data->'equipment_details'->0->>'stuffing_point' ILIKE ${`%${search}%`}
-    `;
-
-        if (stuffingPointMatches.length > 0) {
-          searchConditions.push({
-            id: {
-              in: stuffingPointMatches.map((row: any) => row.id),
-            },
-          });
+          SELECT id FROM "shipment_plans" 
+          WHERE data->'equipment_details'->0->>'stuffing_point' ILIKE ${`%${search}%`}
+        `;
+        if ((stuffingPointMatches as any[]).length > 0) {
+          searchConditions.push({ id: { in: (stuffingPointMatches as any[]).map((row: any) => row.id) } });
         }
 
-        // Search in equipment details - empty container pick up from
+        // Search in equipment details - empty container pick up from (case-insensitive)
         const emptyPickupMatches = await prisma.$queryRaw`
-      SELECT id FROM "shipment_plans" 
-      WHERE data->'equipment_details'->0->>'empty_container_pick_up_from' ILIKE ${`%${search}%`}
-    `;
-
-        if (emptyPickupMatches.length > 0) {
-          searchConditions.push({
-            id: {
-              in: emptyPickupMatches.map((row: any) => row.id),
-            },
-          });
+          SELECT id FROM "shipment_plans" 
+          WHERE data->'equipment_details'->0->>'empty_container_pick_up_from' ILIKE ${`%${search}%`}
+        `;
+        if ((emptyPickupMatches as any[]).length > 0) {
+          searchConditions.push({ id: { in: (emptyPickupMatches as any[]).map((row: any) => row.id) } });
         }
+
       } catch (error) {
         console.error("Error in raw SQL search:", error);
       }
+
+      // Search in created user name (case-insensitive - Prisma native)
+      searchConditions.push({
+        user: {
+          name: {
+            contains: search,
+            mode: "insensitive",
+          },
+        },
+      });
 
       // Combine branch filtering with search conditions
       if (whereCondition.OR && searchConditions.length > 0) {
@@ -871,6 +851,7 @@ export default function ShipmentPlans() {
   const [isConfirmationModalOpen, setIsConfirmationModalOpen] = useState(false);
   const [pendingDeletionIds, setPendingDeletionIds] = useState<string[]>([]);
   const isSubmitting = navigation.state === "submitting";
+  const { addToast } = useToast();
 
   // Handle confirmation modal opening when action returns needsConfirmation
   useEffect(() => {
@@ -879,6 +860,23 @@ export default function ShipmentPlans() {
       setPendingDeletionIds(selectedIds);
     }
   }, [actionData, selectedIds]);
+
+  // Show toast when shipment plan is cancelled
+  useEffect(() => {
+    const cancelled = searchParams.get("cancelled");
+    if (cancelled === "true") {
+      addToast({
+        type: "success",
+        title: "Shipment Plan Deleted",
+        description: "The shipment plan has been deleted and removed. Any linked liner bookings are now available for re-linking.",
+        duration: 6000,
+      });
+      // Remove the query param from URL without refresh
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete("cancelled");
+      window.history.replaceState({}, "", newUrl.toString());
+    }
+  }, [searchParams, addToast]);
 
   // Handle confirmation choice
   const handleDeletionConfirmation = (choice: 'delete_both' | 'orphan_assignments', reason?: string) => {

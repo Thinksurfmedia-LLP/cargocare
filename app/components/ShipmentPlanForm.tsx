@@ -289,6 +289,10 @@ export function ShipmentPlanForm({
   const [remarks, setRemarks] = useState<string>("");
   const [rejectionComment, setRejectionComment] = useState<string>("");
 
+  // State for cancel shipment plan confirmation
+  const [showCancelConfirmation, setShowCancelConfirmation] = useState<boolean>(false);
+  const [isCancelling, setIsCancelling] = useState<boolean>(false);
+
   // Add state to track the selected business branch:
   const [selectedBusinessBranch, setSelectedBusinessBranch] = useState<string>(
     actionData?.formData?.bussiness_branch || planData.bussiness_branch || ""
@@ -665,22 +669,20 @@ export function ShipmentPlanForm({
   const validateRequiredFields = () => {
     const errors: string[] = [];
 
-    // Check Business Branch - check both select and hidden inputs
-    const businessBranch =
-      document.querySelector<HTMLSelectElement>(
-        'select[name="bussiness_branch"]'
-      )?.value ||
-      document.querySelector<HTMLInputElement>('input[name="bussiness_branch"]')
-        ?.value;
-    if (!businessBranch) {
+    // Check Business Branch - use state variable, hidden input, or planData
+    const businessBranchInput = document.querySelector<HTMLInputElement>('input[name="bussiness_branch"]');
+    const businessBranchValue = selectedBusinessBranch || businessBranchInput?.value || planData.bussiness_branch || '';
+    console.log("Validation - Business Branch:", { selectedBusinessBranch, inputValue: businessBranchInput?.value, planData: planData.bussiness_branch, final: businessBranchValue });
+    if (!businessBranchValue) {
       errors.push("Business Branch is required");
     }
 
-    // Check Shipment Type
-    const shipmentType = document.querySelector<HTMLSelectElement>(
-      'select[name="shipment_type"]'
-    )?.value;
-    if (!shipmentType) {
+    // Check Shipment Type - check select, hidden inputs, or planData
+    const shipmentTypeSelect = document.querySelector<HTMLSelectElement>('select[name="shipment_type"]');
+    const shipmentTypeInput = document.querySelector<HTMLInputElement>('input[name="shipment_type"]');
+    const shipmentTypeValue = shipmentTypeSelect?.value || shipmentTypeInput?.value || planData.shipment_type || '';
+    console.log("Validation - Shipment Type:", { selectValue: shipmentTypeSelect?.value, inputValue: shipmentTypeInput?.value, planData: planData.shipment_type, final: shipmentTypeValue });
+    if (!shipmentTypeValue) {
       errors.push("Shipment Type is required");
     }
 
@@ -797,6 +799,7 @@ export function ShipmentPlanForm({
     // Buying price is optional for shipment planners
 
     if (errors.length > 0) {
+      console.log("Validation errors found:", errors);
       addToast({
         type: "error",
         title: "Validation Error",
@@ -807,14 +810,17 @@ export function ShipmentPlanForm({
       });
     }
 
+    console.log("Validation result:", errors.length === 0 ? "PASSED" : "FAILED");
     return errors.length === 0;
   };
 
   // Handle form submission with validation
   const handleFormSubmit = (e: React.FormEvent) => {
+    console.log("handleFormSubmit called");
     // Get the submit button that was clicked
     const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
     const submitAction = submitter?.value;
+    console.log("Submit action:", submitAction);
     const isDraft = submitAction === "draft";
 
     // For drafts, skip validation (formNoValidate on button handles native validation)
@@ -823,15 +829,13 @@ export function ShipmentPlanForm({
       return;
     }
 
-    if (mode === "create") {
-      // For create mode (not draft), validate required fields
-      if (!validateRequiredFields()) {
-        e.preventDefault();
-        return;
-      }
+    // For both create and edit modes (not draft), validate required fields
+    if (!validateRequiredFields()) {
+      e.preventDefault();
+      return;
     }
 
-    // Allow form submission if validation passes or in edit mode
+    // Allow form submission if validation passes
     setIsFormSubmitting(true);
   };
 
@@ -1825,6 +1829,7 @@ export function ShipmentPlanForm({
                         )}
                         placeholder="Select business branch"
                         className="border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
+                        onChange={(value) => setSelectedBusinessBranch(value)}
                       />
                     </div>
 
@@ -3603,14 +3608,7 @@ export function ShipmentPlanForm({
           </div>
 
           {/* Enhanced Form Actions */}
-          <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4 flex justify-between items-center">
-            <div className="flex items-center space-x-4">
-              <div className="text-sm text-gray-600">
-                <span className="font-medium">Auto-save:</span>
-                <span className="text-gray-500 ml-1">Disabled</span>
-              </div>
-            </div>
-
+          <div className="sticky bottom-0 bg-white border-t border-gray-200 px-6 py-4 flex justify-end items-center">
             <div className="flex items-center space-x-3">
               <Link to="/shipment-plans">
                 <Button
@@ -3619,7 +3617,7 @@ export function ShipmentPlanForm({
                   className="px-6 py-2 border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200 bg-transparent"
                 >
                   <span className="mr-2">↩️</span>
-                  Cancel
+                  Back to List
                 </Button>
               </Link>
 
@@ -3627,30 +3625,53 @@ export function ShipmentPlanForm({
                 user?.role.name === "MD" ||
                 user?.role.name === "SHIPMENT_PLAN_TEAM") && (
                 <>
-                  <Button
-                    type="submit"
-                    name="submitAction"
-                    value="draft"
-                    formNoValidate
-                    disabled={isSubmitting || isFormSubmitting}
-                    className="px-6 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium transition-all duration-200 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isSubmitting || isFormSubmitting ? (
+                  {/* Delete Shipment Plan Button - Only show in edit mode */}
+                  {mode === "edit" && (user?.role.name === "ADMIN" || user?.role.name === "SHIPMENT_PLAN_TEAM") && (
+                    <Button
+                      type="button"
+                      onClick={() => setShowCancelConfirmation(true)}
+                      disabled={isSubmitting || isFormSubmitting || isCancelling}
+                      className="px-6 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg font-medium transition-all duration-200 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
                       <div className="flex items-center space-x-2">
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        <span>Saving...</span>
+                        <span>🗑️</span>
+                        <span>Delete Plan</span>
                       </div>
-                    ) : (
-                      <div className="flex items-center space-x-2">
-                        <span>📝</span>
-                        <span>Save as Draft</span>
+                    </Button>
+                  )}
+                  <div className="relative group">
+                    <Button
+                      type="submit"
+                      name="submitAction"
+                      value="draft"
+                      formNoValidate
+                      disabled={isSubmitting || isFormSubmitting || !selectedBusinessBranch}
+                      className="px-6 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium transition-all duration-200 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isSubmitting || isFormSubmitting ? (
+                        <div className="flex items-center space-x-2">
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          <span>Saving...</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center space-x-2">
+                          <span>📝</span>
+                          <span>Save as Draft</span>
+                        </div>
+                      )}
+                    </Button>
+                    {!selectedBusinessBranch && (
+                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-50">
+                        Please select a business branch first
+                        <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-800"></div>
                       </div>
                     )}
-                  </Button>
+                  </div>
                   <Button
                     type="submit"
                     name="submitAction"
                     value="submit"
+                    formNoValidate
                     disabled={isSubmitting || isFormSubmitting}
                     className="px-8 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium transition-all duration-200 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -3694,6 +3715,87 @@ export function ShipmentPlanForm({
           equipmentOptions={dataPoints.equipment}
           existingEquipment={equipmentDetails}
         />
+      )}
+
+      {/* Delete Shipment Plan Confirmation Modal */}
+      {showCancelConfirmation && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
+            <div className="bg-gradient-to-r from-orange-500 to-red-500 px-6 py-4">
+              <h3 className="text-xl font-bold text-white flex items-center">
+                <span className="mr-2">⚠️</span>
+                Delete Shipment Plan
+              </h3>
+            </div>
+            <div className="p-6">
+              <div className="mb-4">
+                <p className="text-gray-700 mb-3">
+                  Are you sure you want to delete this shipment plan?
+                </p>
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 text-sm">
+                  <p className="font-semibold text-orange-800 mb-2">This action will:</p>
+                  <ul className="list-disc list-inside text-orange-700 space-y-1">
+                    <li>Permanently delete this shipment plan</li>
+                    <li>Remove it from all lists (Planner, MD, Admin)</li>
+                    {planData.booking_status === "Approved" || planData.booking_status === "Booked" ? (
+                      <li>Unlink any associated liner bookings (they will be available for re-linking)</li>
+                    ) : null}
+                  </ul>
+                </div>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-3 mb-4">
+                <p className="text-sm text-gray-600">
+                  <span className="font-medium">Reference:</span> {planData.reference_number || "N/A"}
+                </p>
+                <p className="text-sm text-gray-600">
+                  <span className="font-medium">Status:</span> {planData.booking_status || "N/A"}
+                </p>
+              </div>
+              <p className="text-red-600 text-sm font-medium">
+                ⚠️ This action cannot be undone.
+              </p>
+            </div>
+            <div className="bg-gray-50 px-6 py-4 flex justify-end space-x-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowCancelConfirmation(false)}
+                disabled={isCancelling}
+                className="px-4 py-2 border-gray-300 rounded-lg hover:bg-gray-100"
+              >
+                No, Keep Plan
+              </Button>
+              <Button
+                type="button"
+                onClick={() => {
+                  setIsCancelling(true);
+                  // Create and submit a form programmatically
+                  const form = document.createElement('form');
+                  form.method = 'POST';
+                  form.style.display = 'none';
+                  const input = document.createElement('input');
+                  input.type = 'hidden';
+                  input.name = 'cancel_shipment_plan';
+                  input.value = 'true';
+                  form.appendChild(input);
+                  document.body.appendChild(form);
+                  form.submit();
+                }}
+                disabled={isCancelling}
+                className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium disabled:opacity-50"
+              >
+                {isCancelling ? (
+                  <div className="flex items-center space-x-2">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>Deleting...</span>
+                  </div>
+                ) : (
+                  <span>Yes, Delete Plan</span>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
