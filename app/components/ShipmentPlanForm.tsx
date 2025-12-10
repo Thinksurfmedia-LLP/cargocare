@@ -284,7 +284,7 @@ export function ShipmentPlanForm({
     "approved" | "rejected"
   >("approved");
   const [selectedLinerBroker, setSelectedLinerBroker] = useState<string>(
-    dataPoints?.linerBookingUsers || ""
+    planData?.liner_broker_approval || ""
   );
   const [remarks, setRemarks] = useState<string>("");
   const [rejectionComment, setRejectionComment] = useState<string>("");
@@ -3667,32 +3667,52 @@ export function ShipmentPlanForm({
                       </div>
                     )}
                   </div>
-                  <Button
-                    type="submit"
-                    name="submitAction"
-                    value="submit"
-                    formNoValidate
-                    disabled={isSubmitting || isFormSubmitting}
-                    className="px-8 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium transition-all duration-200 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isSubmitting || isFormSubmitting ? (
-                      <div className="flex items-center space-x-2">
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        <span>
-                          {mode === "create" ? "Creating..." : "Updating..."}
-                        </span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center space-x-2">
-                        <span>✨</span>
-                        <span>
-                          {mode === "create"
-                            ? "Create Shipment Plan"
-                            : "Update Shipment Plan"}
-                        </span>
+                  <div className="relative group">
+                    <Button
+                      type="submit"
+                      name="submitAction"
+                      value="submit"
+                      formNoValidate
+                      disabled={
+                        isSubmitting || 
+                        isFormSubmitting || 
+                        (mode === "edit" && 
+                        bookingStatus === "Awaiting MD Approval" && 
+                        (user?.role?.name === "ADMIN" || user?.role?.name === "MD") && 
+                        activeApprovalTab === "approved" && 
+                        (!selectedLinerBroker || selectedLinerBroker.trim() === ""))
+                      }
+                      className="px-8 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium transition-all duration-200 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isSubmitting || isFormSubmitting ? (
+                        <div className="flex items-center space-x-2">
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          <span>
+                            {mode === "create" ? "Creating..." : "Updating..."}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center space-x-2">
+                          <span>✨</span>
+                          <span>
+                            {mode === "create"
+                              ? "Create Shipment Plan"
+                              : "Update Shipment Plan"}
+                          </span>
+                        </div>
+                      )}
+                    </Button>
+                    {mode === "edit" && 
+                    bookingStatus === "Awaiting MD Approval" && 
+                    (user?.role?.name === "ADMIN" || user?.role?.name === "MD") && 
+                    activeApprovalTab === "approved" && 
+                    (!selectedLinerBroker || selectedLinerBroker.trim() === "") && (
+                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-50">
+                        Please assign a liner broker first
+                        <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-800"></div>
                       </div>
                     )}
-                  </Button>
+                  </div>
                 </>
               )}
             </div>
