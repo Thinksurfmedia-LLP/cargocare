@@ -94,7 +94,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       carriers,
       organizations,
       linerBookingUsers,
-      salesPersons,
+      allUsers,
     ] = await Promise.all([
       prisma.businessBranch.findMany({ orderBy: { name: "asc" } }),
       prisma.commodity.findMany({ orderBy: { name: "asc" } }),
@@ -119,7 +119,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
           name: "asc",
         },
       }),
-      prisma.salesPerson.findMany({ orderBy: { name: "asc" } }),
+      prisma.user.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, email: true } }),
     ])
 
     // Fetch individual equipment unmapping requests for this shipment plan
@@ -150,14 +150,12 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     }
     // ADMIN users can edit any business branch
 
-    // Find matching sales person for current user (by name)
-    const defaultSalesPerson = salesPersons.find(sp => sp.name === user.name);
-
+    // All users are potential sales persons - default to current user
     return {
       user,
       shipmentPlan,
       individualUnmappingRequests,
-      defaultSalesPersonId: defaultSalesPerson?.id || null,
+      defaultSalesPersonId: user.id,
       dataPoints: {
         businessBranches,
         commodities,
@@ -169,7 +167,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         carriers,
         organizations,
         linerBookingUsers,
-        salesPersons,
+        salesPersons: allUsers, // All users can be salespersons
       },
     }
   } catch (error) {
@@ -1429,6 +1427,147 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
       console.log("Shipment plan updated successfully")
 
+      // Send email notifications for MD approval/rejection
+      const wasAwaitingApproval = existingPlanDataForStatus.booking_status === "Awaiting MD Approval"
+      console.log("📧 Email notification check:", {
+        wasAwaitingApproval,
+        md_approval_status,
+        shouldCreateShipmentAssignment,
+        bookingStatus
+      });
+      
+      // Send approval notification when MD approves (to MD, Salesperson, Liner Broker)
+      if (wasAwaitingApproval && md_approval_status === "approved" && shouldCreateShipmentAssignment) {
+        console.log("📧 MD approved shipment - sending approval notification");
+        try {
+          const { emailService } = await import("~/lib/email.server");
+          const baseUrl = process.env.BASE_URL || "http://localhost:5173";
+
+          // Collect recipient emails: MD, Salesperson, Liner Broker
+          const recipientEmails: string[] = [];
+
+          // Add MD email (the current user who approved)
+          recipientEmails.push(user.email);
+
+          // Get salesperson name and email (salesPerson is now a User)
+          // Use form data sales_person_id or fallback to existingPlan.salesPersonId
+          const effectiveSalesPersonId = sales_person_id || existingPlan.salesPersonId;
+          let salesPersonName = "Not Assigned";
+          if (effectiveSalesPersonId) {
+            const salesPersonData = await prisma.user.findUnique({
+              where: { id: effectiveSalesPersonId },
+              select: { name: true, email: true }
+            });
+            salesPersonName = salesPersonData?.name || "Not Assigned";
+            
+            // salesPerson is now a User with email directly
+            if (salesPersonData?.email && !recipientEmails.includes(salesPersonData.email)) {
+              recipientEmails.push(salesPersonData.email);
+            }
+          }
+
+          // Add liner broker email
+          let linerBrokerName = "Not Assigned";
+          if (linerBrokerId) {
+            const linerBrokerUser = await prisma.user.findUnique({
+              where: { id: linerBrokerId },
+              select: { email: true, name: true }
+            });
+            if (linerBrokerUser?.email && !recipientEmails.includes(linerBrokerUser.email)) {
+              recipientEmails.push(linerBrokerUser.email);
+            }
+            linerBrokerName = linerBrokerUser?.name || "Not Assigned";
+          }
+
+          // Format equipment
+          const equipmentDetailsData = shipmentData.equipment_details || [];
+          const equipmentCounts = equipmentDetailsData.reduce((acc: any, eq: any) => {
+            if (eq.equipment_type) {
+              acc[eq.equipment_type] = (acc[eq.equipment_type] || 0) + 1;
+            }
+            return acc;
+          }, {});
+          const formattedEquipment = Object.entries(equipmentCounts)
+            .map(([type, count]) => `${type} (${count} unit${count !== 1 ? 's' : ''})`)
+            .join(", ") || "N/A";
+
+          const containerMovement = shipmentData.container_movement || {};
+
+          await emailService.sendShipmentApprovedNotification(recipientEmails, {
+            referenceNumber: shipmentData.reference_number || "N/A",
+            customer: containerMovement.customer || "N/A",
+            businessBranch: shipmentData.bussiness_branch || "N/A",
+            approvedBy: user.name,
+            salesPerson: salesPersonName,
+            linerBroker: linerBrokerName,
+            equipmentType: formattedEquipment,
+            portOfLoading: containerMovement.loading_port || "N/A",
+            portOfDischarge: containerMovement.port_of_discharge || "N/A",
+            shipmentPlansUrl: `${baseUrl}/shipment-plans`,
+          });
+
+          console.log(`✅ Approval notification sent to ${recipientEmails.length} recipient(s): ${recipientEmails.join(', ')}`);
+        } catch (emailError) {
+          console.error("❌ Failed to send approval notification:", emailError);
+        }
+      }
+
+      // Send rejection notification when MD rejects (to MD and Shipment Plan Owner)
+      if (wasAwaitingApproval && md_approval_status === "rejected") {
+        console.log("📧 MD rejected shipment - sending rejection notification");
+        try {
+          const { emailService } = await import("~/lib/email.server");
+          const baseUrl = process.env.BASE_URL || "http://localhost:5173";
+
+          // Collect recipient emails: MD and Shipment Plan Owner
+          const recipientEmails: string[] = [];
+
+          // Add MD email (the current user who rejected)
+          recipientEmails.push(user.email);
+
+          // Add shipment plan creator (owner) email
+          const planCreator = await prisma.user.findUnique({
+            where: { id: existingPlan.userId },
+            select: { email: true, name: true }
+          });
+          if (planCreator?.email && !recipientEmails.includes(planCreator.email)) {
+            recipientEmails.push(planCreator.email);
+          }
+
+          // Format equipment
+          const equipmentDetailsData = shipmentData.equipment_details || [];
+          const equipmentCounts = equipmentDetailsData.reduce((acc: any, eq: any) => {
+            if (eq.equipment_type) {
+              acc[eq.equipment_type] = (acc[eq.equipment_type] || 0) + 1;
+            }
+            return acc;
+          }, {});
+          const formattedEquipment = Object.entries(equipmentCounts)
+            .map(([type, count]) => `${type} (${count} unit${count !== 1 ? 's' : ''})`)
+            .join(", ") || "N/A";
+
+          const containerMovement = shipmentData.container_movement || {};
+          const rejectionComment = (formData.get("rejection_comment") as string) || "";
+
+          await emailService.sendShipmentRejectedNotification(recipientEmails, {
+            referenceNumber: shipmentData.reference_number || "N/A",
+            customer: containerMovement.customer || "N/A",
+            businessBranch: shipmentData.bussiness_branch || "N/A",
+            rejectedBy: user.name,
+            rejectionReason: rejectionComment,
+            createdBy: planCreator?.name || "Unknown",
+            equipmentType: formattedEquipment,
+            portOfLoading: containerMovement.loading_port || "N/A",
+            portOfDischarge: containerMovement.port_of_discharge || "N/A",
+            shipmentPlansUrl: `${baseUrl}/shipment-plans`,
+          });
+
+          console.log(`✅ Rejection notification sent to ${recipientEmails.length} recipient(s): ${recipientEmails.join(', ')}`);
+        } catch (emailError) {
+          console.error("❌ Failed to send rejection notification:", emailError);
+        }
+      }
+
       // Send email notification to MDs if a draft was submitted for approval
       const wasDraft = existingPlanDataForStatus.booking_status === "Draft"
       const isNowAwaitingApproval = shipmentData.booking_status === "Awaiting MD Approval"
@@ -1478,10 +1617,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
               .map(([type, count]) => `${type} (${count} unit${count !== 1 ? 's' : ''})`)
               .join(", ") || "N/A";
 
-            // Get sales person name
+            // Get sales person name (salesPerson is now a User)
             let salesPersonName = "Not Assigned";
             if (sales_person_id) {
-              const salesPersonData = await prisma.salesPerson.findUnique({
+              const salesPersonData = await prisma.user.findUnique({
                 where: { id: sales_person_id },
                 select: { name: true }
               });

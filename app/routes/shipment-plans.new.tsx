@@ -29,7 +29,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       vessels,
       carriers,
       organizations,
-      salesPersons,
+      allUsers,
     ] = await Promise.all([
       prisma.businessBranch.findMany({ orderBy: { name: "asc" } }),
       prisma.commodity.findMany({ orderBy: { name: "asc" } }),
@@ -40,7 +40,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       prisma.vessel.findMany({ orderBy: { name: "asc" } }),
       prisma.carrier.findMany({ orderBy: { name: "asc" } }),
       prisma.organization.findMany({ orderBy: { name: "asc" } }),
-      prisma.salesPerson.findMany({ orderBy: { name: "asc" } }),
+      prisma.user.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true, email: true } }),
     ])
 
     // Filter business branches based on user's role and assigned branch
@@ -51,12 +51,10 @@ export async function loader({ request }: LoaderFunctionArgs) {
     }
     // ADMIN users can create shipment plans for any business branch
 
-    // Find matching sales person for current user (by name)
-    const defaultSalesPerson = salesPersons.find(sp => sp.name === user.name);
-
+    // All users are potential sales persons - default to current user
     return {
       user,
-      defaultSalesPersonId: defaultSalesPerson?.id || null,
+      defaultSalesPersonId: user.id,
       dataPoints: {
         businessBranches,
         commodities,
@@ -67,7 +65,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
         vessels,
         carriers,
         organizations,
-        salesPersons,
+        salesPersons: allUsers, // All users can be salespersons
       },
     }
   } catch (error) {
@@ -423,10 +421,10 @@ export async function action({ request }: ActionFunctionArgs) {
               .map(([type, count]) => `${type} (${count} unit${count !== 1 ? 's' : ''})`)
               .join(", ") || "N/A";
 
-            // Get sales person name
+            // Get sales person name (salesPerson is now a User)
             let salesPersonName = "Not Assigned";
             if (sales_person_id) {
-              const salesPersonData = await prisma.salesPerson.findUnique({
+              const salesPersonData = await prisma.user.findUnique({
                 where: { id: sales_person_id },
                 select: { name: true }
               });

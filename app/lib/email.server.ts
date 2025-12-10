@@ -511,6 +511,475 @@ This is an automated daily reminder from Cargo Care System.
       text,
     });
   }
+
+  async sendShipmentApprovedNotification(
+    recipients: string[],
+    shipmentData: {
+      referenceNumber: string;
+      customer: string;
+      businessBranch: string;
+      approvedBy: string;
+      salesPerson: string;
+      linerBroker: string;
+      equipmentType: string;
+      portOfLoading: string;
+      portOfDischarge: string;
+      shipmentPlansUrl: string;
+    }
+  ): Promise<boolean> {
+    const subject = `✅ Shipment Plan ${shipmentData.referenceNumber} Approved by MD for Booking`;
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+              line-height: 1.5;
+              color: #1f2937;
+              background-color: #f3f4f6;
+              margin: 0;
+              padding: 0;
+            }
+            .container {
+              max-width: 580px;
+              margin: 20px auto;
+              background-color: #ffffff;
+              border-radius: 8px;
+              overflow: hidden;
+              box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            }
+            .header {
+              background: #059669;
+              color: white;
+              padding: 20px;
+              text-align: center;
+            }
+            .header h1 {
+              margin: 0;
+              font-size: 18px;
+              font-weight: 600;
+            }
+            .content {
+              padding: 20px;
+            }
+            .greeting {
+              font-size: 14px;
+              color: #374151;
+              margin: 0 0 16px 0;
+            }
+            .status-box {
+              background: #d1fae5;
+              border-left: 3px solid #059669;
+              padding: 12px 14px;
+              margin: 16px 0;
+            }
+            .status-box .label {
+              font-size: 11px;
+              font-weight: 600;
+              color: #065f46;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+            }
+            .status-box .value {
+              font-size: 16px;
+              font-weight: 700;
+              color: #047857;
+              margin-top: 2px;
+            }
+            .details {
+              border: 1px solid #e5e7eb;
+              border-radius: 6px;
+              overflow: hidden;
+              margin: 16px 0;
+            }
+            .detail-row {
+              display: flex;
+              padding: 10px 14px;
+              border-bottom: 1px solid #f3f4f6;
+            }
+            .detail-row:last-child {
+              border-bottom: none;
+            }
+            .detail-row:nth-child(even) {
+              background-color: #f9fafb;
+            }
+            .detail-label {
+              font-size: 12px;
+              font-weight: 600;
+              color: #6b7280;
+              width: 140px;
+              flex-shrink: 0;
+            }
+            .detail-value {
+              font-size: 13px;
+              color: #111827;
+              font-weight: 500;
+              flex: 1;
+            }
+            .btn-container {
+              text-align: center;
+              margin: 20px 0 16px 0;
+            }
+            .btn {
+              display: inline-block;
+              background: #059669;
+              color: #ffffff !important;
+              padding: 12px 28px;
+              text-decoration: none;
+              border-radius: 6px;
+              font-weight: 600;
+              font-size: 13px;
+            }
+            .footer {
+              text-align: center;
+              color: #9ca3af;
+              font-size: 12px;
+              padding: 16px;
+              background-color: #f9fafb;
+              border-top: 1px solid #e5e7eb;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>✅ Shipment Plan Approved for Booking</h1>
+            </div>
+            <div class="content">
+              <p class="greeting">Dear Team,</p>
+
+              <div class="status-box">
+                <div class="label">Reference Number</div>
+                <div class="value">${shipmentData.referenceNumber}</div>
+              </div>
+
+              <p style="font-size: 14px; color: #374151; margin: 16px 0;">
+                This shipment plan has been <strong style="color: #059669;">approved by MD</strong> and is now ready for booking.
+              </p>
+
+              <div class="details">
+                <div class="detail-row">
+                  <span class="detail-label">Customer</span>
+                  <span class="detail-value">${shipmentData.customer || 'N/A'}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Branch</span>
+                  <span class="detail-value">${shipmentData.businessBranch || 'N/A'}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Approved By</span>
+                  <span class="detail-value">${shipmentData.approvedBy || 'N/A'}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Sales Person</span>
+                  <span class="detail-value">${shipmentData.salesPerson || 'N/A'}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Assigned To</span>
+                  <span class="detail-value">${shipmentData.linerBroker || 'N/A'}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Equipment</span>
+                  <span class="detail-value">${shipmentData.equipmentType || 'N/A'}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">POL</span>
+                  <span class="detail-value">${shipmentData.portOfLoading || 'N/A'}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">POD</span>
+                  <span class="detail-value">${shipmentData.portOfDischarge || 'N/A'}</span>
+                </div>
+              </div>
+
+              <div class="btn-container">
+                <a href="${shipmentData.shipmentPlansUrl}" class="btn">View Shipment Plans</a>
+              </div>
+            </div>
+            <div class="footer">
+              <p style="margin: 0;">Cargocare Booking Management System · Automated Notification</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const text = `
+Shipment Plan Approved for Booking
+
+Shipment Plan ${shipmentData.referenceNumber} has been approved by MD for booking.
+
+Shipment Details:
+- Reference Number: ${shipmentData.referenceNumber}
+- Customer: ${shipmentData.customer}
+- Business Branch: ${shipmentData.businessBranch}
+- Approved By: ${shipmentData.approvedBy}
+- Sales Person: ${shipmentData.salesPerson}
+- Assigned To (Liner Broker): ${shipmentData.linerBroker}
+- Equipment: ${shipmentData.equipmentType}
+- Port of Loading: ${shipmentData.portOfLoading}
+- Port of Discharge: ${shipmentData.portOfDischarge}
+
+Please visit ${shipmentData.shipmentPlansUrl} to view the shipment plans.
+
+This is an automated notification from Cargocare Booking Management System.
+    `;
+
+    return await this.sendEmail({
+      to: recipients,
+      subject,
+      html,
+      text,
+    });
+  }
+
+  async sendShipmentRejectedNotification(
+    recipients: string[],
+    shipmentData: {
+      referenceNumber: string;
+      customer: string;
+      businessBranch: string;
+      rejectedBy: string;
+      rejectionReason: string;
+      createdBy: string;
+      equipmentType: string;
+      portOfLoading: string;
+      portOfDischarge: string;
+      shipmentPlansUrl: string;
+    }
+  ): Promise<boolean> {
+    const subject = `❌ Shipment Plan ${shipmentData.referenceNumber} Rejected by MD`;
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+              line-height: 1.5;
+              color: #1f2937;
+              background-color: #f3f4f6;
+              margin: 0;
+              padding: 0;
+            }
+            .container {
+              max-width: 580px;
+              margin: 20px auto;
+              background-color: #ffffff;
+              border-radius: 8px;
+              overflow: hidden;
+              box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            }
+            .header {
+              background: #dc2626;
+              color: white;
+              padding: 20px;
+              text-align: center;
+            }
+            .header h1 {
+              margin: 0;
+              font-size: 18px;
+              font-weight: 600;
+            }
+            .content {
+              padding: 20px;
+            }
+            .greeting {
+              font-size: 14px;
+              color: #374151;
+              margin: 0 0 16px 0;
+            }
+            .status-box {
+              background: #fee2e2;
+              border-left: 3px solid #dc2626;
+              padding: 12px 14px;
+              margin: 16px 0;
+            }
+            .status-box .label {
+              font-size: 11px;
+              font-weight: 600;
+              color: #991b1b;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+            }
+            .status-box .value {
+              font-size: 16px;
+              font-weight: 700;
+              color: #b91c1c;
+              margin-top: 2px;
+            }
+            .rejection-reason {
+              background: #fef2f2;
+              border: 1px solid #fecaca;
+              border-radius: 6px;
+              padding: 14px;
+              margin: 16px 0;
+            }
+            .rejection-reason .label {
+              font-size: 12px;
+              font-weight: 600;
+              color: #991b1b;
+              margin-bottom: 6px;
+            }
+            .rejection-reason .value {
+              font-size: 14px;
+              color: #7f1d1d;
+            }
+            .details {
+              border: 1px solid #e5e7eb;
+              border-radius: 6px;
+              overflow: hidden;
+              margin: 16px 0;
+            }
+            .detail-row {
+              display: flex;
+              padding: 10px 14px;
+              border-bottom: 1px solid #f3f4f6;
+            }
+            .detail-row:last-child {
+              border-bottom: none;
+            }
+            .detail-row:nth-child(even) {
+              background-color: #f9fafb;
+            }
+            .detail-label {
+              font-size: 12px;
+              font-weight: 600;
+              color: #6b7280;
+              width: 140px;
+              flex-shrink: 0;
+            }
+            .detail-value {
+              font-size: 13px;
+              color: #111827;
+              font-weight: 500;
+              flex: 1;
+            }
+            .btn-container {
+              text-align: center;
+              margin: 20px 0 16px 0;
+            }
+            .btn {
+              display: inline-block;
+              background: #2563eb;
+              color: #ffffff !important;
+              padding: 12px 28px;
+              text-decoration: none;
+              border-radius: 6px;
+              font-weight: 600;
+              font-size: 13px;
+            }
+            .footer {
+              text-align: center;
+              color: #9ca3af;
+              font-size: 12px;
+              padding: 16px;
+              background-color: #f9fafb;
+              border-top: 1px solid #e5e7eb;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>❌ Shipment Plan Rejected</h1>
+            </div>
+            <div class="content">
+              <p class="greeting">Dear Team,</p>
+
+              <div class="status-box">
+                <div class="label">Reference Number</div>
+                <div class="value">${shipmentData.referenceNumber}</div>
+              </div>
+
+              <p style="font-size: 14px; color: #374151; margin: 16px 0;">
+                This shipment plan has been <strong style="color: #dc2626;">rejected by MD</strong>.
+              </p>
+
+              <div class="rejection-reason">
+                <div class="label">Rejection Reason</div>
+                <div class="value">${shipmentData.rejectionReason || 'No reason provided'}</div>
+              </div>
+
+              <div class="details">
+                <div class="detail-row">
+                  <span class="detail-label">Customer</span>
+                  <span class="detail-value">${shipmentData.customer || 'N/A'}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Branch</span>
+                  <span class="detail-value">${shipmentData.businessBranch || 'N/A'}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Rejected By</span>
+                  <span class="detail-value">${shipmentData.rejectedBy || 'N/A'}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Created By</span>
+                  <span class="detail-value">${shipmentData.createdBy || 'N/A'}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Equipment</span>
+                  <span class="detail-value">${shipmentData.equipmentType || 'N/A'}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">POL</span>
+                  <span class="detail-value">${shipmentData.portOfLoading || 'N/A'}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">POD</span>
+                  <span class="detail-value">${shipmentData.portOfDischarge || 'N/A'}</span>
+                </div>
+              </div>
+
+              <div class="btn-container">
+                <a href="${shipmentData.shipmentPlansUrl}" class="btn">View Shipment Plans</a>
+              </div>
+            </div>
+            <div class="footer">
+              <p style="margin: 0;">Cargocare Booking Management System · Automated Notification</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const text = `
+Shipment Plan Rejected
+
+Shipment Plan ${shipmentData.referenceNumber} has been rejected by MD.
+
+Rejection Reason: ${shipmentData.rejectionReason || 'No reason provided'}
+
+Shipment Details:
+- Reference Number: ${shipmentData.referenceNumber}
+- Customer: ${shipmentData.customer}
+- Business Branch: ${shipmentData.businessBranch}
+- Rejected By: ${shipmentData.rejectedBy}
+- Created By: ${shipmentData.createdBy}
+- Equipment: ${shipmentData.equipmentType}
+- Port of Loading: ${shipmentData.portOfLoading}
+- Port of Discharge: ${shipmentData.portOfDischarge}
+
+Please visit ${shipmentData.shipmentPlansUrl} to review and modify the shipment plan.
+
+This is an automated notification from Cargocare Booking Management System.
+    `;
+
+    return await this.sendEmail({
+      to: recipients,
+      subject,
+      html,
+      text,
+    });
+  }
 }
 
 export const emailService = new EmailService();

@@ -38,7 +38,8 @@ model User {
   branchId            String?
   linerBookings                                LinerBooking[]
   shipmentAssignments                          ShipmentAssignment[]
-  shipmentPlans                                ShipmentPlan[]
+  shipmentPlans                                ShipmentPlan[]                        @relation("ShipmentPlanOwner")
+  salesPersonShipmentPlans                     ShipmentPlan[]                        @relation("ShipmentPlanSalesPerson")
   individualUnmappingRequestsRequested         IndividualEquipmentUnmappingRequest[] @relation("RequestedBy")
   individualUnmappingRequestsApproved          IndividualEquipmentUnmappingRequest[] @relation("ApprovedBy")
   individualUnmappingRequestsRejected          IndividualEquipmentUnmappingRequest[] @relation("RejectedBy")
@@ -60,8 +61,8 @@ model ShipmentPlan {
   shipmentAssignmentId String?             @unique
   linerBooking                             LinerBooking?                         @relation(fields: [linerBookingId], references: [id])
   shipmentAssignment                       ShipmentAssignment?                   @relation(fields: [shipmentAssignmentId], references: [id])
-  user                                     User                                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  salesPerson                              SalesPerson?                          @relation(fields: [salesPersonId], references: [id])
+  user                                     User                                  @relation("ShipmentPlanOwner", fields: [userId], references: [id], onDelete: Cascade)
+  salesPerson                              User?                                 @relation("ShipmentPlanSalesPerson", fields: [salesPersonId], references: [id])
   individualEquipmentUnmappingRequests     IndividualEquipmentUnmappingRequest[]
 
   @@map("shipment_plans")
@@ -170,15 +171,8 @@ model Carrier {
   @@map("carriers")
 }
 
-model SalesPerson {
-  id             String         @id @default(cuid())
-  name           String         @unique
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  shipmentPlans  ShipmentPlan[]
-
-  @@map("sales_persons")
-}
+// SalesPerson model removed - all users are now salespersons
+// The salesPersonId in ShipmentPlan now references the User table directly
 
 model ShipmentAssignment {
   id              String        @id @default(cuid())
