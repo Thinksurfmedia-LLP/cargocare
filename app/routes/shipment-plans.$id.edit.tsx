@@ -1488,6 +1488,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
               salesPersonName = salesPersonData?.name || "Not Assigned";
             }
 
+            // Extract shipper names from package details
+            const packageDetailsData = shipmentData.package_details || [];
+            const shipperNames = packageDetailsData
+              .map((pkg: any) => pkg.shipper)
+              .filter((name: string) => name && name.trim() !== '')
+              .join(', ') || 'N/A';
+
             await emailService.sendNewApprovalNotification(mdEmails, {
               referenceNumber: shipmentData.reference_number || "N/A",
               customer: containerMovement.customer || "N/A",
@@ -1500,6 +1507,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
               portOfDischarge: containerMovement.port_of_discharge || "N/A",
               finalPlaceOfDelivery: containerMovement.delivery_till || "N/A",
               pendingApprovalsUrl: `${baseUrl}/pending-approvals`,
+              shipmentType: shipmentData.shipment_type || "N/A",
+              shipperNames: shipperNames,
             });
 
             console.log(`✅ Draft submission notification sent to ${mdEmails.length} MD(s) for shipment plan ${planId}`);

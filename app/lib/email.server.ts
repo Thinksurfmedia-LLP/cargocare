@@ -60,6 +60,8 @@ class EmailService {
       portOfDischarge: string;
       finalPlaceOfDelivery: string;
       pendingApprovalsUrl: string;
+      shipmentType: string;
+      shipperNames: string;
     }
   ): Promise<boolean> {
     const subject = `New Shipment Approval Required - ${shipmentData.referenceNumber}`;
@@ -211,6 +213,14 @@ class EmailService {
                   <span class="detail-value">${shipmentData.businessBranch || 'N/A'}</span>
                 </div>
                 <div class="detail-row">
+                  <span class="detail-label">Shipment Type</span>
+                  <span class="detail-value">${shipmentData.shipmentType || 'N/A'}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Shipper(s)</span>
+                  <span class="detail-value" style="white-space: pre-line;">${shipmentData.shipperNames || 'N/A'}</span>
+                </div>
+                <div class="detail-row">
                   <span class="detail-label">Sales Person</span>
                   <span class="detail-value">${shipmentData.salesPerson || 'N/A'}</span>
                 </div>
@@ -257,6 +267,8 @@ Shipment Details:
 - Reference Number: ${shipmentData.referenceNumber}
 - Customer: ${shipmentData.customer}
 - Business Branch: ${shipmentData.businessBranch}
+- Shipment Type: ${shipmentData.shipmentType || 'N/A'}
+- Shipper(s): ${shipmentData.shipperNames || 'N/A'}
 - Equipment Type: ${shipmentData.equipmentType}
 - No. of Equipments: ${shipmentData.numberOfEquipments}
 - Port of Loading: ${shipmentData.portOfLoading}

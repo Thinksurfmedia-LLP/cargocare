@@ -49,12 +49,15 @@ export async function action({ request }: ActionFunctionArgs) {
         customer: "Test Customer Ltd",
         businessBranch: "Mumbai Branch",
         createdBy: user.name,
+        salesPerson: "John Doe",
         equipmentType: "20' Standard",
         numberOfEquipments: 5,
         portOfLoading: "Nhava Sheva, India",
         portOfDischarge: "Singapore Port",
         finalPlaceOfDelivery: "Warehouse District, Singapore",
         pendingApprovalsUrl: `${baseUrl}/pending-approvals`,
+        shipmentType: "Consolidated",
+        shipperNames: "ABC Trading Co, XYZ Exports Ltd",
       });
 
       return json({
