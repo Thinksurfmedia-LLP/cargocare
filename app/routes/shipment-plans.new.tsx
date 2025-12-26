@@ -256,6 +256,7 @@ export async function action({ request }: ActionFunctionArgs) {
           `package_details[${packageIndex}][projected_cargo_ready_date]`,
         ) as string,
         commodity: formData.get(`package_details[${packageIndex}][commodity]`) as string,
+        hs_code: formData.get(`package_details[${packageIndex}][hs_code]`) as string,
         is_haz: formData.get(`package_details[${packageIndex}][is_haz]`) === "true",
         p_o_number: formData.get(`package_details[${packageIndex}][p_o_number]`) as string,
         C_H_A: formData.get(`package_details[${packageIndex}][C_H_A]`) === "true",

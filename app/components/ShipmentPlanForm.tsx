@@ -1002,76 +1002,76 @@ export function ShipmentPlanForm({
 
   return (
     <div className="max-w-5xl mx-auto">
-      <Form method="post" className="space-y-8" onSubmit={handleFormSubmit}>
-        <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-gray-900">
-                  Shipment Plan Details
-                </h2>
-                <p className="text-sm text-gray-600 mt-1">
-                  {mode === "create"
-                    ? "Enter the details for your new shipment plan"
-                    : "Update the details for your shipment plan"}
-                  {mode === "create" && (
-                    <span className="block text-xs text-red-600 mt-1">
-                      * Required fields
-                    </span>
-                  )}
-                </p>
-              </div>
-              <div className="flex items-center space-x-3">
-                {/* MD Approval Button - Show at top right for MD users when plan is awaiting approval */}
-                {mode === "edit" && 
-                  bookingStatus === "Awaiting MD Approval" && 
-                  (user?.role?.name === "MD") && (
-                  <div className="relative group">
-                    <Button
-                      type="submit"
-                      name="submitAction"
-                      value="submit"
-                      formNoValidate
-                      disabled={
-                        isSubmitting || 
-                        isFormSubmitting || 
-                        (activeApprovalTab === "approved" && (!selectedLinerBroker || selectedLinerBroker.trim() === ""))
-                      }
-                      className="px-6 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium transition-all duration-200 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {isSubmitting || isFormSubmitting ? (
-                        <div className="flex items-center space-x-2">
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                          <span>Updating...</span>
-                        </div>
-                      ) : (
-                        <div className="flex items-center space-x-2">
-                          <span>✨</span>
-                          <span>Update Shipment Plan</span>
-                        </div>
-                      )}
-                    </Button>
-                    {activeApprovalTab === "approved" && (!selectedLinerBroker || selectedLinerBroker.trim() === "") && (
-                      <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-50">
-                        Please assign a liner broker first
-                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-b-gray-800"></div>
+      <Form method="post" className="" onSubmit={handleFormSubmit}>
+        {/* Sticky Header - Inside the form */}
+        <div className="sticky z-40 bg-white rounded-t-xl shadow-lg border border-gray-200 px-6 py-4" style={{ top: '-25px' }}>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">
+                Shipment Plan Details
+              </h2>
+              <p className="text-sm text-gray-600 mt-1">
+                {mode === "create"
+                  ? "Enter the details for your new shipment plan"
+                  : "Update the details for your shipment plan"}
+                {mode === "create" && (
+                  <span className="block text-xs text-red-600 mt-1">
+                    * Required fields
+                  </span>
+                )}
+              </p>
+            </div>
+            <div className="flex items-center space-x-3">
+              {/* MD Approval Button - Show at top right for MD users when plan is awaiting approval */}
+              {mode === "edit" && 
+                bookingStatus === "Awaiting MD Approval" && 
+                (user?.role?.name === "MD") && (
+                <div className="relative group">
+                  <Button
+                    type="submit"
+                    name="submitAction"
+                    value="submit"
+                    formNoValidate
+                    disabled={
+                      isSubmitting || 
+                      isFormSubmitting || 
+                      (activeApprovalTab === "approved" && (!selectedLinerBroker || selectedLinerBroker.trim() === ""))
+                    }
+                    className="px-6 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium transition-all duration-200 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isSubmitting || isFormSubmitting ? (
+                      <div className="flex items-center space-x-2">
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        <span>Updating...</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center space-x-2">
+                        <span>✨</span>
+                        <span>Update Shipment Plan</span>
                       </div>
                     )}
-                  </div>
-                )}
-                <span
-                  className={`text-xs px-2 py-1 rounded-full ${
-                    mode === "create"
-                      ? "text-gray-500 bg-gray-100"
-                      : "text-yellow-700 bg-yellow-100"
-                  }`}
-                >
-                  {mode === "create" ? "Draft" : "Editing"}
-                </span>
-              </div>
+                  </Button>
+                  {activeApprovalTab === "approved" && (!selectedLinerBroker || selectedLinerBroker.trim() === "") && (
+                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-2 px-3 py-2 bg-gray-800 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-50">
+                      Please assign a liner broker first
+                      <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-b-gray-800"></div>
+                    </div>
+                  )}
+                </div>
+              )}
+              <span
+                className={`text-xs px-2 py-1 rounded-full ${
+                  mode === "create"
+                    ? "text-gray-500 bg-gray-100"
+                    : "text-yellow-700 bg-yellow-100"
+                }`}
+              >
+                {mode === "create" ? "Draft" : "Editing"}
+              </span>
             </div>
           </div>
-
+        </div>
+        <div className="bg-white rounded-b-xl shadow-lg border border-gray-200 overflow-hidden -mt-1">
           <div className="divide-y divide-gray-100">
             {/* Linked Liner Booking Information - Only for edit mode */}
             {mode === "edit" && shipmentPlan?.linerBooking && (
@@ -2131,7 +2131,7 @@ export function ShipmentPlanForm({
                           <h4 className="font-medium mb-4">
                             Package {index + 1}
                           </h4>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div>
                               <Label htmlFor={`shipper_${index}`}>
                                 Shipper
@@ -2167,6 +2167,25 @@ export function ShipmentPlanForm({
                                     ?.invoice_number
                                 }
                                 placeholder="Enter invoice number"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor={`commodity_${index}`}>
+                                Commodity
+                              </Label>
+                              <SearchableSelect
+                                id={`commodity_${index}`}
+                                name={`package_details[${index}][commodity]`}
+                                defaultValue={
+                                  planData.package_details?.[index]?.commodity
+                                }
+                                options={dataPoints.commodities.map(
+                                  (commodity: any) => ({
+                                    value: commodity.name,
+                                    label: `📦 ${commodity.name}`,
+                                  })
+                                )}
+                                placeholder="Select commodity"
                               />
                             </div>
                             <div>
@@ -2230,22 +2249,16 @@ export function ShipmentPlanForm({
                               />
                             </div>
                             <div>
-                              <Label htmlFor={`commodity_${index}`}>
-                                Commodity
+                              <Label htmlFor={`hs_code_${index}`}>
+                                HS Code
                               </Label>
-                              <SearchableSelect
-                                id={`commodity_${index}`}
-                                name={`package_details[${index}][commodity]`}
+                              <Input
+                                id={`hs_code_${index}`}
+                                name={`package_details[${index}][hs_code]`}
                                 defaultValue={
-                                  planData.package_details?.[index]?.commodity
+                                  planData.package_details?.[index]?.hs_code
                                 }
-                                options={dataPoints.commodities.map(
-                                  (commodity: any) => ({
-                                    value: commodity.name,
-                                    label: `📦 ${commodity.name}`,
-                                  })
-                                )}
-                                placeholder="Select commodity"
+                                placeholder="Enter HS code"
                               />
                             </div>
                             <div>
