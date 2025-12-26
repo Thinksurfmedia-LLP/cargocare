@@ -1,5 +1,6 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs, MetaFunction } from "react-router";
 import { useLoaderData, Form, useActionData } from "react-router";
+import React, { useState } from "react";
 import { requireAuth } from "~/lib/auth.server";
 import { prisma } from "~/lib/prisma.server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
@@ -106,6 +107,35 @@ export async function action({ request }: ActionFunctionArgs) {
 export default function AdminPanel() {
   const { user, users, roles, businessBranches } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
+  const [downloadingXlsx, setDownloadingXlsx] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  async function handleExportXlsx() {
+    try {
+      setDownloadError(null);
+      setDownloadingXlsx(true);
+      const res = await fetch("/api/export-xlsx", { method: "POST" });
+      if (!res.ok) {
+        throw new Error(`Export failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition") || "";
+      const match = disposition.match(/filename="?([^";]+)"?/i);
+      const filename = match?.[1] || `shipment-plans-export-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      setDownloadError(err?.message || "Export failed");
+    } finally {
+      setDownloadingXlsx(false);
+    }
+  }
 
   const getRoleColor = (roleName: string) => {
     switch (roleName) {
@@ -134,6 +164,14 @@ export default function AdminPanel() {
               <h1 className="text-2xl font-semibold text-gray-900">User Management</h1>
               <p className="text-sm text-gray-600 mt-1">Manage user accounts, roles, and activation status</p>
             </div>
+            <div className="flex items-center gap-2">
+              <Button onClick={handleExportXlsx} disabled={downloadingXlsx}>
+                {downloadingXlsx ? "Exporting…" : "Export Shipments (XLSX)"}
+              </Button>
+              <Form method="post" action="/api/export-csv">
+                <Button type="submit" variant="outline">Export Shipments (CSV)</Button>
+              </Form>
+            </div>
           </div>
         </div>
       </div>
@@ -149,6 +187,12 @@ export default function AdminPanel() {
         {actionData?.error && (
           <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
             {actionData.error}
+          </div>
+        )}
+
+        {downloadError && (
+          <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+            {downloadError}
           </div>
         )}
 

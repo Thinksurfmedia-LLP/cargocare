@@ -1,4 +1,5 @@
 import type { ActionFunctionArgs } from "react-router";
+import { Workbook } from "exceljs";
 import { requireAuth } from "~/lib/auth.server";
 import { prisma } from "~/lib/prisma.server";
 
@@ -12,51 +13,27 @@ function json(data: any, init?: ResponseInit) {
   });
 }
 
-function escapeCSV(value: any): string {
-  if (value === null || value === undefined) return "";
-  const str = String(value);
-  if (str.includes('"') || str.includes(',') || str.includes('\n')) {
-    return `"${str.replace(/"/g, '""')}"`;
-  }
-  return str;
-}
-
 function formatDate(date: string | null): string {
   if (!date) return "";
-  return new Date(date).toLocaleDateString('en-US');
+  return new Date(date).toLocaleDateString("en-US");
 }
 
 export async function action({ request }: ActionFunctionArgs) {
   try {
     const user = await requireAuth(request);
-
-    // Only allow ADMIN users to export data
-    if (user.role.name !== "ADMIN") {
+    if (user.role.name !== "ADMIN" && user.role.name !== "MD") {
       return json({ error: "Unauthorized. Admin access required." }, { status: 403 });
     }
 
-    // Optional: compact grouping view (blank repeated group-level cells after first row)
-    const compactGrouping = new URL(request.url).searchParams.get("compact") === "true";
-    const dedupe = (val: any, isFirstRowInGroup: boolean) => (compactGrouping && !isFirstRowInGroup ? "" : val);
-
-    // Get all shipment plans with user information and linked bookings
     const shipmentPlans = await prisma.shipmentPlan.findMany({
       include: {
-        user: {
-          select: {
-            name: true,
-            email: true,
-          },
-        },
+        user: { select: { name: true, email: true } },
         linerBooking: true,
         shipmentAssignment: true,
       },
-      orderBy: {
-        createdAt: "desc",
-      },
+      orderBy: { createdAt: "desc" },
     });
 
-    // Define CSV headers - container/equipment focused
     const headers = [
       "Group ID (for merged cells in Excel)",
       "Reference Number",
@@ -66,8 +43,6 @@ export async function action({ request }: ActionFunctionArgs) {
       "Created Date",
       "Created By",
       "Created By Email",
-
-      // Shipment-level details
       "Customer",
       "Consignee",
       "Loading Port",
@@ -88,13 +63,9 @@ export async function action({ request }: ActionFunctionArgs) {
       "MD Approval Status",
       "Liner Broker Approval",
       "Rejection Comment",
-
-      // Container/Equipment Details (per row)
       "Container Number",
       "Equipment Type",
       "Tracking Number",
-
-      // Shipper/Package Details (associated with this container)
       "Shipper",
       "Commodity",
       "Number of Packages",
@@ -105,8 +76,6 @@ export async function action({ request }: ActionFunctionArgs) {
       "Projected Cargo Ready Date",
       "Is Hazardous",
       "C_H_A",
-
-      // Container Tracking Status
       "Gated In Status",
       "Gated In Date",
       "Empty Container Picked Up Status",
@@ -115,22 +84,17 @@ export async function action({ request }: ActionFunctionArgs) {
       "Container Stuffing Completed Date",
       "Loaded On Board Status",
       "Loaded On Board Date",
-
-      // Liner Booking Details (for this container)
       "MBL Number",
       "Liner Booking Number",
       "Booking Carrier",
       "Booking Contract",
-
-      // Additional
       "Remarks",
       "Unmapping Request",
-      "Carrier Booking Status"
+      "Carrier Booking Status",
     ];
 
-
-    // Generate CSV rows - one row per CONTAINER-SHIPPER pair
-    const rows: string[][] = [];
+    // Build data rows - one row per CONTAINER × SHIPPER combination
+    const rows: any[][] = [];
 
     shipmentPlans.forEach((plan, planIndex) => {
       const data = plan.data as any;
@@ -148,13 +112,11 @@ export async function action({ request }: ActionFunctionArgs) {
       const groupId = `${data.reference_number}-${planIndex}`;
       const isConsolidated = data.shipment_type?.toLowerCase() === "consolidation";
 
-      // NEW LOGIC: Create one row per CONTAINER × SHIPPER combination
       if (equipmentDetails.length === 0 && packageDetails.length === 0) {
         // No containers, no shippers - one summary row
         const packageDetail = packageDetails[0] || {};
         const booking = linerBookingDetails[0];
-
-        const rowData = [
+        rows.push([
           groupId,
           data.reference_number,
           data.shipment_type,
@@ -163,8 +125,6 @@ export async function action({ request }: ActionFunctionArgs) {
           formatDate(plan.createdAt.toISOString()),
           plan.user.name,
           plan.user.email,
-
-          // Shipment-level
           containerMovement.customer,
           containerMovement.consignee,
           containerMovement.loading_port,
@@ -185,13 +145,9 @@ export async function action({ request }: ActionFunctionArgs) {
           data.md_approval_status,
           data.liner_broker_approval,
           data.rejection_comment,
-
-          // Container details (empty)
           "",
           "",
           "",
-
-          // Package details
           packageDetail.shipper || "",
           packageDetail.commodity || "",
           packageDetail.number_of_packages || "",
@@ -202,8 +158,6 @@ export async function action({ request }: ActionFunctionArgs) {
           formatDate(packageDetail.projected_cargo_ready_date),
           packageDetail.is_haz ? "Yes" : "No",
           packageDetail.C_H_A ? "Yes" : "No",
-
-          // Container tracking
           containerTracking.gated_in_status ? "Yes" : "No",
           formatDate(containerTracking.gated_in_date),
           containerTracking.empty_container_picked_up_status ? "Yes" : "No",
@@ -212,25 +166,19 @@ export async function action({ request }: ActionFunctionArgs) {
           formatDate(containerTracking.container_stuffing_completed_date),
           containerTracking.loaded_on_board_status ? "Yes" : "No",
           formatDate(containerTracking.loaded_on_board_date),
-
-          // Liner booking
           booking?.mbl_number || "",
           booking?.liner_booking_number || "",
           booking?.carrier || "",
           booking?.contract || "",
-
-          // Additional
           data.remarks,
           data.unmapping_request ? "Yes" : "No",
-          data.carrier_booking_status
-        ];
-
-        rows.push(rowData.map(escapeCSV));
+          data.carrier_booking_status,
+        ]);
       } else if (equipmentDetails.length === 0) {
         // No containers but have shippers - one row per shipper
         packageDetails.forEach((pkg: any) => {
           const booking = linerBookingDetails.find((lb: any) => lb.shipper === pkg.shipper) || linerBookingDetails[0];
-          const rowData = [
+          rows.push([
             groupId,
             data.reference_number,
             data.shipment_type,
@@ -259,7 +207,7 @@ export async function action({ request }: ActionFunctionArgs) {
             data.md_approval_status,
             data.liner_broker_approval,
             data.rejection_comment,
-            "", "", "", // container fields
+            "", "", "",
             pkg.shipper || "",
             pkg.commodity || "",
             pkg.number_of_packages || "",
@@ -284,9 +232,8 @@ export async function action({ request }: ActionFunctionArgs) {
             booking?.contract || "",
             data.remarks,
             data.unmapping_request ? "Yes" : "No",
-            data.carrier_booking_status
-          ];
-          rows.push(rowData.map(escapeCSV));
+            data.carrier_booking_status,
+          ]);
         });
       } else if (isConsolidated && packageDetails.length > 0) {
         // CONSOLIDATED: Create one row per CONTAINER × SHIPPER combination
@@ -314,7 +261,7 @@ export async function action({ request }: ActionFunctionArgs) {
               );
             }
 
-            const rowData = [
+            rows.push([
               groupId,
               data.reference_number,
               data.shipment_type,
@@ -370,9 +317,8 @@ export async function action({ request }: ActionFunctionArgs) {
               matchingBooking?.contract || "",
               data.remarks,
               data.unmapping_request ? "Yes" : "No",
-              data.carrier_booking_status
-            ];
-            rows.push(rowData.map(escapeCSV));
+              data.carrier_booking_status,
+            ]);
           });
         });
       } else {
@@ -401,7 +347,7 @@ export async function action({ request }: ActionFunctionArgs) {
             );
           }
 
-          const rowData = [
+          rows.push([
             groupId,
             data.reference_number,
             data.shipment_type,
@@ -457,98 +403,109 @@ export async function action({ request }: ActionFunctionArgs) {
             matchingBooking?.contract || "",
             data.remarks,
             data.unmapping_request ? "Yes" : "No",
-            data.carrier_booking_status
-          ];
-          rows.push(rowData.map(escapeCSV));
+            data.carrier_booking_status,
+          ]);
         });
       }
     });
 
-    // Add company header
-    const currentDate = new Date().toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
+    // Optionally sort rows by Reference Number for contiguous merges
+    rows.sort((a, b) => String(a[1] || "").localeCompare(String(b[1] || "")));
 
-    const companyHeader = [
-      `CARGOCARE LOGISTICS - SHIPMENT EXPORT REPORT`,
-      `Generated on: ${currentDate}`,
-      `Total Records: ${shipmentPlans.length}`,
-      ``,
-      ``
-    ];
+    // Build workbook
+    const workbook = new Workbook();
+    const sheet = workbook.addWorksheet("Shipment Export");
+    
+    // Company header rows
+    const currentDate = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+    sheet.addRow([`CARGOCARE LOGISTICS - SHIPMENT EXPORT REPORT`]);
+    sheet.addRow([`Generated on: ${currentDate}`]);
+    sheet.addRow([`Total Records: ${rows.length}`]);
+    sheet.addRow([``]);
 
-    // Combine all parts
-    const csvContent = [
-      ...companyHeader,
-      headers.map(escapeCSV).join(","),
-      ...rows.map(row => row.join(","))
-    ].join("\n");
+    // Header row
+    sheet.addRow(headers);
+    const headerRowIndex = sheet.rowCount; // index of header row
+    const headerRow = sheet.getRow(headerRowIndex);
+    headerRow.font = { bold: true };
 
-    // Generate filename with current date
-    const timestamp = new Date().toISOString().slice(0, 10);
-    const filename = `shipment-plans-export-${timestamp}.csv`;
+    // Add data rows (or a friendly empty message)
+    if (rows.length === 0) {
+      sheet.addRow(["No records found"]);
+    } else {
+      rows.forEach((row) => sheet.addRow(row));
+    }
 
-    // Return CSV file
-    return new Response(csvContent, {
+    // Freeze header
+    // Freeze at header (accounting for extra company header rows)
+    sheet.views = [{ state: "frozen", ySplit: headerRowIndex }];
+
+    // Auto filter
+    const toCol = (n: number) => {
+      const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+      let s = "";
+      while (n > 0) {
+        n--; s = letters[n % 26] + s; n = Math.floor(n / 26);
+      }
+      return s;
+    };
+    // Auto filter on the header row location
+    sheet.autoFilter = `A${headerRowIndex}:${toCol(headers.length)}${headerRowIndex}`;
+
+    // Auto width for columns based on content
+    const startDataRow = headerRowIndex + 1;
+    for (let col = 1; col <= headers.length; col++) {
+      let maxLen = headers[col - 1].length;
+      for (let r = startDataRow; r <= sheet.rowCount; r++) {
+        const val = sheet.getCell(r, col).value;
+        const text = typeof val === "string" ? val : (val?.toString?.() ?? "");
+        if (text.length > maxLen) maxLen = text.length;
+      }
+      const width = Math.min(Math.max(maxLen + 2, 12), 50);
+      sheet.getColumn(col).width = width;
+    }
+
+    // Merge group-level columns for contiguous rows with same Reference Number
+    const groupCols = 8; // first 8 columns (Group ID through Created By Email)
+    let startIdx = 0;
+    // merged regions must consider the offset introduced by company header rows
+    const dataStartExcelRow = headerRowIndex + 1; // first data row number
+    while (startIdx < rows.length) {
+      const startRef = rows[startIdx][1]; // column 2 = Reference Number
+      let endIdx = startIdx;
+      while (endIdx + 1 < rows.length && rows[endIdx + 1][1] === startRef) endIdx++;
+      if (endIdx > startIdx) {
+        const startRowNumber = dataStartExcelRow + startIdx;
+        const endRowNumber = dataStartExcelRow + endIdx;
+        for (let col = 1; col <= groupCols; col++) {
+          sheet.mergeCells(startRowNumber, col, endRowNumber, col);
+          const cell = sheet.getCell(startRowNumber, col);
+          cell.alignment = { vertical: "middle" };
+        }
+      }
+      startIdx = endIdx + 1;
+    }
+
+    // Write buffer and return
+    const raw = await workbook.xlsx.writeBuffer();
+    const uint8 = raw instanceof ArrayBuffer ? new Uint8Array(raw) : (raw as Uint8Array);
+    const ab = uint8.buffer.slice(uint8.byteOffset, uint8.byteOffset + uint8.byteLength) as ArrayBuffer;
+    const blob = new Blob([ab], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const filename = `shipment-plans-export-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    return new Response(blob, {
       headers: {
-        "Content-Type": "text/csv",
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Length": String(uint8.byteLength),
         "Content-Disposition": `attachment; filename="${filename}"`,
+        "Cache-Control": "no-store",
       },
     });
-
   } catch (error) {
-    console.error("CSV export error:", error);
-    return json({ error: "Failed to export data" }, { status: 500 });
+    console.error("XLSX export error:", error);
+    return json({ error: "Failed to export XLSX" }, { status: 500 });
   }
 }
 
 export async function loader() {
-  return json({ message: "Use POST to export CSV data" });
+  return json({ message: "Use POST to export XLSX data" });
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
