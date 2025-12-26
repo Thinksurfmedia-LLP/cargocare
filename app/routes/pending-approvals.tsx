@@ -9,8 +9,8 @@ import {
   useNavigate,
   useActionData,
   useSearchParams,
-  Link,
 } from "react-router";
+import { useState } from "react";
 import { requireAuth } from "~/lib/auth.server";
 import { prisma } from "~/lib/prisma.server";
 import { Card, CardContent } from "~/components/ui/card";
@@ -397,6 +397,7 @@ export default function PendingApprovals() {
   const actionData = useActionData<typeof action>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const [hoveredShipper, setHoveredShipper] = useState<string | null>(null);
 
   const getStatusBadge = (status: string) => {
     const statusConfig: { [key: string]: { color: string; label: string } } = {
@@ -452,103 +453,166 @@ export default function PendingApprovals() {
 
   return (
     <AdminLayout user={user}>
-      <div className="p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Pending Approvals</h1>
-            <p className="text-sm text-gray-600 mt-1">
-              Review and approve shipment plans awaiting your approval
-            </p>
-          </div>
-          <div className="flex items-center space-x-2">
-            <Badge className="bg-blue-100 text-blue-800 border-blue-200">
-              {pagination.totalCount} pending approvals
-            </Badge>
+      <div className="min-h-screen bg-gradient-to-b from-[#fffdf3] via-[#fff7d6] to-[#ffeeb8]">
+        {/* Page Header */}
+        <div className="bg-white border-b border-gray-200">
+          <div className="px-6 py-6 flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-semibold text-gray-900">Pending Approvals</h1>
+              <p className="text-sm text-gray-600 mt-1">
+                Review and approve shipment plans awaiting your approval
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <Badge className="bg-blue-100 text-blue-800 border-blue-200 px-4 py-2">
+                {pagination.totalCount} pending approvals
+              </Badge>
+            </div>
           </div>
         </div>
 
-        {/* Search */}
-        <Card className="mb-6">
-          <CardContent className="p-4">
-            <Form onSubmit={handleSearch} className="flex gap-4">
-              <div className="flex-1">
-                <Input
-                  name="search"
-                  placeholder="Search by reference, business branch, customer, or created by..."
-                  defaultValue={search}
-                />
+        <div className="p-6 space-y-6">
+          {/* Action Messages */}
+          {actionData?.success && (
+            <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-green-800 shadow-sm">
+              <p className="font-medium">{actionData.success}</p>
+            </div>
+          )}
+          {actionData?.error && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-red-800 shadow-sm">
+              <p className="font-medium">{actionData.error}</p>
+            </div>
+          )}
+
+          {/* Search */}
+          <Card className="border-none shadow-sm bg-[#fff9e3]">
+            <CardContent className="p-0">
+              <div className="px-5 py-4 flex flex-col lg:flex-row gap-4 lg:items-center lg:justify-between">
+                <Form onSubmit={handleSearch} className="flex-1 w-full">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <div className="relative flex-1">
+                      <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-gray-400 text-sm">
+                        🔍
+                      </div>
+                      <Input
+                        name="search"
+                        placeholder="Search by reference, business branch, customer, or created by..."
+                        defaultValue={search}
+                        className="pl-10 pr-4 py-3 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                      />
+                    </div>
+                    <div className="flex gap-3">
+                      <Button
+                        type="submit"
+                        className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-sm"
+                      >
+                        Search
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="px-6 py-3 border-gray-300 rounded-lg hover:bg-gray-50"
+                        onClick={() => {
+                          const newSearchParams = new URLSearchParams();
+                          newSearchParams.set("page", "1");
+                          navigate(`?${newSearchParams.toString()}`);
+                        }}
+                      >
+                        Clear
+                      </Button>
+                    </div>
+                  </div>
+                  {search && (
+                    <p className="mt-2 text-sm text-gray-600">
+                      <span className="font-medium">{pagination.totalCount}</span> results found for "{search}"
+                    </p>
+                  )}
+                </Form>
+                <div className="flex items-center gap-3">
+                  <div className="text-sm text-gray-700 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
+                    <span className="font-semibold">{pagination.totalCount}</span> total plans
+                  </div>
+                </div>
               </div>
-              <Button type="submit">Search</Button>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  const newSearchParams = new URLSearchParams();
-                  newSearchParams.set("page", "1");
-                  navigate(`?${newSearchParams.toString()}`);
-                }}
-              >
-                Clear
-              </Button>
-            </Form>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        {/* Action Messages */}
-        {actionData?.success && (
-          <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-md">
-            <p className="text-green-800">{actionData.success}</p>
-          </div>
-        )}
-        {actionData?.error && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-md">
-            <p className="text-red-800">{actionData.error}</p>
-          </div>
-        )}
+          {/* Shipment Plans Table */}
+          <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-200 bg-[#fffaf0]">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-lg">
+                    📦
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-gray-500">Shipment Plans</p>
+                    <p className="text-lg font-semibold text-gray-900">Pending Approvals</p>
+                  </div>
+                </div>
+                <Badge className="bg-blue-100 text-blue-800 border-blue-200 px-3 py-2">
+                  {pagination.totalCount} waiting
+                </Badge>
+              </div>
+            </div>
 
-        {/* Shipment Plans Table */}
-        <Card>
-          <CardContent className="p-0">
             <div className="overflow-x-auto">
               <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-44">Customer</TableHead>
-                    <TableHead className="w-36">Business Branch</TableHead>
-                    <TableHead className="w-52">Equipment Details</TableHead>
-                    <TableHead className="w-32">Selling Price</TableHead>
-                    <TableHead className="w-44">Shipper</TableHead>
-                    <TableHead className="w-40">Loading Port</TableHead>
-                    <TableHead className="w-44">Port of Discharge</TableHead>
-                    <TableHead className="w-48">Final Place of Delivery</TableHead>
-                    <TableHead className="w-24">Actions</TableHead>
+                <TableHeader className="bg-[#fffaf0]">
+                  <TableRow className="text-gray-600">
+                    <TableHead className="w-44 font-semibold text-gray-800">Customer</TableHead>
+                    <TableHead className="w-36 font-semibold text-gray-800">Business Branch</TableHead>
+                    <TableHead className="w-32 font-semibold text-gray-800">Shipment Type</TableHead>
+                    <TableHead className="w-52 font-semibold text-gray-800">Equipment Details</TableHead>
+                    <TableHead className="w-32 font-semibold text-gray-800">Selling Price</TableHead>
+                    <TableHead className="w-44 font-semibold text-gray-800">Shipper</TableHead>
+                    <TableHead className="w-40 font-semibold text-gray-800">Loading Port</TableHead>
+                    <TableHead className="w-44 font-semibold text-gray-800">Port of Discharge</TableHead>
+                    <TableHead className="w-48 font-semibold text-gray-800">Final Place of Delivery</TableHead>
+                    <TableHead className="w-28 font-semibold text-gray-800 text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {shipmentPlans.map((plan) => {
                     const planData = plan.data as any;
+                    const isConsolidation = (planData.shipment_type || "").toLowerCase().includes("consol");
+                    const shippers = Array.isArray(planData.package_details)
+                      ? planData.package_details
+                          .map((pkg: any) => pkg?.shipper)
+                          .filter((s: any): s is string => Boolean(s))
+                      : [];
+                    const uniqueShippers = Array.from(new Set(shippers));
+                    const primaryShipper = uniqueShippers[0];
+                    const extraShippers = uniqueShippers.length > 1 ? uniqueShippers.length - 1 : 0;
+                    const shipperTooltip = uniqueShippers.length > 0 ? uniqueShippers.join(", ") : undefined;
                     return (
-                      <TableRow 
+                      <TableRow
                         key={plan.id}
-                        className="cursor-pointer hover:bg-gray-50"
+                        className="cursor-pointer transition-colors hover:bg-slate-50"
                         onClick={() => navigate(`/shipment-plans/${plan.id}/edit`)}
                       >
-                        <TableCell>
-                          {planData.container_movement?.customer || "N/A"}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center space-x-2">
-                            <span className="text-gray-400">🏢</span>
-                            <span className="font-medium text-gray-700">
-                              {planData.bussiness_branch || "N/A"}
-                            </span>
+                        <TableCell className="font-medium text-gray-900">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-blue-500">•</span>
+                            <span>{planData.container_movement?.customer || "N/A"}</span>
                           </div>
                         </TableCell>
                         <TableCell>
+                          <div className="flex items-center space-x-2 text-gray-700">
+                            <span className="text-gray-400">🏢</span>
+                            <span className="font-medium">{planData.bussiness_branch || "N/A"}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-gray-700 font-medium">
+                          <Badge className="bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1 rounded-full text-xs font-semibold">
+                            {planData.shipment_type || "N/A"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
                           {planData.equipment_details && planData.equipment_details.length > 0 ? (
-                            <div className="space-y-1">
+                            <div className="space-y-1 text-sm text-gray-700">
                               {(() => {
-                                // Group equipment by type and count occurrences
+                                // Group equipment by type and count occurrences for a compact pill list
                                 const equipmentCounts = planData.equipment_details.reduce((acc: any, equipment: any) => {
                                   const type = equipment.equipment_type;
                                   if (type) {
@@ -556,43 +620,79 @@ export default function PendingApprovals() {
                                   }
                                   return acc;
                                 }, {});
-                                
-                                // Display each unique equipment type with count on the same line
-                                return Object.entries(equipmentCounts).map(([type, count]: [string, any]) => (
-                                  <div key={type} className="text-sm whitespace-nowrap">
-                                    {type} x{count}
-                                  </div>
-                                ));
+
+                                return Object.entries(equipmentCounts).map(([type, count]: [string, any]) => {
+                                  const cleanType = typeof type === "string" ? type.replace(/\s*container$/i, "").trim() : type;
+
+                                  return (
+                                  <span
+                                    key={type}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-gray-700 border border-slate-200 whitespace-nowrap"
+                                  >
+                                    <span className="text-xs">📦</span>
+                                    <span className="text-xs font-semibold whitespace-nowrap">{count} x</span>
+                                    <span className="whitespace-nowrap">{cleanType}</span>
+                                  </span>
+                                  );
+                                });
                               })()}
                             </div>
-                          ) : "N/A"}
+                          ) : (
+                            <span className="text-gray-500">N/A</span>
+                          )}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="text-gray-800 font-medium">
                           {planData.container_movement?.selling_price || "N/A"}
                         </TableCell>
-                        <TableCell>
-                          {planData.package_details?.[0]?.shipper || "N/A"}
+                        <TableCell className="text-gray-700">
+                          {isConsolidation && (primaryShipper || extraShippers) ? (
+                            <div className="relative inline-block">
+                              <span
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-gray-700 border border-slate-200 text-sm font-medium cursor-help"
+                                onMouseEnter={() => setHoveredShipper(plan.id)}
+                                onMouseLeave={() => setHoveredShipper(null)}
+                              >
+                                <span>{primaryShipper || "Shipper"}</span>
+                                {extraShippers > 0 && <span className="text-xs font-semibold">+{extraShippers}</span>}
+                              </span>
+                              {hoveredShipper === plan.id && uniqueShippers.length > 1 && (
+                                <div className="absolute z-50 mt-2 p-3 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[200px] left-0">
+                                  <p className="text-xs font-semibold text-gray-500 uppercase mb-2">All Shippers</p>
+                                  <div className="space-y-1">
+                                    {uniqueShippers.map((shipper, idx) => (
+                                      <div key={idx} className="text-sm text-gray-700 flex items-center gap-2">
+                                        <span className="text-blue-500 text-xs">•</span>
+                                        <span>{shipper}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            planData.package_details?.[0]?.shipper || "N/A"
+                          )}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="text-gray-700">
                           {planData.container_movement?.loading_port || "N/A"}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="text-gray-700">
                           {planData.container_movement?.port_of_discharge || "N/A"}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="text-gray-700">
                           {planData.container_movement?.delivery_till || "N/A"}
                         </TableCell>
-                        <TableCell onClick={(e) => e.stopPropagation()}>
-                          <div className="flex space-x-2">
+                        <TableCell onClick={(e) => e.stopPropagation()} className="text-right">
+                          <div className="flex justify-end space-x-2">
                             <Button
                               size="sm"
                               variant="outline"
-                              className="text-red-600 border-red-300 hover:bg-red-50"
+                              className="border-red-300 text-red-600 hover:bg-red-50"
                               onClick={() => {
                                 const reason = prompt("Please provide a reason for rejection:");
                                 if (reason?.trim()) {
-                                  const form = document.createElement('form');
-                                  form.method = 'post';
+                                  const form = document.createElement("form");
+                                  form.method = "post";
                                   form.innerHTML = `
                                     <input type="hidden" name="action" value="reject" />
                                     <input type="hidden" name="id" value="${plan.id}" />
@@ -612,7 +712,7 @@ export default function PendingApprovals() {
                   })}
                   {shipmentPlans.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                      <TableCell colSpan={9} className="text-center py-10 text-gray-500">
                         {search ? "No shipment plans found matching your search." : "No pending approvals found."}
                       </TableCell>
                     </TableRow>
@@ -620,50 +720,48 @@ export default function PendingApprovals() {
                 </TableBody>
               </Table>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Pagination */}
-        {pagination.totalPages > 1 && (
-          <div className="mt-6 flex items-center justify-between">
-            <div className="text-sm text-gray-700">
-              Showing {(pagination.page - 1) * pagination.limit + 1} to{" "}
-              {Math.min(pagination.page * pagination.limit, pagination.totalCount)} of{" "}
-              {pagination.totalCount} results
-            </div>
-            <div className="flex items-center space-x-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handlePageChange(pagination.page - 1)}
-                disabled={pagination.page <= 1}
-              >
-                Previous
-              </Button>
-              {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
-                const pageNum = i + 1;
-                return (
-                  <Button
-                    key={pageNum}
-                    variant={pagination.page === pageNum ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => handlePageChange(pageNum)}
-                  >
-                    {pageNum}
-                  </Button>
-                );
-              })}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handlePageChange(pagination.page + 1)}
-                disabled={pagination.page >= pagination.totalPages}
-              >
-                Next
-              </Button>
-            </div>
           </div>
-        )}
+
+          {/* Pagination */}
+          {pagination.totalPages > 1 && (
+            <div className="mt-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between text-sm text-gray-700">
+              <div>
+                Showing {(pagination.page - 1) * pagination.limit + 1} to {Math.min(pagination.page * pagination.limit, pagination.totalCount)} of {pagination.totalCount} results
+              </div>
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(pagination.page - 1)}
+                  disabled={pagination.page <= 1}
+                >
+                  Previous
+                </Button>
+                {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                  const pageNum = i + 1;
+                  return (
+                    <Button
+                      key={pageNum}
+                      variant={pagination.page === pageNum ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => handlePageChange(pageNum)}
+                    >
+                      {pageNum}
+                    </Button>
+                  );
+                })}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(pagination.page + 1)}
+                  disabled={pagination.page >= pagination.totalPages}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </AdminLayout>
   );
