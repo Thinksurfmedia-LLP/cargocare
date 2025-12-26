@@ -11,7 +11,7 @@ import { Select } from "~/components/ui/select";
 import { SearchableSelect } from "~/components/ui/searchable-select";
 import { Textarea } from "~/components/ui/textarea";
 import { useToast } from "~/components/ui/toast";
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 
 export interface LinerBookingFormProps {
   mode: "new" | "edit";
@@ -87,7 +87,7 @@ export function LinerBookingForm({
   const [openSections, setOpenSections] = useState(() => {
     if (mode === "edit") {
       return {
-        linkedPlan: true,
+        linkedPlan: false,
         linkToPlan: false,
         general: true,
         details: true, // Keep details open in edit mode
@@ -633,13 +633,67 @@ export function LinerBookingForm({
     (linerBooking?.data as any)?.liner_booking_details, // depend on the actual captured data instead of linerBooking?.id
   ]);
 
-  // Keep details section open after form submissions
-  useEffect(() => {
-    if (actionData && !actionData.error) {
-      // If form was submitted successfully, keep details section open
-      setOpenSections((prev) => ({ ...prev, details: true, general: true }));
+  const getFirstPdfLink = useCallback(() => {
+    const details = (linerBooking?.data as any)?.liner_booking_details;
+    if (Array.isArray(details)) {
+      for (const d of details) {
+        if (d?.line_booking_copy_file) return d.line_booking_copy_file as string;
+        if (d?.line_booking_copy) return d.line_booking_copy as string;
+      }
     }
-  }, [actionData]);
+    return null;
+  }, [linerBooking?.data]);
+
+  const parsedErrors = useMemo(() => {
+    if (!actionData?.error) return [] as string[];
+    const parts = actionData.error
+      .split(";")
+      .map((p: string) => p.trim())
+      .filter(Boolean);
+    const unique: string[] = [];
+    parts.forEach((p) => {
+      if (!unique.includes(p)) unique.push(p);
+    });
+    return unique;
+  }, [actionData?.error]);
+
+  // Keep details open and show success toast when submission succeeds
+  useEffect(() => {
+    if (!actionData || actionData.error) return;
+
+    const pdfLink = getFirstPdfLink();
+
+    setOpenSections((prev) => ({
+      ...prev,
+      details: true,
+      general: true,
+      linkedPlan:
+        mode === "edit" && linerBooking?.shipmentPlan
+          ? true
+          : prev.linkedPlan,
+    }));
+
+    addToast({
+      type: "success",
+      title: "Booking saved",
+      description: (
+        <span className="flex items-center gap-2">
+          <span>Booking updated successfully.</span>
+          {pdfLink ? (
+            <Link
+              to={pdfLink}
+              target="_blank"
+              rel="noreferrer"
+              className="text-blue-600 underline"
+            >
+              View booking PDF
+            </Link>
+          ) : null}
+        </span>
+      ),
+      duration: pdfLink ? 7000 : 5000,
+    });
+  }, [actionData, addToast, getFirstPdfLink, linerBooking?.shipmentPlan, mode]);
 
   // Handle navigation state changes to maintain form sections
   useEffect(() => {
@@ -1504,6 +1558,90 @@ export function LinerBookingForm({
     number | null
   >(0);
 
+  const [showAllBookingCard, setShowAllBookingCard] = useState(false);
+  const [railVisible, setRailVisible] = useState(true);
+  const [showBackToTop, setShowBackToTop] = useState(false);
+
+  const formRef = useRef<HTMLFormElement | null>(null);
+  const errorRef = useRef<HTMLDivElement | null>(null);
+
+  const referenceNumber =
+    mode === "edit"
+      ? (linerBooking?.shipmentPlan?.data as any)?.reference_number || "N/A"
+      : "New Booking";
+
+  const quickLinks = [
+    { id: "section-linked-plan", label: "Linked Plan" },
+    { id: "section-general", label: "General" },
+    { id: "section-details", label: "Booking Details" },
+  ];
+
+  useEffect(() => {
+    if (!actionData?.error) return;
+
+    addToast({
+      type: "error",
+      title: "Save failed",
+      description: parsedErrors.length ? (
+        <ul className="list-disc pl-5 space-y-1 text-sm">
+          {parsedErrors.map((msg) => (
+            <li key={msg}>{msg}</li>
+          ))}
+        </ul>
+      ) : (
+        actionData.error
+      ),
+      duration: 6500,
+    });
+
+    if (errorRef.current) {
+      errorRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [actionData?.error, addToast, parsedErrors]);
+
+  // On validation errors, jump to the first errored field (fallback to summary)
+  useEffect(() => {
+    if (!actionData || !(actionData as any)?.fieldErrors) return;
+    const fieldErrors = (actionData as any).fieldErrors;
+    const firstKey = Object.keys(fieldErrors || {}).find(
+      (key) => Array.isArray(fieldErrors[key]) ? fieldErrors[key].length : fieldErrors[key]
+    );
+    if (!firstKey) return;
+
+    const formEl = formRef.current;
+    const target = formEl?.querySelector(`[name="${firstKey}"]`) as
+      | HTMLElement
+      | null;
+
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+      if ("focus" in target) {
+        (target as HTMLInputElement).focus({ preventScroll: true });
+      }
+    } else if (errorRef.current) {
+      errorRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [actionData]);
+
+  useEffect(() => {
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+
+    const onScroll = () => {
+      setRailVisible(false);
+      setShowBackToTop(window.scrollY > 400);
+      if (timeout) clearTimeout(timeout);
+      timeout = setTimeout(() => {
+        setRailVisible(true);
+      }, 300);
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (timeout) clearTimeout(timeout);
+    };
+  }, []);
+
   return (
     <>
       {/* Page Header */}
@@ -1538,25 +1676,62 @@ export function LinerBookingForm({
 
       {/* Main Content */}
       <div className="flex-1 overflow-auto p-6 bg-gray-50">
-        {actionData?.error && (
-          <div className="mb-8 bg-red-50 border-l-4 border-red-400 p-4 rounded-lg">
-            <div className="flex">
-              <div className="flex-shrink-0">
-                <span className="text-red-400 text-xl">⚠️</span>
-              </div>
-              <div className="ml-3">
-                <p className="text-sm text-red-700 font-medium">
-                  Error {mode === "edit" ? "updating" : "creating"} liner
-                  booking
-                </p>
-                <p className="text-sm text-red-600 mt-1">{actionData.error}</p>
-              </div>
+        {/* In-page error banner removed in favor of toast notifications */}
+
+        <div className="max-w-5xl mx-auto relative">
+          {/* Sticky action bar */}
+          <div className="sticky top-0 z-30 mb-4 bg-white/95 backdrop-blur border border-gray-200 rounded-lg shadow-sm px-3 py-2 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs text-gray-500">Reference</p>
+              <p className="text-sm font-semibold text-gray-900">{referenceNumber}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs px-2 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-100 whitespace-nowrap">
+                {currentStatus}
+              </span>
+              <Button
+                type="submit"
+                form="liner-booking-form"
+                disabled={isSubmitting || !isFormValid}
+                className="inline-flex items-center px-3 py-2 text-sm font-semibold text-white bg-blue-600 border border-transparent rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+              >
+                {isSubmitting
+                  ? mode === "edit"
+                    ? "Saving..."
+                    : "Creating..."
+                  : mode === "edit"
+                  ? "Update Liner Booking"
+                  : "Create Liner Booking"}
+              </Button>
             </div>
           </div>
-        )}
 
-        <div className="max-w-5xl mx-auto">
+          {/* Quick jump nav */}
+          <div
+            className={`hidden xl:block fixed right-4 top-24 z-20 space-y-2 drop-shadow-sm transition-opacity duration-150 ${
+              railVisible ? "opacity-90" : "opacity-0 pointer-events-none"
+            }`}
+          >
+            {quickLinks.map((link) => (
+              <button
+                key={link.id}
+                type="button"
+                onClick={() => {
+                  const el = document.getElementById(link.id);
+                  if (el) {
+                    el.scrollIntoView({ behavior: "smooth", block: "start" });
+                  }
+                }}
+                className="block w-36 text-left px-3 py-2 text-sm font-medium bg-white border border-gray-200 rounded-md hover:border-blue-300 hover:text-blue-700"
+              >
+                {link.label}
+              </button>
+            ))}
+          </div>
+
           <Form
+            id="liner-booking-form"
+            ref={formRef}
             method="post"
             className="space-y-8"
             onSubmit={handleFormSubmit}
@@ -1586,7 +1761,10 @@ export function LinerBookingForm({
               <div className="divide-y divide-gray-100">
                 {/* Linked Shipment Plan Information - Only in Edit Mode */}
                 {mode === "edit" && linerBooking?.shipmentPlan && (
-                  <div className="relative">
+                  <div
+                    className="relative scroll-mt-28 md:scroll-mt-24"
+                    id="section-linked-plan"
+                  >
                     <button
                       type="button"
                       onClick={() => toggleSection("linkedPlan")}
@@ -1948,7 +2126,10 @@ export function LinerBookingForm({
 
                 {/* General Information Section - Show only for assignment mode (not new bookings, not regular edit) */}
                 {mode !== "new" && isAssignment && (
-                <div className="relative">
+                <div
+                  className="relative scroll-mt-28 md:scroll-mt-24"
+                  id="section-general"
+                >
                   <button
                     type="button"
                     onClick={() => toggleSection("general")}
@@ -2231,15 +2412,20 @@ export function LinerBookingForm({
                           linerBooking?.shipmentPlan && (
                             <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                               <div className="flex items-center justify-between">
-                                <div>
-                                  <h4 className="text-sm font-semibold text-gray-700">
-                                    All Booking Assigned
-                                  </h4>
-                                  <p className="text-sm text-gray-600 mt-1">
-                                    {equipmentValidation.isValid
-                                      ? 'Click to mark both liner booking and linked shipment plan as "Booked"'
-                                      : "Complete equipment allocation to enable this option"}
-                                  </p>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowAllBookingCard((p) => !p)}
+                                    className="text-sm font-semibold text-gray-700 flex items-center gap-2 hover:text-green-700"
+                                  >
+                                    <span>All Booking Assigned</span>
+                                    <span className={`transition-transform ${showAllBookingCard ? "rotate-180" : ""}`}>
+                                      ↓
+                                    </span>
+                                  </button>
+                                  <span className={`text-xs px-2 py-1 rounded-full ${equipmentValidation.isValid ? "bg-green-100 text-green-700" : "bg-gray-200 text-gray-600"}`}>
+                                    {equipmentValidation.isValid ? "Ready" : "Incomplete"}
+                                  </span>
                                 </div>
                                 <Button
                                   type="submit"
@@ -2255,6 +2441,13 @@ export function LinerBookingForm({
                                   All Booking Assigned
                                 </Button>
                               </div>
+                              {showAllBookingCard && (
+                                <p className="text-sm text-gray-600 mt-3">
+                                  {equipmentValidation.isValid
+                                    ? 'Click to mark both liner booking and linked shipment plan as "Booked"'
+                                    : "Complete equipment allocation to enable this option"}
+                                </p>
+                              )}
                             </div>
                           )}
                       </div>
@@ -2264,7 +2457,10 @@ export function LinerBookingForm({
                 )}
 
                 {/* Liner Booking Details Section */}
-                <div className="relative">
+                <div
+                  className="relative scroll-mt-28 md:scroll-mt-24"
+                  id="section-details"
+                >
                   <button
                     type="button"
                     onClick={() => toggleSection("details")}
@@ -2409,33 +2605,33 @@ export function LinerBookingForm({
                             ) : (
                               <div className="max-h-80 overflow-auto border border-gray-100 rounded-md">
                                 <div className="overflow-x-auto">
-                                  <table className="min-w-full">
-                                    <thead className="bg-gray-50">
+                                  <table className="min-w-full text-sm">
+                                    <thead className="bg-gray-50 sticky top-0 z-10">
                                       <tr>
-                                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">
+                                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">
                                           Select
                                         </th>
-                                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">
+                                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">
                                           Temp Booking #
                                         </th>
-                                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">
+                                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">
                                           Equipment
                                         </th>
-                                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">
+                                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">
                                           Liner Booking #
                                         </th>
-                                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">
+                                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">
                                           MBL Number
                                         </th>
-                                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">
+                                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">
                                           Created
                                         </th>
-                                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">
+                                        <th className="px-2 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap">
                                           Actions
                                         </th>
                                       </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-gray-100 bg-white">
+                                    <tbody className="divide-y divide-gray-100 bg-white text-sm">
                                       {availableLinerBookings.map((b: any) => {
                                         const d = Array.isArray(
                                           b?.data?.liner_booking_details
@@ -2465,7 +2661,7 @@ export function LinerBookingForm({
                                               isLinked ? "bg-blue-50" : ""
                                             }`}
                                           >
-                                            <td className="px-3 py-2 whitespace-nowrap">
+                                            <td className="px-2 py-2 whitespace-nowrap">
                                               <input
                                                 type="checkbox"
                                                 name="selectedAvailableIds"
@@ -2474,7 +2670,7 @@ export function LinerBookingForm({
                                                 disabled={isLinked}
                                               />
                                             </td>
-                                            <td className="px-3 py-2 text-sm text-gray-800 whitespace-nowrap">
+                                            <td className="px-2 py-2 text-gray-800 whitespace-nowrap">
                                               <div className="flex items-center gap-2">
                                                 {temp}
                                                 {isLinked && (
@@ -2484,10 +2680,10 @@ export function LinerBookingForm({
                                                 )}
                                               </div>
                                             </td>
-                                            <td className="px-3 py-2 text-sm text-gray-700 whitespace-nowrap">
+                                            <td className="px-2 py-2 text-gray-700 whitespace-nowrap">
                                               {eqp}
                                             </td>
-                                            <td className="px-3 py-2 text-sm text-gray-700 whitespace-nowrap">
+                                            <td className="px-2 py-2 text-gray-700 whitespace-nowrap">
                                               <span
                                                 className={
                                                   linerBookingNumber !== "N/A"
@@ -2498,17 +2694,17 @@ export function LinerBookingForm({
                                                 {linerBookingNumber}
                                               </span>
                                             </td>
-                                            <td className="px-3 py-2 text-sm text-gray-700 whitespace-nowrap">
+                                            <td className="px-2 py-2 text-gray-700 whitespace-nowrap">
                                               {mblNumber}
                                             </td>
-                                            <td className="px-3 py-2 text-sm text-gray-600 whitespace-nowrap">
+                                            <td className="px-2 py-2 text-gray-600 whitespace-nowrap">
                                               {b.createdAt
                                                 ? new Date(
                                                     b.createdAt
                                                   ).toLocaleDateString()
                                                 : "N/A"}
                                             </td>
-                                            <td className="px-3 py-2 whitespace-nowrap">
+                                            <td className="px-2 py-2 whitespace-nowrap">
                                               {canUnlink && (
                                                 <Button
                                                   type="submit"
@@ -4629,6 +4825,19 @@ export function LinerBookingForm({
                         </div>
                       </div>
                     </div>
+                  </div>
+                )}
+
+                {showBackToTop && (
+                  <div className="px-6 pt-4 bg-gray-50 border-t border-gray-200 flex justify-end lg:hidden">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="text-sm px-3 py-2"
+                      onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+                    >
+                      ↑ Back to top
+                    </Button>
                   </div>
                 )}
 

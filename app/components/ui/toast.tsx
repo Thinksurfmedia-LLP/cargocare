@@ -1,10 +1,10 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 
 export interface Toast {
   id: string;
   type: 'success' | 'error' | 'warning' | 'info';
   title: string;
-  description?: string;
+  description?: React.ReactNode;
   duration?: number;
 }
 
@@ -77,16 +77,28 @@ function ToastItem({
   onRemove: (id: string) => void;
 }) {
   const [isVisible, setIsVisible] = useState(false);
+  const removeTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasRemoved = useRef(false);
 
   useEffect(() => {
     // Trigger animation
     setTimeout(() => setIsVisible(true), 10);
   }, []);
 
-  const handleRemove = () => {
+  const handleRemove = useCallback(() => {
+    if (hasRemoved.current) return;
+    hasRemoved.current = true;
     setIsVisible(false);
     setTimeout(() => onRemove(toast.id), 300);
-  };
+  }, [onRemove, toast.id]);
+
+  useEffect(() => {
+    const duration = toast.duration || 5000;
+    removeTimeout.current = setTimeout(handleRemove, duration);
+    return () => {
+      if (removeTimeout.current) clearTimeout(removeTimeout.current);
+    };
+  }, [handleRemove, toast.duration]);
 
   const getToastStyles = () => {
     switch (toast.type) {
@@ -133,13 +145,15 @@ function ToastItem({
         </div>
         <div className="ml-3 flex-1">
           <p className="text-sm font-medium">{toast.title}</p>
-          {toast.description && (
-            <div className="mt-1 text-sm opacity-90">
-              {toast.description.split('\n').map((line, index) => (
-                <div key={index}>{line}</div>
-              ))}
+          {toast.description ? (
+            <div className="mt-1 text-sm opacity-90 space-y-1">
+              {typeof toast.description === 'string'
+                ? toast.description.split('\n').map((line, index) => (
+                    <div key={index}>{line}</div>
+                  ))
+                : toast.description}
             </div>
-          )}
+          ) : null}
         </div>
         <div className="ml-4 flex-shrink-0">
           <button
