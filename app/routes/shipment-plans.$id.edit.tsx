@@ -24,6 +24,10 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     if (!planId) {
       return redirect("/shipment-plans")
     }
+
+    // Get returnTo parameter from URL
+    const url = new URL(request.url)
+    const returnTo = url.searchParams.get("returnTo") || "/shipment-plans"
     const shipmentPlan = await prisma.shipmentPlan.findUnique({
       where: { id: planId },
       include: {
@@ -169,6 +173,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
         linerBookingUsers,
         salesPersons: allUsers, // All users can be salespersons
       },
+      returnTo,
     }
   } catch (error) {
     return redirect("/login")
@@ -1667,7 +1672,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
       }
     }
 
-    return redirect("/shipment-plans")
+    // Get returnTo parameter from the request URL
+    const url = new URL(request.url)
+    const returnTo = url.searchParams.get("returnTo") || "/shipment-plans"
+
+    return redirect(returnTo)
   } catch (error) {
     console.error("Edit shipment plan action error:", error)
     return { error: "An error occurred while processing your request" }

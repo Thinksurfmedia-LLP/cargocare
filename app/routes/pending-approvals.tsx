@@ -453,7 +453,7 @@ export default function PendingApprovals() {
 
   return (
     <AdminLayout user={user}>
-      <div className="min-h-screen bg-gradient-to-b from-[#fffdf3] via-[#fff7d6] to-[#ffeeb8]">
+      <div className="min-h-full">
         {/* Page Header */}
         <div className="bg-white border-b border-gray-200">
           <div className="px-6 py-6 flex items-center justify-between">
@@ -538,7 +538,7 @@ export default function PendingApprovals() {
           </Card>
 
           {/* Shipment Plans Table */}
-          <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
+          <div className="bg-white rounded-xl shadow-lg border border-gray-200">
             <div className="px-6 py-4 border-b border-gray-200 bg-[#fffaf0]">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-3">
@@ -556,7 +556,7 @@ export default function PendingApprovals() {
               </div>
             </div>
 
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto overflow-y-visible">
               <Table>
                 <TableHeader className="bg-[#fffaf0]">
                   <TableRow className="text-gray-600">
@@ -589,7 +589,7 @@ export default function PendingApprovals() {
                       <TableRow
                         key={plan.id}
                         className="cursor-pointer transition-colors hover:bg-slate-50"
-                        onClick={() => navigate(`/shipment-plans/${plan.id}/edit`)}
+                        onClick={() => navigate(`/shipment-plans/${plan.id}/edit?returnTo=/pending-approvals`)}
                       >
                         <TableCell className="font-medium text-gray-900">
                           <div className="flex items-center gap-2">
