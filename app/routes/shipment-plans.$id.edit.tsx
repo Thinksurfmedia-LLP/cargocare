@@ -1296,6 +1296,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
         stuffingDate: (formData.get(`equipment_details[${equipmentIndex}][stuffingDate]`) as string) || "",
         gateInDate: (formData.get(`equipment_details[${equipmentIndex}][gateInDate]`) as string) || "",
         loadedDate: (formData.get(`equipment_details[${equipmentIndex}][loadedDate]`) as string) || "",
+        siFiledStatus: formData.get(`equipment_details[${equipmentIndex}][siFiledStatus]`) === "true",
+        siFiledDate: (formData.get(`equipment_details[${equipmentIndex}][siFiledDate]`) as string) || "",
+        isfensFiledStatus: formData.get(`equipment_details[${equipmentIndex}][isfensFiledStatus]`) === "true",
+        isfensFiledDate: (formData.get(`equipment_details[${equipmentIndex}][isfensFiledDate]`) as string) || "",
       })
       equipmentIndex++
     }

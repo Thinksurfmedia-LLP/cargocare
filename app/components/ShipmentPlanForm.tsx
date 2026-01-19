@@ -2884,22 +2884,24 @@ export function ShipmentPlanForm({
                                                   Empty Container Picked Up
                                                 </Label>
                                               </div>
-                                              <Input
-                                                type="date"
-                                                name={`equipment_details[${index}][emptyPickupDate]`}
-                                                value={
-                                                  equipment.emptyPickupDate
-                                                }
-                                                onChange={(e) =>
-                                                  updateEquipmentStatus(
-                                                    index,
-                                                    "emptyPickupDate",
-                                                    e.target.value
-                                                  )
-                                                }
-                                                className="text-sm"
-                                                placeholder="Pickup date"
-                                              />
+                                              {equipment.emptyPickupStatus && (
+                                                <Input
+                                                  type="date"
+                                                  name={`equipment_details[${index}][emptyPickupDate]`}
+                                                  value={
+                                                    equipment.emptyPickupDate
+                                                  }
+                                                  onChange={(e) =>
+                                                    updateEquipmentStatus(
+                                                      index,
+                                                      "emptyPickupDate",
+                                                      e.target.value
+                                                    )
+                                                  }
+                                                  className="text-sm"
+                                                  placeholder="Pickup date"
+                                                />
+                                              )}
                                             </div>
 
                                             {/* Stuffing Status */}
@@ -2927,20 +2929,22 @@ export function ShipmentPlanForm({
                                                   Stuffing Completed
                                                 </Label>
                                               </div>
-                                              <Input
-                                                type="date"
-                                                name={`equipment_details[${index}][stuffingDate]`}
-                                                value={equipment.stuffingDate}
-                                                onChange={(e) =>
-                                                  updateEquipmentStatus(
-                                                    index,
-                                                    "stuffingDate",
-                                                    e.target.value
-                                                  )
-                                                }
-                                                className="text-sm"
-                                                placeholder="Stuffing date"
-                                              />
+                                              {equipment.stuffingStatus && (
+                                                <Input
+                                                  type="date"
+                                                  name={`equipment_details[${index}][stuffingDate]`}
+                                                  value={equipment.stuffingDate}
+                                                  onChange={(e) =>
+                                                    updateEquipmentStatus(
+                                                      index,
+                                                      "stuffingDate",
+                                                      e.target.value
+                                                    )
+                                                  }
+                                                  className="text-sm"
+                                                  placeholder="Stuffing date"
+                                                />
+                                              )}
                                             </div>
 
                                             {/* Gate In Status */}
@@ -2968,20 +2972,22 @@ export function ShipmentPlanForm({
                                                   Gated In
                                                 </Label>
                                               </div>
-                                              <Input
-                                                type="date"
-                                                name={`equipment_details[${index}][gateInDate]`}
-                                                value={equipment.gateInDate}
-                                                onChange={(e) =>
-                                                  updateEquipmentStatus(
-                                                    index,
-                                                    "gateInDate",
-                                                    e.target.value
-                                                  )
-                                                }
-                                                className="text-sm"
-                                                placeholder="Gate in date"
-                                              />
+                                              {equipment.gateInStatus && (
+                                                <Input
+                                                  type="date"
+                                                  name={`equipment_details[${index}][gateInDate]`}
+                                                  value={equipment.gateInDate}
+                                                  onChange={(e) =>
+                                                    updateEquipmentStatus(
+                                                      index,
+                                                      "gateInDate",
+                                                      e.target.value
+                                                    )
+                                                  }
+                                                  className="text-sm"
+                                                  placeholder="Gate in date"
+                                                />
+                                              )}
                                             </div>
 
                                             {/* Loaded Status */}
@@ -3009,20 +3015,108 @@ export function ShipmentPlanForm({
                                                   Loaded on Board
                                                 </Label>
                                               </div>
-                                              <Input
-                                                type="date"
-                                                name={`equipment_details[${index}][loadedDate]`}
-                                                value={equipment.loadedDate}
-                                                onChange={(e) =>
-                                                  updateEquipmentStatus(
-                                                    index,
-                                                    "loadedDate",
-                                                    e.target.value
-                                                  )
-                                                }
-                                                className="text-sm"
-                                                placeholder="Loading date"
-                                              />
+                                              {equipment.loadedStatus && (
+                                                <Input
+                                                  type="date"
+                                                  name={`equipment_details[${index}][loadedDate]`}
+                                                  value={equipment.loadedDate}
+                                                  onChange={(e) =>
+                                                    updateEquipmentStatus(
+                                                      index,
+                                                      "loadedDate",
+                                                      e.target.value
+                                                    )
+                                                  }
+                                                  className="text-sm"
+                                                  placeholder="Loading date"
+                                                />
+                                              )}
+                                            </div>
+
+                                            {/* SI Filed Status */}
+                                            <div className="space-y-2">
+                                              <div className="flex items-center space-x-2">
+                                                <Checkbox
+                                                  id={`si_filed_status_${index}`}
+                                                  name={`equipment_details[${index}][siFiledStatus]`}
+                                                  value="true"
+                                                  checked={
+                                                    equipment.siFiledStatus
+                                                  }
+                                                  onChange={(e) =>
+                                                    updateEquipmentStatus(
+                                                      index,
+                                                      "siFiledStatus",
+                                                      e.target.checked
+                                                    )
+                                                  }
+                                                />
+                                                <Label
+                                                  htmlFor={`si_filed_status_${index}`}
+                                                  className="text-sm"
+                                                >
+                                                  SI Filed
+                                                </Label>
+                                              </div>
+                                              {equipment.siFiledStatus && (
+                                                <Input
+                                                  type="date"
+                                                  name={`equipment_details[${index}][siFiledDate]`}
+                                                  value={equipment.siFiledDate}
+                                                  onChange={(e) =>
+                                                    updateEquipmentStatus(
+                                                      index,
+                                                      "siFiledDate",
+                                                      e.target.value
+                                                    )
+                                                  }
+                                                  className="text-sm"
+                                                  placeholder="SI filed date"
+                                                />
+                                              )}
+                                            </div>
+
+                                            {/* ISF/ENS Filed Status */}
+                                            <div className="space-y-2">
+                                              <div className="flex items-center space-x-2">
+                                                <Checkbox
+                                                  id={`isfens_filed_status_${index}`}
+                                                  name={`equipment_details[${index}][isfensFiledStatus]`}
+                                                  value="true"
+                                                  checked={
+                                                    equipment.isfensFiledStatus
+                                                  }
+                                                  onChange={(e) =>
+                                                    updateEquipmentStatus(
+                                                      index,
+                                                      "isfensFiledStatus",
+                                                      e.target.checked
+                                                    )
+                                                  }
+                                                />
+                                                <Label
+                                                  htmlFor={`isfens_filed_status_${index}`}
+                                                  className="text-sm"
+                                                >
+                                                  ISF/ENS Filed
+                                                </Label>
+                                              </div>
+                                              {equipment.isfensFiledStatus && (
+                                                <Input
+                                                  type="date"
+                                                  name={`equipment_details[${index}][isfensFiledDate]`}
+                                                  value={equipment.isfensFiledDate}
+                                                  onChange={(e) =>
+                                                    updateEquipmentStatus(
+                                                      index,
+                                                      "isfensFiledDate",
+                                                      e.target.value
+                                                    )
+                                                  }
+                                                  className="text-sm"
+                                                  placeholder="ISF/ENS filed date"
+                                                />
+                                              )}
                                             </div>
                                           </div>
                                         </div>
