@@ -734,6 +734,20 @@ export function LinerBookingForm({
   const renderArray = (array: any[], title: string) => {
     if (!Array.isArray(array) || array.length === 0) return null;
 
+    // For Equipment Details, reorder columns to show number_of_equipment before equipment_type
+    let orderedKeys = Object.keys(array[0] || {});
+    if (title === "Equipment Details") {
+      // Find indices of relevant columns
+      const equipmentTypeIndex = orderedKeys.indexOf("equipment_type");
+      const numberIndex = orderedKeys.indexOf("number_of_equipment");
+      
+      // If both columns exist and number comes after equipment_type, reorder
+      if (equipmentTypeIndex !== -1 && numberIndex !== -1 && numberIndex > equipmentTypeIndex) {
+        orderedKeys = orderedKeys.filter(key => key !== "number_of_equipment");
+        orderedKeys.splice(equipmentTypeIndex, 0, "number_of_equipment");
+      }
+    }
+
     return (
       <div className="mt-6">
         <h4 className="text-md font-semibold text-gray-800 mb-4">{title}</h4>
@@ -741,7 +755,7 @@ export function LinerBookingForm({
           <table className="min-w-full bg-white border border-gray-200 rounded-lg">
             <thead className="bg-gray-50">
               <tr>
-                {Object.keys(array[0] || {}).map((key) => (
+                {orderedKeys.map((key) => (
                   <th
                     key={key}
                     className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-b"
@@ -757,12 +771,12 @@ export function LinerBookingForm({
                   key={index}
                   className={index % 2 === 0 ? "bg-white" : "bg-gray-50"}
                 >
-                  {Object.entries(item).map(([key, value]) => (
+                  {orderedKeys.map((key) => (
                     <td
                       key={key}
                       className="px-4 py-2 text-sm text-gray-900 border-b"
                     >
-                      {renderData(value)}
+                      {renderData(item[key])}
                     </td>
                   ))}
                 </tr>
