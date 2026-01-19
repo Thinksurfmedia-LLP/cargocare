@@ -1215,6 +1215,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const packageDetails: any[] = []
     let packageIndex = 0
     while (formData.get(`package_details[${packageIndex}][shipper]`) !== null) {
+      const unNumber = formData.get(`package_details[${packageIndex}][un_number]`) as string;
+      const hazClass = formData.get(`package_details[${packageIndex}][haz_class]`) as string;
+      console.log(`[FORM DATA] Package ${packageIndex} - UN#: "${unNumber}", Class: "${hazClass}"`);
+      
       packageDetails.push({
         shipper: formData.get(`package_details[${packageIndex}][shipper]`) as string,
         invoice_number: formData.get(`package_details[${packageIndex}][invoice_number]`) as string,
@@ -1228,6 +1232,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
         commodity: formData.get(`package_details[${packageIndex}][commodity]`) as string,
         hs_code: formData.get(`package_details[${packageIndex}][hs_code]`) as string,
         is_haz: formData.get(`package_details[${packageIndex}][is_haz]`) === "true",
+        un_number: unNumber || "",
+        haz_class: hazClass || "",
         p_o_number: formData.get(`package_details[${packageIndex}][p_o_number]`) as string,
         C_H_A: formData.get(`package_details[${packageIndex}][C_H_A]`) === "true",
       })

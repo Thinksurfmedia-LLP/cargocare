@@ -44,9 +44,14 @@ export function ShipmentPlanForm({
   const [specificStuffing, setSpecificStuffing] = useState(
     planData.container_movement?.specific_stuffing_requirement || false
   );
-  const [packageDetails, setPackageDetails] = useState(
-    planData.package_details || [{}]
-  );
+  const [packageDetails, setPackageDetails] = useState(() => {
+    return (planData.package_details || []).map((pkg: any) => ({
+      ...pkg,
+      un_number: pkg?.un_number || "",
+      haz_class: pkg?.haz_class || "",
+      is_haz: pkg?.is_haz || false,
+    })) || [{}];
+  });
 
   // Centralized equipment code generation - uses initials with conflict resolution
   const generateEquipmentCode = (
@@ -650,6 +655,15 @@ export function ShipmentPlanForm({
 
     updatedEquipment[index].status = newStatus;
     setEquipmentDetails(updatedEquipment);
+  };
+
+  const updatePackageDetails = (index: number, field: string, value: any) => {
+    const updatedPackages = [...packageDetails];
+    updatedPackages[index] = {
+      ...updatedPackages[index],
+      [field]: value,
+    };
+    setPackageDetails(updatedPackages);
   };
 
   // Group equipment by type for better visualization
@@ -2274,32 +2288,77 @@ export function ShipmentPlanForm({
                                 placeholder="Enter purchase order number"
                               />
                             </div>
-                            <div className="flex items-center space-x-2">
-                              <Checkbox
-                                id={`is_haz_${index}`}
-                                name={`package_details[${index}][is_haz]`}
-                                value="true"
-                                defaultChecked={
-                                  planData.package_details?.[index]?.is_haz
-                                }
-                              />
-                              <Label htmlFor={`is_haz_${index}`}>
-                                Hazardous Material
-                              </Label>
+                            <div className="flex items-center space-x-8">
+                              <div className="flex items-center space-x-2">
+                                <Checkbox
+                                  id={`is_haz_${index}`}
+                                  name={`package_details[${index}][is_haz]`}
+                                  value="true"
+                                  checked={
+                                    packageDetails[index]?.is_haz || false
+                                  }
+                                  onChange={(e) =>
+                                    updatePackageDetails(index, "is_haz", e.target.checked)
+                                  }
+                                />
+                                <Label htmlFor={`is_haz_${index}`}>
+                                  Hazardous Material
+                                </Label>
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                <Checkbox
+                                  id={`C_H_A_${index}`}
+                                  name={`package_details[${index}][C_H_A]`}
+                                  value="true"
+                                  defaultChecked={
+                                    planData.package_details?.[index]?.C_H_A
+                                  }
+                                />
+                                <Label htmlFor={`C_H_A_${index}`}>
+                                  C.H.A. Required
+                                </Label>
+                              </div>
                             </div>
-                            <div className="flex items-center space-x-2">
-                              <Checkbox
-                                id={`C_H_A_${index}`}
-                                name={`package_details[${index}][C_H_A]`}
-                                value="true"
-                                defaultChecked={
-                                  planData.package_details?.[index]?.C_H_A
-                                }
-                              />
-                              <Label htmlFor={`C_H_A_${index}`}>
-                                C.H.A. Required
-                              </Label>
-                            </div>
+                            {packageDetails[index]?.is_haz && (
+                              <div className="grid grid-cols-2 gap-4 mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                <div className="space-y-2">
+                                  <Label htmlFor={`un_number_${index}`} className="text-sm font-medium">
+                                    UN# <span className="text-red-500">*</span>
+                                  </Label>
+                                  <Input
+                                    id={`un_number_${index}`}
+                                    type="text"
+                                    name={`package_details[${index}][un_number]`}
+                                    value={
+                                      packageDetails[index]?.un_number || ""
+                                    }
+                                    onChange={(e) =>
+                                      updatePackageDetails(index, "un_number", e.target.value)
+                                    }
+                                    placeholder="e.g., UN1234"
+                                    required
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor={`haz_class_${index}`} className="text-sm font-medium">
+                                    Class <span className="text-red-500">*</span>
+                                  </Label>
+                                  <Input
+                                    id={`haz_class_${index}`}
+                                    type="text"
+                                    name={`package_details[${index}][haz_class]`}
+                                    value={
+                                      packageDetails[index]?.haz_class || ""
+                                    }
+                                    onChange={(e) =>
+                                      updatePackageDetails(index, "haz_class", e.target.value)
+                                    }
+                                    placeholder="e.g., Class 3"
+                                    required
+                                  />
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       ))}
