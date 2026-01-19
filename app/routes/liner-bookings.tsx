@@ -763,7 +763,72 @@ export default function LinerBookings() {
   }
 
   const getStatusBadge = (status: string) => {
-    return status?.replace(/_/g, " ").toUpperCase() || "N/A"
+    const normalized = (status || "").replace(/_/g, " ").trim()
+
+    const config: Record<string, { color: string; bg: string; border: string; icon: string }> = {
+      "Awaiting Booking": {
+        color: "text-blue-800",
+        bg: "bg-gradient-to-r from-blue-100 to-blue-50",
+        border: "border-blue-200",
+        icon: "📝",
+      },
+      "Booked": {
+        color: "text-gray-800",
+        bg: "bg-gradient-to-r from-gray-100 to-gray-50",
+        border: "border-gray-200",
+        icon: "📄",
+      },
+      "Awaiting MD Approval": {
+        color: "text-orange-800",
+        bg: "bg-gradient-to-r from-orange-100 to-orange-50",
+        border: "border-orange-200",
+        icon: "⏳",
+      },
+      "Partially Unmapped": {
+        color: "text-yellow-800",
+        bg: "bg-gradient-to-r from-yellow-100 to-yellow-50",
+        border: "border-yellow-200",
+        icon: "🔧",
+      },
+      "Ready for Re-linking": {
+        color: "text-purple-800",
+        bg: "bg-gradient-to-r from-purple-100 to-purple-50",
+        border: "border-purple-200",
+        icon: "🔄",
+      },
+      "Unmapping Requested": {
+        color: "text-purple-800",
+        bg: "bg-gradient-to-r from-purple-100 to-purple-50",
+        border: "border-purple-200",
+        icon: "🔁",
+      },
+      Completed: {
+        color: "text-green-800",
+        bg: "bg-gradient-to-r from-green-100 to-green-50",
+        border: "border-green-200",
+        icon: "✅",
+      },
+      Cancelled: {
+        color: "text-red-800",
+        bg: "bg-gradient-to-r from-red-100 to-red-50",
+        border: "border-red-200",
+        icon: "❌",
+      },
+    }
+
+    const c = config[normalized] || {
+      color: "text-gray-800",
+      bg: "bg-gradient-to-r from-gray-100 to-gray-50",
+      border: "border-gray-200",
+      icon: "📋",
+    }
+
+    return (
+      <span className={`inline-flex items-center space-x-1 px-3 py-1 rounded-full text-xs font-semibold ${c.color} ${c.bg} border ${c.border}`}>
+        <span>{c.icon}</span>
+        <span>{normalized || "N/A"}</span>
+      </span>
+    )
   }
 
   const getBookingDetails = (data: any) => {
@@ -869,7 +934,7 @@ export default function LinerBookings() {
         return (
           <TableCell key={columnId} className="text-gray-700 font-medium">
             <div className="flex items-center space-x-2">
-              <span className="text-gray-400">🏢</span>
+              <span className="text-gray-400">🚛</span>
               <span>{carrierValue}</span>
             </div>
           </TableCell>
@@ -1009,7 +1074,10 @@ export default function LinerBookings() {
           : booking?.shipmentPlan?.data?.container_movement?.customer
         return (
           <TableCell key={columnId} className="text-gray-700">
-            <span>{customer || "N/A"}</span>
+            <div className="flex items-center space-x-2">
+              <span className="text-gray-400">👤</span>
+              <span>{customer || "N/A"}</span>
+            </div>
           </TableCell>
         )
       case "business_branch":
@@ -1019,7 +1087,10 @@ export default function LinerBookings() {
           : booking?.shipmentPlan?.data?.bussiness_branch
         return (
           <TableCell key={columnId} className="text-gray-700">
-            <span>{businessBranch || "N/A"}</span>
+            <div className="flex items-center space-x-2">
+              <span className="text-gray-400">🏢</span>
+              <span>{businessBranch || "N/A"}</span>
+            </div>
           </TableCell>
         )
       case "loading_port":
@@ -1043,7 +1114,10 @@ export default function LinerBookings() {
           : booking?.shipmentPlan?.data?.container_movement?.destination_country
         return (
           <TableCell key={columnId} className="text-gray-700">
-            <span>{destination || "N/A"}</span>
+            <div className="flex items-center space-x-2">
+              <span className="text-gray-400">🌍</span>
+              <span>{destination || "N/A"}</span>
+            </div>
           </TableCell>
         )
       case "port_of_discharge":
@@ -1055,7 +1129,7 @@ export default function LinerBookings() {
         return (
           <TableCell key={columnId} className="text-gray-700">
             <div className="flex items-center space-x-1">
-              <span className="text-gray-400">🏴</span>
+              <span className="text-gray-400">🏢</span>
               <span>{portOfDischarge || "N/A"}</span>
             </div>
           </TableCell>
@@ -1067,7 +1141,10 @@ export default function LinerBookings() {
           : booking?.shipmentPlan?.data?.container_movement?.consignee
         return (
           <TableCell key={columnId} className="text-gray-700">
-            <span>{consignee || "N/A"}</span>
+            <div className="flex items-center space-x-2">
+              <span className="text-gray-400">👤</span>
+              <span>{consignee || "N/A"}</span>
+            </div>
           </TableCell>
         )
       case "selling_price":
@@ -1081,7 +1158,10 @@ export default function LinerBookings() {
           : booking?.shipmentPlan?.data?.container_movement?.selling_price
         return (
           <TableCell key={columnId} className="text-gray-700">
-            <span>{sellingPrice ? `$${sellingPrice}` : "N/A"}</span>
+            <div className="flex items-center space-x-2">
+              <span className="text-gray-400">💰</span>
+              <span>{sellingPrice ?? "N/A"}</span>
+            </div>
           </TableCell>
         )
       case "buying_price":
@@ -1095,7 +1175,10 @@ export default function LinerBookings() {
           : booking?.shipmentPlan?.data?.container_movement?.buying_price
         return (
           <TableCell key={columnId} className="text-gray-700">
-            <span>{buyingPrice ? `$${buyingPrice}` : "N/A"}</span>
+            <div className="flex items-center space-x-2">
+              <span className="text-gray-400">💰</span>
+              <span>{buyingPrice ?? "N/A"}</span>
+            </div>
           </TableCell>
         )
       case "container_status":
@@ -1104,8 +1187,16 @@ export default function LinerBookings() {
           ? (booking.data as any)?._originalShipmentPlan?.container_tracking?.container_current_status
           : booking?.shipmentPlan?.data?.container_tracking?.container_current_status
         return (
-          <TableCell key={columnId} className="text-gray-700">
-            <span>{containerStatus || "N/A"}</span>
+          <TableCell key={columnId}>
+            <span
+              className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
+                containerStatus === "Booked"
+                  ? "bg-green-100 text-green-800"
+                  : "bg-yellow-100 text-yellow-800"
+              } border border-gray-200`}
+            >
+              {containerStatus || "N/A"}
+            </span>
           </TableCell>
         )
       case "type":
@@ -1114,8 +1205,10 @@ export default function LinerBookings() {
           ? (booking.data as any)?._originalShipmentPlan?.shipment_type
           : booking?.shipmentPlan?.data?.shipment_type
         return (
-          <TableCell key={columnId} className="text-gray-700">
-            <span>{shipmentType || "N/A"}</span>
+          <TableCell key={columnId}>
+            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gradient-to-r from-blue-100 to-blue-50 text-blue-800 border border-blue-200">
+              {shipmentType || "N/A"}
+            </span>
           </TableCell>
         )
       default:
