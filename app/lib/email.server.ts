@@ -64,7 +64,7 @@ class EmailService {
       shipperNames: string;
     }
   ): Promise<boolean> {
-    const subject = `New Shipment Approval Required - ${shipmentData.referenceNumber}`;
+    const subject = `New Shipment Approval Required - ${shipmentData.customer} - ${shipmentData.referenceNumber}`;
 
     const html = `
       <!DOCTYPE html>
@@ -527,7 +527,7 @@ This is an automated daily reminder from Cargo Care System.
       shipmentPlansUrl: string;
     }
   ): Promise<boolean> {
-    const subject = `✅ Shipment Plan ${shipmentData.referenceNumber} Approved by MD for Booking`;
+    const subject = `✅ Shipment Plan ${shipmentData.customer} - ${shipmentData.referenceNumber} Approved by MD for Booking`;
 
     const html = `
       <!DOCTYPE html>
@@ -752,7 +752,7 @@ This is an automated notification from Cargocare Booking Management System.
       shipmentPlansUrl: string;
     }
   ): Promise<boolean> {
-    const subject = `❌ Shipment Plan ${shipmentData.referenceNumber} Rejected by MD`;
+    const subject = `❌ Shipment Plan ${shipmentData.customer} - ${shipmentData.referenceNumber} Rejected by MD`;
 
     const html = `
       <!DOCTYPE html>
