@@ -1,12 +1,15 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs, MetaFunction } from "react-router";
 import { useLoaderData, Form, useActionData } from "react-router";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { requireAuth } from "~/lib/auth.server";
 import { prisma } from "~/lib/prisma.server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
+import { Input } from "~/components/ui/input";
+import { Label } from "~/components/ui/label";
 import { AdminLayout } from "~/components/AdminLayout";
 import { redirect } from "react-router";
+import bcryptjs from "bcryptjs";
 
 export const meta: MetaFunction = () => {
   return [
@@ -62,6 +65,71 @@ export async function action({ request }: ActionFunctionArgs) {
     const roleId = formData.get("roleId") as string;
     const branchId = formData.get("branchId") as string;
 
+    if (action === "createUser") {
+      const email = formData.get("email") as string;
+      const name = formData.get("name") as string;
+      const newRoleId = formData.get("newRoleId") as string;
+      const password = formData.get("password") as string;
+      const branchIdNew = formData.get("newBranchId") as string;
+
+      // Validate inputs
+      if (!email || !name || !newRoleId || !password) {
+        return { error: "All fields are required" };
+      }
+
+      // Check if user already exists
+      const existingUser = await prisma.user.findUnique({
+        where: { email },
+      });
+
+      if (existingUser) {
+        return { error: "User with this email already exists" };
+      }
+
+      // Hash password
+      const passwordHash = await bcryptjs.hash(password, 10);
+
+      // Create user
+      await prisma.user.create({
+        data: {
+          email,
+          name,
+          passwordHash,
+          roleId: newRoleId,
+          branchId: branchIdNew || null,
+          isActive: true,
+        },
+      });
+
+      return { success: "User created successfully" };
+    }
+
+    if (action === "changePassword") {
+      const newPassword = formData.get("newPassword") as string;
+      const confirmPassword = formData.get("confirmPassword") as string;
+
+      if (!newPassword || !confirmPassword) {
+        return { error: "Password fields are required" };
+      }
+
+      if (newPassword !== confirmPassword) {
+        return { error: "Passwords do not match" };
+      }
+
+      if (newPassword.length < 6) {
+        return { error: "Password must be at least 6 characters" };
+      }
+
+      const passwordHash = await bcryptjs.hash(newPassword, 10);
+
+      await prisma.user.update({
+        where: { id: userId },
+        data: { passwordHash },
+      });
+
+      return { success: "Password changed successfully" };
+    }
+
     if (action === "updateRole" && userId && roleId) {
       await prisma.user.update({
         where: { id: userId },
@@ -98,9 +166,34 @@ export async function action({ request }: ActionFunctionArgs) {
       return { success: `User ${targetUser?.isActive ? "deactivated" : "activated"} successfully` };
     }
 
+    if (action === "deleteUser" && userId) {
+      // Prevent deleting the current user
+      if (user.id === userId) {
+        return { error: "Cannot delete your own user account" };
+      }
+
+      // Get user info before deletion for success message
+      const userToDelete = await prisma.user.findUnique({
+        where: { id: userId },
+        include: { role: true },
+      });
+
+      if (!userToDelete) {
+        return { error: "User not found" };
+      }
+
+      // Delete the user
+      await prisma.user.delete({
+        where: { id: userId },
+      });
+
+      return { success: `User ${userToDelete.name} (${userToDelete.email}) has been permanently deleted` };
+    }
+
     return { error: "Invalid action" };
   } catch (error) {
-    return { error: "Failed to update user" };
+    console.error("Action error:", error);
+    return { error: "Failed to process request" };
   }
 }
 
@@ -109,6 +202,24 @@ export default function AdminPanel() {
   const actionData = useActionData<typeof action>();
   const [downloadingXlsx, setDownloadingXlsx] = useState(false);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [showAddUserModal, setShowAddUserModal] = useState(false);
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState<string | null>(null);
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState<string | null>(null);
+
+  // Close modals on successful action
+  useEffect(() => {
+    if (actionData?.success) {
+      if (showAddUserModal) {
+        setShowAddUserModal(false);
+      }
+      if (showChangePasswordModal) {
+        setShowChangePasswordModal(null);
+      }
+      if (deleteConfirmModal) {
+        setDeleteConfirmModal(null);
+      }
+    }
+  }, [actionData?.success]);
 
   async function handleExportXlsx() {
     try {
@@ -198,10 +309,17 @@ export default function AdminPanel() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Users</CardTitle>
-            <CardDescription>
-              Manage user accounts, roles, and activation status
-            </CardDescription>
+            <div className="flex justify-between items-start">
+              <div>
+                <CardTitle>Users</CardTitle>
+                <CardDescription>
+                  Manage user accounts, roles, and activation status
+                </CardDescription>
+              </div>
+              <Button onClick={() => setShowAddUserModal(true)} className="bg-green-600 hover:bg-green-700">
+                ➕ Add New User
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
@@ -345,7 +463,31 @@ export default function AdminPanel() {
                                   >
                                     {userRecord.isActive ? "Deactivate" : "Activate"}
                                   </Button>
-                                </Form>                               
+                                </Form>
+
+                                {/* Change Password Button */}
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => setShowChangePasswordModal(userRecord.id)}
+                                  className="ml-1"
+                                >
+                                  🔑 Change Password
+                                </Button>
+
+                                {/* Delete User Button */}
+                                {user.id !== userRecord.id && (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="destructive"
+                                    onClick={() => setDeleteConfirmModal(userRecord.id)}
+                                    className="ml-1"
+                                  >
+                                    🗑️ Delete
+                                  </Button>
+                                )}
                           </td>
 
                       </>
@@ -364,6 +506,227 @@ export default function AdminPanel() {
             )}
           </CardContent>
         </Card>
+
+        {/* Add User Modal */}
+        {showAddUserModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+              <div className="bg-gradient-to-r from-green-500 to-green-600 px-6 py-4">
+                <h3 className="text-lg font-bold text-white flex items-center">
+                  <span className="mr-2">➕</span>
+                  Add New User
+                </h3>
+              </div>
+              <Form method="post" className="p-6 space-y-4">
+                <input type="hidden" name="action" value="createUser" />
+                
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email Address *</Label>
+                  <Input
+                    id="email"
+                    name="email"
+                    type="email"
+                    placeholder="user@example.com"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="name">Full Name *</Label>
+                  <Input
+                    id="name"
+                    name="name"
+                    type="text"
+                    placeholder="John Doe"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="newRoleId">Role *</Label>
+                  <select
+                    id="newRoleId"
+                    name="newRoleId"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                    required
+                  >
+                    <option value="">Select a role...</option>
+                    {roles.map((role: any) => (
+                      <option key={role.id} value={role.id}>
+                        {role.name.replace(/_/g, ' ')}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="newBranchId">Business Branch</Label>
+                  <select
+                    id="newBranchId"
+                    name="newBranchId"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2"
+                  >
+                    <option value="">No branch assignment</option>
+                    {businessBranches.map((branch: any) => (
+                      <option key={branch.id} value={branch.id}>
+                        {branch.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password *</Label>
+                  <Input
+                    id="password"
+                    name="password"
+                    type="password"
+                    placeholder="••••••••"
+                    required
+                  />
+                  <p className="text-xs text-gray-500">Minimum 6 characters</p>
+                </div>
+
+                {actionData?.error && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm">
+                    {actionData.error}
+                  </div>
+                )}
+
+                <div className="flex gap-3 pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowAddUserModal(false)}
+                    className="flex-1"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="flex-1 bg-green-600 hover:bg-green-700"
+                  >
+                    Create User
+                  </Button>
+                </div>
+              </Form>
+            </div>
+          </div>
+        )}
+
+        {/* Change Password Modal */}
+        {showChangePasswordModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+              <div className="bg-gradient-to-r from-blue-500 to-blue-600 px-6 py-4">
+                <h3 className="text-lg font-bold text-white flex items-center">
+                  <span className="mr-2">🔑</span>
+                  Change Password
+                </h3>
+              </div>
+              <Form method="post" className="p-6 space-y-4">
+                <input type="hidden" name="action" value="changePassword" />
+                <input type="hidden" name="userId" value={showChangePasswordModal} />
+                
+                <div className="space-y-2">
+                  <Label htmlFor="newPassword">New Password *</Label>
+                  <Input
+                    id="newPassword"
+                    name="newPassword"
+                    type="password"
+                    placeholder="••••••••"
+                    required
+                  />
+                  <p className="text-xs text-gray-500">Minimum 6 characters</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="confirmPassword">Confirm Password *</Label>
+                  <Input
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    type="password"
+                    placeholder="••••••••"
+                    required
+                  />
+                </div>
+
+                {actionData?.error && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm">
+                    {actionData.error}
+                  </div>
+                )}
+
+                <div className="flex gap-3 pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowChangePasswordModal(null)}
+                    className="flex-1"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    className="flex-1 bg-blue-600 hover:bg-blue-700"
+                  >
+                    Update Password
+                  </Button>
+                </div>
+              </Form>
+            </div>
+          </div>
+        )}
+
+        {/* Delete User Confirmation Modal */}
+        {deleteConfirmModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+              <div className="bg-gradient-to-r from-red-500 to-red-600 px-6 py-4">
+                <h3 className="text-lg font-bold text-white flex items-center">
+                  <span className="mr-2">⚠️</span>
+                  Delete User
+                </h3>
+              </div>
+              <div className="p-6 space-y-4">
+                <p className="text-gray-700">
+                  Are you sure you want to permanently delete this user? This action cannot be undone.
+                </p>
+                <p className="text-sm text-gray-500 bg-gray-50 px-3 py-2 rounded">
+                  User ID: {deleteConfirmModal}
+                </p>
+
+                {actionData?.error && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded text-sm">
+                    {actionData.error}
+                  </div>
+                )}
+
+                <div className="flex gap-3 pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setDeleteConfirmModal(null)}
+                    className="flex-1"
+                  >
+                    Cancel
+                  </Button>
+                  <Form method="post" className="flex-1">
+                    <input type="hidden" name="action" value="deleteUser" />
+                    <input type="hidden" name="userId" value={deleteConfirmModal} />
+                    <Button
+                      type="submit"
+                      variant="destructive"
+                      className="w-full"
+                    >
+                      Delete Permanently
+                    </Button>
+                  </Form>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </AdminLayout>
   );
