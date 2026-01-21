@@ -1381,6 +1381,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
         stuffing_instructions: formData.get("stuffing_instructions") as string,
         specific_instructions: formData.get("specific_instructions") as string,
         liner_booking_details: formData.get("liner_booking_details") as string,
+        // New fields: Incoterm, Freight Terms, and Free Time in Days
+        incoterm: formData.get("incoterm") as string,
+        freight_terms: formData.get("freight_terms") as string,
+        free_time_in_days: Number.parseInt(formData.get("free_time_in_days") as string) || 0,
       },
       container_tracking: {
         container_current_status: (formData.get("container_current_status") as string) || "Pending",

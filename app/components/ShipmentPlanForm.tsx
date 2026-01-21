@@ -779,6 +779,30 @@ export function ShipmentPlanForm({
       errors.push("Delivery Till is required");
     }
 
+    // Check Incoterm
+    const incoterm = document.querySelector<HTMLSelectElement>(
+      'select[name="incoterm"]'
+    )?.value;
+    if (!incoterm) {
+      errors.push("Incoterm is required");
+    }
+
+    // Check Freight Terms
+    const freightTerms = document.querySelector<HTMLSelectElement>(
+      'select[name="freight_terms"]'
+    )?.value;
+    if (!freightTerms) {
+      errors.push("Freight Terms is required");
+    }
+
+    // Check Free Time in Days
+    const freeTimeInDays = (document.querySelector<HTMLInputElement>(
+      'input[name="free_time_in_days"]'
+    )?.value || "").trim();
+    if (!freeTimeInDays || Number.parseInt(freeTimeInDays) < 0) {
+      errors.push("Free Time in Days is required and must be a positive number");
+    }
+
     // Check Customer
     const customer =
       document.querySelector<HTMLSelectElement>('select[name="customer"]')
@@ -3683,6 +3707,83 @@ export function ShipmentPlanForm({
                         </div>
                       </>
                     )}
+
+                    {/* New Fields: Incoterm, Freight Terms, Free Time in Days */}
+                    <div className="border-t border-gray-200 pt-6 mt-6">
+                      <h4 className="text-lg font-semibold text-gray-800 mb-6">Incoterm & Freight Details</h4>
+                      
+                      {/* Incoterm Field */}
+                      <div className="mb-6">
+                        <Label htmlFor="incoterm">
+                          Incoterm <span className="text-red-500">*</span>
+                        </Label>
+                        <Select
+                          id="incoterm"
+                          name="incoterm"
+                          defaultValue={planData.container_movement?.incoterm || ""}
+                          required
+                          className="border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
+                        >
+                          <option value="">Select Incoterm</option>
+                          <option value="EXW">EXW - Ex Works</option>
+                          <option value="FCA">FCA - Free Carrier</option>
+                          <option value="CPT">CPT - Carriage Paid to</option>
+                          <option value="CIP">CIP - Carriage and Insurance Paid To</option>
+                          <option value="DAP">DAP - Delivered at Place</option>
+                          <option value="DPU">DPU - Delivered at Place Unloaded</option>
+                          <option value="DDP">DDP - Delivered Duty Paid</option>
+                          <option value="FAS">FAS - Free Alongside Ship</option>
+                          <option value="FOB">FOB - Free on Board</option>
+                          <option value="CFR">CFR - Cost and Freight</option>
+                          <option value="CIF">CIF - Cost Insurance and Freight</option>
+                        </Select>
+                        <p className="text-xs text-gray-500 mt-2">
+                          Select the Incoterm that applies to this shipment. This determines delivery responsibility and costs.
+                        </p>
+                      </div>
+
+                      {/* Freight Terms Field */}
+                      <div className="mb-6">
+                        <Label htmlFor="freight_terms">
+                          Freight Terms <span className="text-red-500">*</span>
+                        </Label>
+                        <Select
+                          id="freight_terms"
+                          name="freight_terms"
+                          defaultValue={planData.container_movement?.freight_terms || ""}
+                          required
+                          className="border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
+                        >
+                          <option value="">Select Freight Terms</option>
+                          <option value="Prepaid">💳 Prepaid</option>
+                          <option value="Collect">📦 Collect</option>
+                        </Select>
+                        <p className="text-xs text-gray-500 mt-2">
+                          Specify whether freight charges are prepaid or to be collected.
+                        </p>
+                      </div>
+
+                      {/* Free Time in Days Field */}
+                      <div>
+                        <Label htmlFor="free_time_in_days">
+                          Free Time in Days <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          id="free_time_in_days"
+                          name="free_time_in_days"
+                          type="number"
+                          min="0"
+                          step="1"
+                          defaultValue={planData.container_movement?.free_time_in_days || ""}
+                          placeholder="Enter number of free days"
+                          required
+                          className="border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
+                        />
+                        <p className="text-xs text-gray-500 mt-2">
+                          Number of days that containers can be held without incurring additional charges.
+                        </p>
+                      </div>
+                    </div>
                   </div>
                 </AccordionContent>
               </AccordionItem>
