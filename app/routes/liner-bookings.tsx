@@ -365,7 +365,14 @@ export async function loader({ request }: LoaderFunctionArgs) {
           where: whereCondition,
           include: {
             user: { select: { id: true, name: true, email: true } },
-            shipmentPlan: { select: { id: true, data: true, shipmentAssignmentId: true } },
+            shipmentPlan: { 
+              select: { 
+                id: true, 
+                data: true, 
+                shipmentAssignmentId: true,
+                user: { select: { id: true, name: true, email: true } }
+              } 
+            },
           },
           orderBy: { createdAt: "desc" },
           skip: offset,
@@ -374,8 +381,25 @@ export async function loader({ request }: LoaderFunctionArgs) {
         prisma.shipmentAssignment.count({ where: whereCondition }),
       ])
 
+      // Fetch assigned liner broker details for each assignment
+      const assignmentsWithBroker = await Promise.all(
+        rows.map(async (assignment: any) => {
+          let assignedLinerBroker = null
+          if (assignment.assignBookingId) {
+            assignedLinerBroker = await prisma.user.findUnique({
+              where: { id: assignment.assignBookingId },
+              select: { id: true, name: true, email: true }
+            })
+          }
+          return {
+            ...assignment,
+            assignedLinerBroker
+          }
+        })
+      )
+
       return json({
-        linerBookings: rows, // keep same key consumed by UI
+        linerBookings: assignmentsWithBroker, // keep same key consumed by UI
         currentPage: page,
         totalPages: Math.ceil(totalCount / limit),
         totalCount,
@@ -615,6 +639,7 @@ export default function LinerBookings() {
     { id: "carrier", label: "Carrier", defaultVisible: true },
     { id: "vessel", label: "Vessel", defaultVisible: true },
     { id: "container_status", label: "Container Status", defaultVisible: true },
+    { id: "assigned_liner_broker", label: "Assigned Liner Broker", defaultVisible: true },
     { id: "created_date", label: "Created", defaultVisible: true },
     { id: "created_by", label: "Created By", defaultVisible: true },
     { id: "type", label: "Type", defaultVisible: true },
@@ -1038,13 +1063,32 @@ export default function LinerBookings() {
           </TableCell>
         )
       case "created_by":
+        // For assignments, show the original shipment plan creator
+        // For liner bookings, show the person who created the booking
+        const createdByUser = isAssignments && booking?.shipmentPlan?.user
+          ? booking.shipmentPlan.user
+          : booking.user
+        
         return (
           <TableCell key={columnId} className="text-sm text-gray-600">
             <div className="flex items-center space-x-2">
               <div className="w-6 h-6 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full flex items-center justify-center">
-                <span className="text-xs font-medium text-gray-600">{booking.user.name.charAt(0).toUpperCase()}</span>
+                <span className="text-xs font-medium text-gray-600">{createdByUser?.name?.charAt(0).toUpperCase()}</span>
               </div>
-              <span>{booking.user.name}</span>
+              <span>{createdByUser?.name}</span>
+            </div>
+          </TableCell>
+        )
+      case "assigned_liner_broker":
+        if (!isAssignments) return <TableCell key={columnId}>N/A</TableCell>
+        const assignedBroker = booking?.assignedLinerBroker
+        return (
+          <TableCell key={columnId} className="text-sm text-gray-600">
+            <div className="flex items-center space-x-2">
+              <div className="w-6 h-6 bg-gradient-to-br from-blue-100 to-blue-200 rounded-full flex items-center justify-center">
+                <span className="text-xs font-medium text-blue-600">{assignedBroker?.name?.charAt(0).toUpperCase()}</span>
+              </div>
+              <span>{assignedBroker?.name || "N/A"}</span>
             </div>
           </TableCell>
         )
