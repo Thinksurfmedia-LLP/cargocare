@@ -949,6 +949,10 @@ export default function ShipmentPlans() {
     { id: "container_status", label: "Container Status", defaultVisible: true },
     { id: "created_date", label: "Created", defaultVisible: true },
     { id: "created_by", label: "Created By", defaultVisible: true },
+    // Only show Last Updated column to ADMIN and SHIPMENT_PLAN_TEAM
+    ...(user.role.name === "ADMIN" || user.role.name === "SHIPMENT_PLAN_TEAM"
+      ? [{ id: "updated_date", label: "Last Updated", defaultVisible: true }]
+      : []),
   ];
 
   // Use column preferences hook
@@ -1184,10 +1188,13 @@ export default function ShipmentPlans() {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
+    return new Date(dateString).toLocaleString("en-GB", {
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
     });
   };
 
@@ -1377,6 +1384,15 @@ export default function ShipmentPlans() {
                 </span>
               </div>
               <span>{plan.user.name}</span>
+            </div>
+          </TableCell>
+        );
+      case "updated_date":
+        return (
+          <TableCell key={columnId} className="text-sm text-gray-500">
+            <div className="flex items-center space-x-2">
+              <span className="text-gray-400">🔄</span>
+              <span>{formatDate(plan.updatedAt)}</span>
             </div>
           </TableCell>
         );
