@@ -15,6 +15,7 @@ import {
 import { requireAuth } from "~/lib/auth.server"
 import { prisma } from "~/lib/prisma.server"
 import { Button } from "~/components/ui/button"
+import { Input } from "~/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/ui/table"
 import { Checkbox } from "~/components/ui/checkbox"
 import { Badge } from "~/components/ui/badge"
@@ -250,43 +251,220 @@ export async function loader({ request }: LoaderFunctionArgs) {
         }
 
         // Search in shipment plan reference number (case-insensitive via join)
-        const refMatches = await prisma.$queryRaw`
-          SELECT lb.id FROM "liner_bookings" lb
-          JOIN "shipment_plans" sp ON lb."shipmentPlanId" = sp.id
-          WHERE sp.data->>'reference_number' ILIKE ${`%${search}%`}
-        `;
-        if ((refMatches as any[]).length > 0) {
-          searchConditions.push({ id: { in: (refMatches as any[]).map((row: any) => row.id) } })
+        // Use appropriate table based on tab
+        if (tab === "assignments") {
+          const refMatches = await prisma.$queryRaw`
+            SELECT sa.id FROM "shipment_assignments" sa
+            JOIN "shipment_plans" sp ON sp."shipmentAssignmentId" = sa.id
+            WHERE sp.data->>'reference_number' ILIKE ${`%${search}%`}
+          `;
+          if ((refMatches as any[]).length > 0) {
+            searchConditions.push({ id: { in: (refMatches as any[]).map((row: any) => row.id) } })
+          }
+        } else {
+          const refMatches = await prisma.$queryRaw`
+            SELECT lb.id FROM "liner_bookings" lb
+            JOIN "shipment_plans" sp ON lb."shipmentPlanId" = sp.id
+            WHERE sp.data->>'reference_number' ILIKE ${`%${search}%`}
+          `;
+          if ((refMatches as any[]).length > 0) {
+            searchConditions.push({ id: { in: (refMatches as any[]).map((row: any) => row.id) } })
+          }
         }
 
         // Search in shipment plan business branch (case-insensitive via join)
-        const branchMatches = await prisma.$queryRaw`
-          SELECT lb.id FROM "liner_bookings" lb
-          JOIN "shipment_plans" sp ON lb."shipmentPlanId" = sp.id
-          WHERE sp.data->>'bussiness_branch' ILIKE ${`%${search}%`}
-        `;
-        if ((branchMatches as any[]).length > 0) {
-          searchConditions.push({ id: { in: (branchMatches as any[]).map((row: any) => row.id) } })
+        if (tab === "assignments") {
+          const branchMatches = await prisma.$queryRaw`
+            SELECT sa.id FROM "shipment_assignments" sa
+            JOIN "shipment_plans" sp ON sp."shipmentAssignmentId" = sa.id
+            WHERE sp.data->>'bussiness_branch' ILIKE ${`%${search}%`}
+          `;
+          if ((branchMatches as any[]).length > 0) {
+            searchConditions.push({ id: { in: (branchMatches as any[]).map((row: any) => row.id) } })
+          }
+        } else {
+          const branchMatches = await prisma.$queryRaw`
+            SELECT lb.id FROM "liner_bookings" lb
+            JOIN "shipment_plans" sp ON lb."shipmentPlanId" = sp.id
+            WHERE sp.data->>'bussiness_branch' ILIKE ${`%${search}%`}
+          `;
+          if ((branchMatches as any[]).length > 0) {
+            searchConditions.push({ id: { in: (branchMatches as any[]).map((row: any) => row.id) } })
+          }
         }
 
         // Search in shipment plan customer (case-insensitive via join)
-        const customerMatches = await prisma.$queryRaw`
-          SELECT lb.id FROM "liner_bookings" lb
-          JOIN "shipment_plans" sp ON lb."shipmentPlanId" = sp.id
-          WHERE sp.data->'container_movement'->>'customer' ILIKE ${`%${search}%`}
-        `;
-        if ((customerMatches as any[]).length > 0) {
-          searchConditions.push({ id: { in: (customerMatches as any[]).map((row: any) => row.id) } })
+        if (tab === "assignments") {
+          const customerMatches = await prisma.$queryRaw`
+            SELECT sa.id FROM "shipment_assignments" sa
+            JOIN "shipment_plans" sp ON sp."shipmentAssignmentId" = sa.id
+            WHERE sp.data->'container_movement'->>'customer' ILIKE ${`%${search}%`}
+          `;
+          if ((customerMatches as any[]).length > 0) {
+            searchConditions.push({ id: { in: (customerMatches as any[]).map((row: any) => row.id) } })
+          }
+        } else {
+          const customerMatches = await prisma.$queryRaw`
+            SELECT lb.id FROM "liner_bookings" lb
+            JOIN "shipment_plans" sp ON lb."shipmentPlanId" = sp.id
+            WHERE sp.data->'container_movement'->>'customer' ILIKE ${`%${search}%`}
+          `;
+          if ((customerMatches as any[]).length > 0) {
+            searchConditions.push({ id: { in: (customerMatches as any[]).map((row: any) => row.id) } })
+          }
         }
 
         // Search in shipment plan consignee (case-insensitive via join)
-        const consigneeMatches = await prisma.$queryRaw`
-          SELECT lb.id FROM "liner_bookings" lb
-          JOIN "shipment_plans" sp ON lb."shipmentPlanId" = sp.id
-          WHERE sp.data->'container_movement'->>'consignee' ILIKE ${`%${search}%`}
-        `;
-        if ((consigneeMatches as any[]).length > 0) {
-          searchConditions.push({ id: { in: (consigneeMatches as any[]).map((row: any) => row.id) } })
+        if (tab === "assignments") {
+          const consigneeMatches = await prisma.$queryRaw`
+            SELECT sa.id FROM "shipment_assignments" sa
+            JOIN "shipment_plans" sp ON sp."shipmentAssignmentId" = sa.id
+            WHERE sp.data->'container_movement'->>'consignee' ILIKE ${`%${search}%`}
+          `;
+          if ((consigneeMatches as any[]).length > 0) {
+            searchConditions.push({ id: { in: (consigneeMatches as any[]).map((row: any) => row.id) } })
+          }
+        } else {
+          const consigneeMatches = await prisma.$queryRaw`
+            SELECT lb.id FROM "liner_bookings" lb
+            JOIN "shipment_plans" sp ON lb."shipmentPlanId" = sp.id
+            WHERE sp.data->'container_movement'->>'consignee' ILIKE ${`%${search}%`}
+          `;
+          if ((consigneeMatches as any[]).length > 0) {
+            searchConditions.push({ id: { in: (consigneeMatches as any[]).map((row: any) => row.id) } })
+          }
+        }
+
+        // Search in shipment plan loading port (case-insensitive via join)
+        if (tab === "assignments") {
+          const loadingPortMatches = await prisma.$queryRaw`
+            SELECT sa.id FROM "shipment_assignments" sa
+            JOIN "shipment_plans" sp ON sp."shipmentAssignmentId" = sa.id
+            WHERE sp.data->'container_movement'->>'loading_port' ILIKE ${`%${search}%`}
+          `;
+          if ((loadingPortMatches as any[]).length > 0) {
+            searchConditions.push({ id: { in: (loadingPortMatches as any[]).map((row: any) => row.id) } })
+          }
+        }
+
+        // Search in shipment plan port of discharge (case-insensitive via join)
+        if (tab === "assignments") {
+          const podMatches = await prisma.$queryRaw`
+            SELECT sa.id FROM "shipment_assignments" sa
+            JOIN "shipment_plans" sp ON sp."shipmentAssignmentId" = sa.id
+            WHERE sp.data->'container_movement'->>'port_of_discharge' ILIKE ${`%${search}%`}
+          `;
+          if ((podMatches as any[]).length > 0) {
+            searchConditions.push({ id: { in: (podMatches as any[]).map((row: any) => row.id) } })
+          }
+        }
+
+        // Search in shipment plan destination country (case-insensitive via join)
+        if (tab === "assignments") {
+          const destinationMatches = await prisma.$queryRaw`
+            SELECT sa.id FROM "shipment_assignments" sa
+            JOIN "shipment_plans" sp ON sp."shipmentAssignmentId" = sa.id
+            WHERE sp.data->'container_movement'->>'destination_country' ILIKE ${`%${search}%`}
+          `;
+          if ((destinationMatches as any[]).length > 0) {
+            searchConditions.push({ id: { in: (destinationMatches as any[]).map((row: any) => row.id) } })
+          }
+        }
+
+        // Search in shipment plan selling price (case-insensitive via join)
+        if (tab === "assignments") {
+          const sellingPriceMatches = await prisma.$queryRaw`
+            SELECT sa.id FROM "shipment_assignments" sa
+            JOIN "shipment_plans" sp ON sp."shipmentAssignmentId" = sa.id
+            WHERE sp.data->'container_movement'->>'selling_price' ILIKE ${`%${search}%`}
+          `;
+          if ((sellingPriceMatches as any[]).length > 0) {
+            searchConditions.push({ id: { in: (sellingPriceMatches as any[]).map((row: any) => row.id) } })
+          }
+        }
+
+        // Search in shipment plan buying price (case-insensitive via join)
+        if (tab === "assignments") {
+          const buyingPriceMatches = await prisma.$queryRaw`
+            SELECT sa.id FROM "shipment_assignments" sa
+            JOIN "shipment_plans" sp ON sp."shipmentAssignmentId" = sa.id
+            WHERE sp.data->'container_movement'->>'buying_price' ILIKE ${`%${search}%`}
+          `;
+          if ((buyingPriceMatches as any[]).length > 0) {
+            searchConditions.push({ id: { in: (buyingPriceMatches as any[]).map((row: any) => row.id) } })
+          }
+        }
+
+        // Search in shipment plan carrier (case-insensitive via join)
+        if (tab === "assignments") {
+          const carrierPlanMatches = await prisma.$queryRaw`
+            SELECT sa.id FROM "shipment_assignments" sa
+            JOIN "shipment_plans" sp ON sp."shipmentAssignmentId" = sa.id
+            WHERE sp.data->'container_movement'->'carrier_and_vessel_preference'->>'carrier' ILIKE ${`%${search}%`}
+          `;
+          if ((carrierPlanMatches as any[]).length > 0) {
+            searchConditions.push({ id: { in: (carrierPlanMatches as any[]).map((row: any) => row.id) } })
+          }
+        }
+
+        // Search in shipment plan vessel (case-insensitive via join)
+        if (tab === "assignments") {
+          const vesselPlanMatches = await prisma.$queryRaw`
+            SELECT sa.id FROM "shipment_assignments" sa
+            JOIN "shipment_plans" sp ON sp."shipmentAssignmentId" = sa.id
+            WHERE sp.data->'container_movement'->'carrier_and_vessel_preference'->>'vessel' ILIKE ${`%${search}%`}
+          `;
+          if ((vesselPlanMatches as any[]).length > 0) {
+            searchConditions.push({ id: { in: (vesselPlanMatches as any[]).map((row: any) => row.id) } })
+          }
+        }
+
+        // Search in shipment plan container status (case-insensitive via join)
+        if (tab === "assignments") {
+          const containerStatusMatches = await prisma.$queryRaw`
+            SELECT sa.id FROM "shipment_assignments" sa
+            JOIN "shipment_plans" sp ON sp."shipmentAssignmentId" = sa.id
+            WHERE sp.data->'container_tracking'->>'container_current_status' ILIKE ${`%${search}%`}
+          `;
+          if ((containerStatusMatches as any[]).length > 0) {
+            searchConditions.push({ id: { in: (containerStatusMatches as any[]).map((row: any) => row.id) } })
+          }
+        }
+
+        // Search in shipment plan type (case-insensitive via join)
+        if (tab === "assignments") {
+          const shipmentTypeMatches = await prisma.$queryRaw`
+            SELECT sa.id FROM "shipment_assignments" sa
+            JOIN "shipment_plans" sp ON sp."shipmentAssignmentId" = sa.id
+            WHERE sp.data->>'shipment_type' ILIKE ${`%${search}%`}
+          `;
+          if ((shipmentTypeMatches as any[]).length > 0) {
+            searchConditions.push({ id: { in: (shipmentTypeMatches as any[]).map((row: any) => row.id) } })
+          }
+        }
+
+        // Search in shipment plan booking status (case-insensitive via join)
+        if (tab === "assignments") {
+          const bookingStatusMatches = await prisma.$queryRaw`
+            SELECT sa.id FROM "shipment_assignments" sa
+            JOIN "shipment_plans" sp ON sp."shipmentAssignmentId" = sa.id
+            WHERE sp.data->>'booking_status' ILIKE ${`%${search}%`}
+          `;
+          if ((bookingStatusMatches as any[]).length > 0) {
+            searchConditions.push({ id: { in: (bookingStatusMatches as any[]).map((row: any) => row.id) } })
+          }
+        }
+
+        // Search in assigned liner broker name (case-insensitive via join)
+        if (tab === "assignments") {
+          const assignedBrokerMatches = await prisma.$queryRaw`
+            SELECT sa.id FROM "shipment_assignments" sa
+            JOIN "users" u ON sa."assignBookingId" = u.id
+            WHERE u.name ILIKE ${`%${search}%`}
+          `;
+          if ((assignedBrokerMatches as any[]).length > 0) {
+            searchConditions.push({ id: { in: (assignedBrokerMatches as any[]).map((row: any) => row.id) } })
+          }
         }
       } catch (error) {
         console.error("Error in raw SQL search:", error)
@@ -1356,6 +1534,66 @@ export default function LinerBookings() {
 
       {/* Main Content */}
       <div className="flex-1 overflow-auto p-6 bg-gray-50">
+        {/* Search Bar */}
+        <div className="mb-6">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div className="flex flex-col lg:flex-row gap-6 items-start lg:items-center justify-between">
+              <div className="flex-1 max-w-2xl">
+                <Form method="get" className="relative">
+                  <div className="relative flex gap-3">
+                    <div className="relative flex-1">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <span className="text-gray-400 text-sm">🔍</span>
+                      </div>
+                      <input
+                        type="hidden"
+                        name="tab"
+                        value={tab}
+                      />
+                      <input
+                        name="search"
+                        placeholder={
+                          isAssignments
+                            ? "Search by reference, customer, business branch, carrier, vessel, status, or any assignment details..."
+                            : "Search by booking number, carrier, vessel, MBL, contract, equipment, or any booking details..."
+                        }
+                        defaultValue={search}
+                        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
+                      />
+                    </div>
+                    <Button
+                      type="submit"
+                      className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-all duration-200 hover:shadow-lg"
+                    >
+                      Search
+                    </Button>
+                    {search && (
+                      <Link to={`/liner-bookings?tab=${tab}`}>
+                        <Button
+                          variant="outline"
+                          className="px-6 py-3 border-gray-300 rounded-lg hover:bg-gray-50 transition-all duration-200"
+                        >
+                          Clear
+                        </Button>
+                      </Link>
+                    )}
+                  </div>
+                </Form>
+                {search && (
+                  <p className="text-sm text-gray-600 mt-2">
+                    <span className="font-medium">{totalCount}</span> results found for "{search}"
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="text-sm text-gray-600 bg-gray-50 px-3 py-2 rounded-lg">
+                  <span className="font-medium">{totalCount}</span> total {isAssignments ? "assignments" : "bookings"}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Success/Error Messages */}
         {actionData?.success && (
           <div className="mb-6 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">
