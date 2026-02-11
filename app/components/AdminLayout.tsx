@@ -75,7 +75,7 @@ export function AdminLayout({ user, children }: AdminLayoutProps) {
       name: "Shipment Assignments",
       path: "/liner-bookings?tab=assignments",
       icon: "📝",
-      show: roleName === "ADMIN" || roleName === "LINER_BOOKING_TEAM" || roleName === "MD",
+      show: roleName === "ADMIN" || roleName === "LINER_BOOKING_TEAM",
     },
     {
       name: "Bulk Operations",
@@ -87,7 +87,7 @@ export function AdminLayout({ user, children }: AdminLayoutProps) {
       name: "Manage Users",
       path: "/admin",
       icon: "👥",
-      show: roleName === "ADMIN" || roleName === "MD",
+      show: roleName === "ADMIN",
     },
   ]
 
