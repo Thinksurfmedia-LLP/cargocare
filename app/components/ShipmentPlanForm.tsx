@@ -798,9 +798,10 @@ export function ShipmentPlanForm({
     // Check Free Time in Days
     const freeTimeInDays = (document.querySelector<HTMLInputElement>(
       'input[name="free_time_in_days"]'
-    )?.value || "").trim();
-    if (!freeTimeInDays || Number.parseInt(freeTimeInDays) < 0) {
-      errors.push("Free Time in Days is required and must be a positive number");
+    )?.value || "0").trim();
+    const freeTimeValue = Number.parseInt(freeTimeInDays);
+    if (isNaN(freeTimeValue) || freeTimeValue < 0) {
+      errors.push("Free Time in Days must be 0 or a positive number");
     }
 
     // Check Customer
@@ -3704,8 +3705,8 @@ export function ShipmentPlanForm({
                         type="number"
                         min="0"
                         step="1"
-                        defaultValue={planData.container_movement?.free_time_in_days || ""}
-                        placeholder="Enter number of free days"
+                        defaultValue={planData.container_movement?.free_time_in_days ?? "0"}
+                        placeholder="Enter number of free days (0 or more)"
                         required
                         className="border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
                       />
