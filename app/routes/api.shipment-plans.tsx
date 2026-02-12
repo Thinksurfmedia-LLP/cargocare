@@ -156,8 +156,8 @@ export async function action({ request }: ActionFunctionArgs) {
           // Validate container number format
           const containerPattern = /^[A-Z]{4}[0-9]{7}$/;
           if (!containerPattern.test(containerNumber)) {
-            return json({ 
-              error: "Invalid container number format. Must be 4 letters followed by 7 digits (e.g., ABCD1234567)" 
+            return json({
+              error: "Invalid container number format. Must be 4 letters followed by 7 digits (e.g., XXXX0000000)"
             }, { status: 400 });
           }
 

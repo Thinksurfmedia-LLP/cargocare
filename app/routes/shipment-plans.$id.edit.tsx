@@ -1271,7 +1271,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         if (containerPattern.test(cleanedContainerNumber)) {
           validatedContainerNumber = cleanedContainerNumber
         } else {
-          console.warn(`Invalid container number format: ${cleanedContainerNumber}. Expected format: 4 letters + 7 digits (e.g., ABCD1234567)`)
+          console.warn(`Invalid container number format: ${cleanedContainerNumber}. Expected format: 4 letters + 7 digits (e.g., XXXX0000000)`)
         }
       }
 

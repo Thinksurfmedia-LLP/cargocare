@@ -2664,7 +2664,7 @@ export function ShipmentPlanForm({
                                                 id={`container_number_${index}`}
                                                 name={`equipment_details[${index}][container_number]`}
                                                 type="text"
-                                                placeholder="ABCD1234567"
+                                                placeholder="XXXX0000000"
                                                 defaultValue={equipment.container_number || ""}
                                                 maxLength={11}
                                                 style={{ textTransform: 'uppercase' }}
@@ -2741,7 +2741,7 @@ export function ShipmentPlanForm({
                                                   addToast({
                                                     type: "error",
                                                     title: "Invalid Format",
-                                                    description: "Container number must be 4 letters followed by 7 digits (e.g., ABCD1234567)",
+                                                    description: "Container number must be 4 letters followed by 7 digits (e.g., XXXX0000000)",
                                                     duration: 4000,
                                                   });
                                                   return;
@@ -2809,7 +2809,7 @@ export function ShipmentPlanForm({
                                             </Button>
                                           </div>
                                           <p className="text-xs text-gray-500 mt-1">
-                                            Format: 4 uppercase letters followed by 7 digits (e.g., ABCD1234567)
+                                            Format: 4 uppercase letters followed by 7 digits (e.g., XXXX0000000)
                                           </p>
                                           </div>
                                         )}
