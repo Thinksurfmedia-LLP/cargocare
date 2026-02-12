@@ -2811,6 +2811,9 @@ export function ShipmentPlanForm({
                                           <p className="text-xs text-gray-500 mt-1">
                                             Format: 4 uppercase letters followed by 7 digits (e.g., XXXX0000000)
                                           </p>
+                                          <p className="text-xs text-blue-600 mt-2 font-medium">
+                                            ⓘ Save the container number to unlock subsequent status updates
+                                          </p>
                                           </div>
                                         )}
 
@@ -2998,6 +3001,9 @@ export function ShipmentPlanForm({
                                                   checked={
                                                     equipment.stuffingStatus
                                                   }
+                                                  disabled={
+                                                    !equipment.emptyPickupStatus || !equipment.emptyPickupDate || !equipment.container_number
+                                                  }
                                                   onChange={(e) =>
                                                     updateEquipmentStatus(
                                                       index,
@@ -3008,7 +3014,11 @@ export function ShipmentPlanForm({
                                                 />
                                                 <Label
                                                   htmlFor={`stuffing_status_${index}`}
-                                                  className="text-sm"
+                                                  className={`text-sm ${
+                                                    !equipment.emptyPickupStatus || !equipment.emptyPickupDate || !equipment.container_number
+                                                      ? "text-gray-400"
+                                                      : ""
+                                                  }`}
                                                 >
                                                   Stuffing Completed
                                                 </Label>
@@ -3041,6 +3051,9 @@ export function ShipmentPlanForm({
                                                   checked={
                                                     equipment.gateInStatus
                                                   }
+                                                  disabled={
+                                                    !equipment.container_number || !equipment.stuffingStatus || !equipment.stuffingDate
+                                                  }
                                                   onChange={(e) =>
                                                     updateEquipmentStatus(
                                                       index,
@@ -3051,7 +3064,11 @@ export function ShipmentPlanForm({
                                                 />
                                                 <Label
                                                   htmlFor={`gate_in_status_${index}`}
-                                                  className="text-sm"
+                                                  className={`text-sm ${
+                                                    !equipment.container_number || !equipment.stuffingStatus || !equipment.stuffingDate
+                                                      ? "text-gray-400"
+                                                      : ""
+                                                  }`}
                                                 >
                                                   Gated In
                                                 </Label>
@@ -3084,6 +3101,9 @@ export function ShipmentPlanForm({
                                                   checked={
                                                     equipment.loadedStatus
                                                   }
+                                                  disabled={
+                                                    !equipment.container_number || !equipment.gateInStatus || !equipment.gateInDate
+                                                  }
                                                   onChange={(e) =>
                                                     updateEquipmentStatus(
                                                       index,
@@ -3094,7 +3114,11 @@ export function ShipmentPlanForm({
                                                 />
                                                 <Label
                                                   htmlFor={`loaded_status_${index}`}
-                                                  className="text-sm"
+                                                  className={`text-sm ${
+                                                    !equipment.container_number || !equipment.gateInStatus || !equipment.gateInDate
+                                                      ? "text-gray-400"
+                                                      : ""
+                                                  }`}
                                                 >
                                                   Loaded on Board
                                                 </Label>
