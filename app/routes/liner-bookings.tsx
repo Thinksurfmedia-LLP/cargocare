@@ -804,6 +804,7 @@ export default function LinerBookings() {
     { id: "destination", label: "Destination", defaultVisible: true },
     { id: "status", label: "Status", defaultVisible: true },
     { id: "port_of_discharge", label: "Port of Discharge", defaultVisible: true },
+    { id: "final_place_of_delivery", label: "Final Place of Delivery", defaultVisible: true },
     { id: "consignee", label: "Consignee", defaultVisible: true },
   ];
 
@@ -1356,6 +1357,23 @@ export default function LinerBookings() {
             </div>
           </TableCell>
         )
+      case "final_place_of_delivery":
+        if (!isAssignments) return <TableCell key={columnId}>N/A</TableCell>
+        const deliveryTill = isOrphaned
+          ? (booking.data as any)?._originalShipmentPlan?.container_movement?.delivery_till
+          : booking?.shipmentPlan?.data?.container_movement?.delivery_till
+        const finalPlaceOfDelivery = isOrphaned
+          ? (booking.data as any)?._originalShipmentPlan?.container_movement?.final_place_of_delivery
+          : booking?.shipmentPlan?.data?.container_movement?.final_place_of_delivery
+        const displayValue = deliveryTill?.toLowerCase() === "port" ? "N/A" : (finalPlaceOfDelivery || "N/A")
+        return (
+          <TableCell key={columnId} className="text-gray-700">
+            <div className="flex items-center space-x-1">
+              <span className="text-gray-400">📍</span>
+              <span>{displayValue}</span>
+            </div>
+          </TableCell>
+        )
       case "consignee":
         if (!isAssignments) return <TableCell key={columnId}>N/A</TableCell>
         const consignee = isOrphaned
@@ -1719,6 +1737,8 @@ export default function LinerBookings() {
                               return "w-28"
                             case "port_of_discharge":
                               return "w-36"
+                            case "final_place_of_delivery":
+                              return "w-40"
                             case "consignee":
                               return "w-32"
                             case "selling_price":

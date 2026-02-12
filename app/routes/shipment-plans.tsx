@@ -930,6 +930,11 @@ export default function ShipmentPlans() {
       label: "Port of Discharge",
       defaultVisible: true,
     },
+    {
+      id: "final_place_of_delivery",
+      label: "Final Place of Delivery",
+      defaultVisible: true,
+    },
     { id: "consignee", label: "Consignee", defaultVisible: true },
   ];
 
@@ -1281,6 +1286,18 @@ export default function ShipmentPlans() {
               <span>
                 {plan.data.container_movement?.port_of_discharge || "N/A"}
               </span>
+            </div>
+          </TableCell>
+        );
+      case "final_place_of_delivery":
+        const deliveryTill = plan.data.container_movement?.delivery_till;
+        const finalPlaceOfDelivery = plan.data.container_movement?.final_place_of_delivery;
+        const displayValue = deliveryTill?.toLowerCase() === "port" ? "N/A" : (finalPlaceOfDelivery || "N/A");
+        return (
+          <TableCell key={columnId} className="text-gray-700">
+            <div className="flex items-center space-x-2">
+              <span className="text-gray-400">📍</span>
+              <span>{displayValue}</span>
             </div>
           </TableCell>
         );

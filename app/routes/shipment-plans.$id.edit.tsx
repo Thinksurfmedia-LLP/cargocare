@@ -1322,9 +1322,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
     let shouldCreateShipmentAssignment = false
     let linerBrokerId = null
 
-    //If already booked
+    //If already booked, keep it booked
     if (existingPlan?.data?.booking_status === "Booked") {
       bookingStatus = "Booked"
+    }
+    // If already approved by MD (Awaiting Booking), keep it as approved unless MD is taking action
+    else if (existingPlan?.data?.booking_status === "Awaiting Booking" && md_approval_status !== "approved" && md_approval_status !== "rejected") {
+      bookingStatus = "Awaiting Booking"
     } else {
       //update booking status
       if (md_approval_status === "approved" && md_approval_rejection === "") {
