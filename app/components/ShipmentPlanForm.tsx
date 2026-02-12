@@ -192,6 +192,9 @@ export function ShipmentPlanForm({
                 stuffingDate: equipment.stuffingDate || "",
                 gateInDate: equipment.gateInDate || "",
                 loadedDate: equipment.loadedDate || "",
+                hblNumber: equipment.hblNumber || "",
+                mblNumber: equipment.mblNumber || "",
+                vesselName: equipment.vesselName || "",
               });
             }
             return entries;
@@ -220,6 +223,9 @@ export function ShipmentPlanForm({
                 stuffingDate: equipment.stuffingDate || "",
                 gateInDate: equipment.gateInDate || "",
                 loadedDate: equipment.loadedDate || "",
+                hblNumber: equipment.hblNumber || "",
+                mblNumber: equipment.mblNumber || "",
+                vesselName: equipment.vesselName || "",
               },
             ];
           }
@@ -3227,6 +3233,88 @@ export function ShipmentPlanForm({
                                               )}
                                             </div>
                                           </div>
+
+                                          {/* HBL, MBL, and Vessel fields - Full width below the grid */}
+                                          {equipment.loadedStatus && (
+                                            <div className="mt-4 pt-4 border-t border-gray-200">
+                                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                {/* HBL Number */}
+                                                <div className="space-y-1">
+                                                  <Label
+                                                    htmlFor={`hbl_number_${index}`}
+                                                    className="text-sm font-medium text-gray-700"
+                                                  >
+                                                    HBL Number
+                                                  </Label>
+                                                  <Input
+                                                    id={`hbl_number_${index}`}
+                                                    name={`equipment_details[${index}][hblNumber]`}
+                                                    type="text"
+                                                    value={equipment.hblNumber || ""}
+                                                    onChange={(e) =>
+                                                      updateEquipmentStatus(
+                                                        index,
+                                                        "hblNumber",
+                                                        e.target.value
+                                                      )
+                                                    }
+                                                    className="text-sm"
+                                                    placeholder="Enter HBL Number"
+                                                  />
+                                                </div>
+
+                                                {/* MBL Number */}
+                                                <div className="space-y-1">
+                                                  <Label
+                                                    htmlFor={`mbl_number_${index}`}
+                                                    className="text-sm font-medium text-gray-700"
+                                                  >
+                                                    MBL Number
+                                                  </Label>
+                                                  <Input
+                                                    id={`mbl_number_${index}`}
+                                                    name={`equipment_details[${index}][mblNumber]`}
+                                                    type="text"
+                                                    value={equipment.mblNumber || ""}
+                                                    onChange={(e) =>
+                                                      updateEquipmentStatus(
+                                                        index,
+                                                        "mblNumber",
+                                                        e.target.value
+                                                      )
+                                                    }
+                                                    className="text-sm"
+                                                    placeholder="Enter MBL Number"
+                                                  />
+                                                </div>
+
+                                                {/* Vessel Name */}
+                                                <div className="space-y-1">
+                                                  <Label
+                                                    htmlFor={`vessel_name_${index}`}
+                                                    className="text-sm font-medium text-gray-700"
+                                                  >
+                                                    Vessel Name
+                                                  </Label>
+                                                  <Input
+                                                    id={`vessel_name_${index}`}
+                                                    name={`equipment_details[${index}][vesselName]`}
+                                                    type="text"
+                                                    value={equipment.vesselName || ""}
+                                                    onChange={(e) =>
+                                                      updateEquipmentStatus(
+                                                        index,
+                                                        "vesselName",
+                                                        e.target.value
+                                                      )
+                                                    }
+                                                    className="text-sm"
+                                                    placeholder="Enter Vessel Name"
+                                                  />
+                                                </div>
+                                              </div>
+                                            </div>
+                                          )}
                                         </div>
                                       )}
 

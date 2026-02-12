@@ -312,6 +312,9 @@ export async function action({ request }: ActionFunctionArgs) {
         stuffingDate: (formData.get(`equipment_details[${equipmentIndex}][stuffingDate]`) as string) || "",
         gateInDate: (formData.get(`equipment_details[${equipmentIndex}][gateInDate]`) as string) || "",
         loadedDate: (formData.get(`equipment_details[${equipmentIndex}][loadedDate]`) as string) || "",
+        hblNumber: (formData.get(`equipment_details[${equipmentIndex}][hblNumber]`) as string) || "",
+        mblNumber: (formData.get(`equipment_details[${equipmentIndex}][mblNumber]`) as string) || "",
+        vesselName: (formData.get(`equipment_details[${equipmentIndex}][vesselName]`) as string) || "",
       })
       equipmentIndex++
     }
