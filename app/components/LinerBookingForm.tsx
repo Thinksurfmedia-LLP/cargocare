@@ -2146,13 +2146,17 @@ export function LinerBookingForm({
                 >
                   <button
                     type="button"
-                    onClick={() => toggleSection("general")}
-                    className="w-full px-6 py-5 text-left flex items-center justify-between hover:bg-gray-50 transition-all duration-200 focus:outline-none focus:bg-gray-50"
+                    onClick={() => user?.role?.name !== "LINER_BOOKING_TEAM" && toggleSection("general")}
+                    className={`w-full px-6 py-5 text-left flex items-center justify-between transition-all duration-200 focus:outline-none ${
+                      user?.role?.name !== "LINER_BOOKING_TEAM"
+                        ? "hover:bg-gray-50 focus:bg-gray-50 cursor-pointer"
+                        : "cursor-default"
+                    }`}
                   >
                     <div className="flex items-center space-x-3">
                       <div
                         className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-200 ${
-                          openSections.general
+                          openSections.general || user?.role?.name === "LINER_BOOKING_TEAM"
                             ? "bg-blue-100 text-blue-600"
                             : "bg-gray-100 text-gray-500"
                         }`}
@@ -2168,16 +2172,18 @@ export function LinerBookingForm({
                         </p>
                       </div>
                     </div>
-                    <div
-                      className={`transform transition-transform duration-200 ${
-                        openSections.general ? "rotate-180" : ""
-                      }`}
-                    >
-                      <span className="text-gray-400">↓</span>
-                    </div>
+                    {user?.role?.name !== "LINER_BOOKING_TEAM" && (
+                      <div
+                        className={`transform transition-transform duration-200 ${
+                          openSections.general ? "rotate-180" : ""
+                        }`}
+                      >
+                        <span className="text-gray-400">↓</span>
+                      </div>
+                    )}
                   </button>
 
-                  {openSections.general && (
+                  {(openSections.general || user?.role?.name === "LINER_BOOKING_TEAM") && (
                     <div className="px-6 pb-6 bg-blue-50/30">
                       <div className="space-y-6">
                         {/* <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
