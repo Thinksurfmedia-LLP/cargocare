@@ -821,6 +821,7 @@ export default function LinerBookings() {
     { id: "assigned_liner_broker", label: "Assigned Liner Broker", defaultVisible: true },
     { id: "created_date", label: "Created", defaultVisible: true },
     { id: "created_by", label: "Created By", defaultVisible: true },
+    { id: "updated_date", label: "Last Updated", defaultVisible: true },
     { id: "type", label: "Type", defaultVisible: true },
   ];
 
@@ -853,6 +854,7 @@ export default function LinerBookings() {
     { id: "equipment_type", label: "Equipment Type", defaultVisible: true },
     { id: "created_date", label: "Created", defaultVisible: true },
     { id: "created_by", label: "Created By", defaultVisible: true },
+    { id: "updated_date", label: "Last Updated", defaultVisible: true },
   ]
 
   // Use column preferences hook
@@ -1237,7 +1239,7 @@ export default function LinerBookings() {
           <TableCell key={columnId} className="text-sm text-gray-500">
             <div className="flex items-center space-x-2">
               <span className="text-gray-400">📅</span>
-              <span>{formatDate(booking.createdAt)}</span>
+              <span>{formatDateTime(booking.createdAt)}</span>
             </div>
           </TableCell>
         )
@@ -1255,6 +1257,15 @@ export default function LinerBookings() {
                 <span className="text-xs font-medium text-gray-600">{createdByUser?.name?.charAt(0).toUpperCase()}</span>
               </div>
               <span>{createdByUser?.name}</span>
+            </div>
+          </TableCell>
+        )
+      case "updated_date":
+        return (
+          <TableCell key={columnId} className="text-sm text-gray-500">
+            <div className="flex items-center space-x-2">
+              <span className="text-gray-400">🕒</span>
+              <span>{formatDateTime(booking.updatedAt)}</span>
             </div>
           </TableCell>
         )
@@ -1465,6 +1476,16 @@ export default function LinerBookings() {
     }
   }
 
+  const formatDateTime = (dateString: string | null) => {
+    if (!dateString) return "N/A"
+    try {
+      const date = new Date(dateString)
+      return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`
+    } catch {
+      return "N/A"
+    }
+  }
+
   const renderCellContent = (booking: any, columnId: string) => {
     const details = getBookingDetails(booking.data)
 
@@ -1494,9 +1515,11 @@ export default function LinerBookings() {
       case "equipment_quantity":
         return booking.data?.liner_booking_details?.[0]?.equipment_quantity || "N/A"
       case "created_date":
-        return formatDate(booking.createdAt)
+        return formatDateTime(booking.createdAt)
       case "created_by":
         return booking.user.name
+      case "updated_date":
+        return formatDateTime(booking.updatedAt)
       default:
         return "N/A"
     }
@@ -1755,6 +1778,8 @@ export default function LinerBookings() {
                               return "w-24"
                             case "created_by":
                               return "w-28"
+                            case "updated_date":
+                              return "w-24"
                             case "type":
                               return "w-24"
                             default:
@@ -1782,6 +1807,8 @@ export default function LinerBookings() {
                               return "w-24"
                             case "created_by":
                               return "w-28"
+                            case "updated_date":
+                              return "w-24"
                             default:
                               return "w-24"
                           }
