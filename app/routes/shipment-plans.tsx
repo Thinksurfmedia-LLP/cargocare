@@ -976,7 +976,7 @@ export default function ShipmentPlans() {
     { id: "hs_code", label: "HS Code", defaultVisible: false },
     { id: "po_number", label: "P.O. Number", defaultVisible: true },
     { id: "container_no", label: "Container No.", defaultVisible: true },
-    { id: "sp_equipment_type", label: "Equipment Type", defaultVisible: false },
+    { id: "equipment_details", label: "Equipment Details", defaultVisible: true },
     { id: "stuffing_point", label: "Stuffing Point", defaultVisible: false },
     { id: "remarks", label: "Remarks", defaultVisible: false },
   ];
@@ -1546,12 +1546,31 @@ export default function ShipmentPlans() {
           </TableCell>
         );
       }
-      case "sp_equipment_type":
+      case "equipment_details": {
+        const eqDetails = (plan.data as any).equipment_details || [];
+        if (eqDetails.length === 0) return <TableCell key={columnId}><span className="text-gray-500">N/A</span></TableCell>;
+        const equipmentCounts = eqDetails.reduce((acc: any, eq: any) => {
+          const type = eq.equipment_type;
+          if (type) acc[type] = (acc[type] || 0) + 1;
+          return acc;
+        }, {});
         return (
-          <TableCell key={columnId} className="text-sm text-gray-700">
-            {(plan.data as any).equipment_details?.[0]?.equipment_type || "N/A"}
+          <TableCell key={columnId}>
+            <div className="space-y-1 text-sm text-gray-700">
+              {Object.entries(equipmentCounts).map(([type, count]: [string, any]) => {
+                const cleanType = typeof type === "string" ? type.replace(/\s*container$/i, "").trim() : type;
+                return (
+                  <span key={type} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-gray-700 border border-slate-200 whitespace-nowrap">
+                    <span className="text-xs">📦</span>
+                    <span className="text-xs font-semibold whitespace-nowrap">{count} x</span>
+                    <span className="whitespace-nowrap">{cleanType}</span>
+                  </span>
+                );
+              })}
+            </div>
           </TableCell>
         );
+      }
       case "stuffing_point":
         return (
           <TableCell key={columnId} className="text-sm text-gray-700">

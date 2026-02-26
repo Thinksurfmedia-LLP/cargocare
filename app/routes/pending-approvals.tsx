@@ -430,7 +430,6 @@ export default function PendingApprovals() {
     { id: "cargo_ready_date", label: "Cargo Ready Date", defaultVisible: false },
     { id: "hs_code", label: "HS Code", defaultVisible: false },
     { id: "po_number", label: "P.O. Number", defaultVisible: true },
-    { id: "sp_equipment_type", label: "Equipment Type", defaultVisible: false },
     { id: "stuffing_point", label: "Stuffing Point", defaultVisible: false },
     { id: "container_no", label: "Container No.", defaultVisible: true },
     { id: "carrier", label: "Carrier Preference", defaultVisible: false },
@@ -664,8 +663,6 @@ export default function PendingApprovals() {
         return <TableCell key={columnId} className="text-sm text-gray-700">{planData.package_details?.[0]?.hs_code || "N/A"}</TableCell>;
       case "po_number":
         return <TableCell key={columnId} className="text-sm text-gray-700">{planData.package_details?.[0]?.p_o_number || "N/A"}</TableCell>;
-      case "sp_equipment_type":
-        return <TableCell key={columnId} className="text-sm text-gray-700">{planData.equipment_details?.[0]?.equipment_type || "N/A"}</TableCell>;
       case "stuffing_point":
         return <TableCell key={columnId} className="text-sm text-gray-700">{planData.equipment_details?.[0]?.stuffing_point || "N/A"}</TableCell>;
       case "container_no": {
@@ -865,14 +862,18 @@ export default function PendingApprovals() {
               <Table>
                 <TableHeader className="bg-[#fffaf0]">
                   <TableRow className="text-gray-600">
-                    {visibleColumns.map((col) => (
-                      <TableHead
-                        key={col.id}
-                        className={`font-semibold text-gray-800${col.id === "reference_number" ? " sticky left-0 bg-[#fffaf0] z-10" : col.id === "actions" ? " sticky right-0 bg-[#fffaf0] z-10 text-right" : ""}`}
-                      >
-                        {col.label}
-                      </TableHead>
-                    ))}
+                    {visibleColumns.map((columnId) => {
+                      const col = availableColumns.find(c => c.id === columnId);
+                      if (!col) return null;
+                      return (
+                        <TableHead
+                          key={columnId}
+                          className={`font-semibold text-gray-800${columnId === "reference_number" ? " sticky left-0 bg-[#fffaf0] z-10" : columnId === "actions" ? " sticky right-0 bg-[#fffaf0] z-10 text-right" : ""}`}
+                        >
+                          {col.label}
+                        </TableHead>
+                      );
+                    })}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -882,7 +883,7 @@ export default function PendingApprovals() {
                         key={plan.id}
                         className="transition-colors hover:bg-slate-50"
                       >
-                        {visibleColumns.map((col) => getColumnCell(plan, col.id))}
+                        {visibleColumns.map((columnId) => getColumnCell(plan, columnId))}
                       </TableRow>
                     );
                   })}

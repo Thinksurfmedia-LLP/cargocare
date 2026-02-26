@@ -840,7 +840,7 @@ export default function LinerBookings() {
     { id: "cargo_ready_date", label: "Cargo Ready Date", defaultVisible: false },
     { id: "hs_code", label: "HS Code", defaultVisible: false },
     { id: "po_number", label: "P.O. Number", defaultVisible: true },
-    { id: "sp_equipment_type", label: "Equipment Type (SP)", defaultVisible: false },
+    { id: "equipment_details", label: "Equipment Details", defaultVisible: true },
     { id: "stuffing_point", label: "Stuffing Point", defaultVisible: false },
     { id: "sp_remarks", label: "SP Remarks", defaultVisible: false },
     // LB date/detail fields (hidden by default)
@@ -872,6 +872,7 @@ export default function LinerBookings() {
       id: "temp_booking_number",
       label: "Temp. Booking #",
       defaultVisible: true,
+      locked: true,
     },
     { id: "carrier", label: "Carrier", defaultVisible: true },
     { id: "vessel", label: "Vessel", defaultVisible: true },
@@ -1184,15 +1185,26 @@ export default function LinerBookings() {
             </div>
           </TableCell>
         )
-      case "temp_booking_number":
+      case "temp_booking_number": {
+        if (isAssignments) {
+          return (
+            <TableCell key={columnId} className="font-semibold text-gray-900">
+              <div className="flex items-center space-x-2">
+                <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                <span>{details.temporaryBookingNumber}</span>
+              </div>
+            </TableCell>
+          )
+        }
         return (
-          <TableCell key={columnId} className="font-semibold text-gray-900">
+          <TableCell key={columnId} className="font-semibold text-gray-900 sticky left-12 z-20 bg-white shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)]">
             <div className="flex items-center space-x-2">
               <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
               <span>{details.temporaryBookingNumber}</span>
             </div>
           </TableCell>
         )
+      }
       case "carrier":
         const carrierValue = isAssignments 
           ? (isOrphaned 
@@ -1575,12 +1587,34 @@ export default function LinerBookings() {
         }
         return <TableCell key={columnId} className="text-sm text-gray-700">{pkgFieldMap[columnId] || "N/A"}</TableCell>
       }
-      case "sp_equipment_type": {
+      case "equipment_details": {
         if (!isAssignments) return <TableCell key={columnId}>N/A</TableCell>
-        const spDataEq = isOrphaned
+        const spDataForEq = isOrphaned
           ? (booking.data as any)?._originalShipmentPlan
           : booking?.shipmentPlan?.data
-        return <TableCell key={columnId} className="text-sm text-gray-700">{spDataEq?.equipment_details?.[0]?.equipment_type || "N/A"}</TableCell>
+        const eqList = spDataForEq?.equipment_details || []
+        if (eqList.length === 0) return <TableCell key={columnId}><span className="text-gray-500">N/A</span></TableCell>
+        const eqCounts = eqList.reduce((acc: any, eq: any) => {
+          const type = eq.equipment_type
+          if (type) acc[type] = (acc[type] || 0) + 1
+          return acc
+        }, {})
+        return (
+          <TableCell key={columnId}>
+            <div className="space-y-1 text-sm text-gray-700">
+              {Object.entries(eqCounts).map(([type, count]: [string, any]) => {
+                const cleanType = typeof type === "string" ? type.replace(/\s*container$/i, "").trim() : type
+                return (
+                  <span key={type} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-gray-700 border border-slate-200 whitespace-nowrap">
+                    <span className="text-xs">📦</span>
+                    <span className="text-xs font-semibold whitespace-nowrap">{count} x</span>
+                    <span className="whitespace-nowrap">{cleanType}</span>
+                  </span>
+                )
+              })}
+            </div>
+          </TableCell>
+        )
       }
       case "stuffing_point": {
         if (!isAssignments) return <TableCell key={columnId}>N/A</TableCell>
@@ -2003,7 +2037,7 @@ export default function LinerBookings() {
                         }
                       }
 
-                      if (columnId === "reference_number") {
+                      if (columnId === "reference_number" || (!isAssignments && columnId === "temp_booking_number")) {
                         return (
                           <TableHead key={columnId} className={`font-semibold text-gray-900 text-sm sticky left-12 z-30 bg-slate-50 shadow-[2px_0_5px_-1px_rgba(0,0,0,0.1)] ${getColumnWidth(columnId)}`}>
                             {column.label}
@@ -2028,8 +2062,15 @@ export default function LinerBookings() {
                     return (
                       <TableRow
                         key={booking.id}
+                        onClick={!isAssignments ? (e) => {
+                          const target = e.target as HTMLElement
+                          if (!target.closest('button, a, input, [role="checkbox"]')) {
+                            navigate(`/liner-bookings/${booking.id}/edit`)
+                          }
+                        } : undefined}
                         className={`
                           transition-colors duration-150
+                          ${!isAssignments ? 'cursor-pointer hover:bg-slate-50' : ''}
                           ${isOrphaned ? 'opacity-60 bg-gray-100/70' : ''}
                         `}
                       >
