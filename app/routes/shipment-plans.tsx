@@ -958,6 +958,27 @@ export default function ShipmentPlans() {
     ...(user.role.name === "ADMIN" || user.role.name === "SHIPMENT_PLAN_TEAM"
       ? [{ id: "updated_date", label: "Last Updated", defaultVisible: true }]
       : []),
+    // Additional detail columns (hidden by default)
+    { id: "incoterm", label: "Incoterm", defaultVisible: false },
+    { id: "freight_terms", label: "Freight Terms", defaultVisible: false },
+    { id: "free_time", label: "Free Time (Days)", defaultVisible: false },
+    { id: "delivery_till", label: "Delivery Till", defaultVisible: false },
+    { id: "preferred_etd", label: "Preferred ETD", defaultVisible: false },
+    { id: "rebate", label: "Rebate", defaultVisible: false },
+    { id: "credit_period", label: "Credit Period", defaultVisible: false },
+    { id: "shipper", label: "Shipper", defaultVisible: true },
+    { id: "invoice_number", label: "Invoice No.", defaultVisible: false },
+    { id: "commodity", label: "Commodity", defaultVisible: false },
+    { id: "volume", label: "Volume", defaultVisible: true },
+    { id: "gross_weight", label: "Gross Weight", defaultVisible: false },
+    { id: "num_packages", label: "No. of Packages", defaultVisible: true },
+    { id: "cargo_ready_date", label: "Cargo Ready Date", defaultVisible: false },
+    { id: "hs_code", label: "HS Code", defaultVisible: false },
+    { id: "po_number", label: "P.O. Number", defaultVisible: true },
+    { id: "container_no", label: "Container No.", defaultVisible: true },
+    { id: "sp_equipment_type", label: "Equipment Type", defaultVisible: false },
+    { id: "stuffing_point", label: "Stuffing Point", defaultVisible: false },
+    { id: "remarks", label: "Remarks", defaultVisible: false },
   ];
 
   // Use column preferences hook
@@ -1417,6 +1438,132 @@ export default function ShipmentPlans() {
               <span className="text-gray-400">🔄</span>
               <span>{formatDate(plan.updatedAt)}</span>
             </div>
+          </TableCell>
+        );
+      case "incoterm":
+        return (
+          <TableCell key={columnId} className="text-sm text-gray-700">
+            {(plan.data as any).container_movement?.incoterm || "N/A"}
+          </TableCell>
+        );
+      case "freight_terms":
+        return (
+          <TableCell key={columnId} className="text-sm text-gray-700">
+            {(plan.data as any).container_movement?.freight_terms || "N/A"}
+          </TableCell>
+        );
+      case "free_time":
+        return (
+          <TableCell key={columnId} className="text-sm text-gray-700">
+            {(plan.data as any).container_movement?.free_time_in_days || "N/A"}
+          </TableCell>
+        );
+      case "delivery_till":
+        return (
+          <TableCell key={columnId} className="text-sm text-gray-700">
+            {(plan.data as any).container_movement?.delivery_till || "N/A"}
+          </TableCell>
+        );
+      case "preferred_etd":
+        return (
+          <TableCell key={columnId} className="text-sm text-gray-700">
+            {(plan.data as any).container_movement?.carrier_and_vessel_preference?.preferred_etd || "N/A"}
+          </TableCell>
+        );
+      case "rebate":
+        return (
+          <TableCell key={columnId} className="text-sm text-gray-700">
+            {(plan.data as any).container_movement?.rebate || "N/A"}
+          </TableCell>
+        );
+      case "credit_period":
+        return (
+          <TableCell key={columnId} className="text-sm text-gray-700">
+            {(plan.data as any).container_movement?.credit_period || "N/A"}
+          </TableCell>
+        );
+      case "shipper":
+        return (
+          <TableCell key={columnId} className="text-sm text-gray-700">
+            {(plan.data as any).package_details?.[0]?.shipper || "N/A"}
+          </TableCell>
+        );
+      case "invoice_number":
+        return (
+          <TableCell key={columnId} className="text-sm text-gray-700">
+            {(plan.data as any).package_details?.[0]?.invoice_number || "N/A"}
+          </TableCell>
+        );
+      case "commodity":
+        return (
+          <TableCell key={columnId} className="text-sm text-gray-700">
+            {(plan.data as any).package_details?.[0]?.commodity || "N/A"}
+          </TableCell>
+        );
+      case "volume":
+        return (
+          <TableCell key={columnId} className="text-sm text-gray-700">
+            {(plan.data as any).package_details?.[0]?.volume || "N/A"}
+          </TableCell>
+        );
+      case "gross_weight":
+        return (
+          <TableCell key={columnId} className="text-sm text-gray-700">
+            {(plan.data as any).package_details?.[0]?.gross_weight || "N/A"}
+          </TableCell>
+        );
+      case "num_packages":
+        return (
+          <TableCell key={columnId} className="text-sm text-gray-700">
+            {(plan.data as any).package_details?.[0]?.number_of_packages || "N/A"}
+          </TableCell>
+        );
+      case "cargo_ready_date":
+        return (
+          <TableCell key={columnId} className="text-sm text-gray-700">
+            {(plan.data as any).package_details?.[0]?.projected_cargo_ready_date || "N/A"}
+          </TableCell>
+        );
+      case "hs_code":
+        return (
+          <TableCell key={columnId} className="text-sm text-gray-700">
+            {(plan.data as any).package_details?.[0]?.hs_code || "N/A"}
+          </TableCell>
+        );
+      case "po_number":
+        return (
+          <TableCell key={columnId} className="text-sm text-gray-700">
+            {(plan.data as any).package_details?.[0]?.p_o_number || "N/A"}
+          </TableCell>
+        );
+      case "container_no": {
+        const containers = ((plan.data as any).equipment_details || [])
+          .map((eq: any) => eq.container_number)
+          .filter(Boolean);
+        return (
+          <TableCell key={columnId} className="text-sm text-gray-700">
+            {containers.length > 0 ? containers.join(", ") : "N/A"}
+          </TableCell>
+        );
+      }
+      case "sp_equipment_type":
+        return (
+          <TableCell key={columnId} className="text-sm text-gray-700">
+            {(plan.data as any).equipment_details?.[0]?.equipment_type || "N/A"}
+          </TableCell>
+        );
+      case "stuffing_point":
+        return (
+          <TableCell key={columnId} className="text-sm text-gray-700">
+            {(plan.data as any).equipment_details?.[0]?.stuffing_point || "N/A"}
+          </TableCell>
+        );
+      case "remarks":
+        return (
+          <TableCell key={columnId} className="text-sm text-gray-700 max-w-xs">
+            <span className="truncate block" title={(plan.data as any).remarks || ""}>
+              {(plan.data as any).remarks || "N/A"}
+            </span>
           </TableCell>
         );
       default:

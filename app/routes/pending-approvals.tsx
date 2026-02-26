@@ -27,6 +27,8 @@ import {
 import { Badge } from "~/components/ui/badge";
 import { AdminLayout } from "~/components/AdminLayout";
 import { redirect } from "react-router";
+import { useColumnPreferences } from "~/hooks/useColumnPreferences";
+import { ColumnSelectorModal } from "~/components/ui/column-selector-modal";
 
 export const meta: MetaFunction = () => {
   return [
@@ -399,6 +401,57 @@ export default function PendingApprovals() {
   const [searchParams] = useSearchParams();
   const [hoveredShipper, setHoveredShipper] = useState<string | null>(null);
 
+  const availableColumns = [
+    { id: "reference_number", label: "Reference No.", defaultVisible: true, locked: true },
+    { id: "customer", label: "Customer", defaultVisible: true },
+    { id: "business_branch", label: "Business Branch", defaultVisible: true },
+    { id: "shipment_type", label: "Type", defaultVisible: true },
+    { id: "equipment_details", label: "Equipment Details", defaultVisible: true },
+    { id: "selling_price", label: "Selling Price", defaultVisible: true },
+    { id: "shipper", label: "Shipper", defaultVisible: true },
+    { id: "loading_port", label: "Loading Port", defaultVisible: true },
+    { id: "port_of_discharge", label: "Port of Discharge", defaultVisible: true },
+    { id: "final_place_of_delivery", label: "Final Place of Delivery", defaultVisible: true },
+    { id: "consignee", label: "Consignee", defaultVisible: false },
+    { id: "destination_country", label: "Destination", defaultVisible: false },
+    { id: "incoterm", label: "Incoterm", defaultVisible: false },
+    { id: "freight_terms", label: "Freight Terms", defaultVisible: false },
+    { id: "free_time", label: "Free Time (Days)", defaultVisible: false },
+    { id: "delivery_till", label: "Delivery Till", defaultVisible: false },
+    { id: "preferred_etd", label: "Preferred ETD", defaultVisible: false },
+    { id: "buying_price", label: "Buying Price", defaultVisible: false },
+    { id: "rebate", label: "Rebate", defaultVisible: false },
+    { id: "credit_period", label: "Credit Period", defaultVisible: false },
+    { id: "invoice_number", label: "Invoice No.", defaultVisible: false },
+    { id: "commodity", label: "Commodity", defaultVisible: false },
+    { id: "volume", label: "Volume", defaultVisible: true },
+    { id: "gross_weight", label: "Gross Weight", defaultVisible: false },
+    { id: "num_packages", label: "No. of Packages", defaultVisible: true },
+    { id: "cargo_ready_date", label: "Cargo Ready Date", defaultVisible: false },
+    { id: "hs_code", label: "HS Code", defaultVisible: false },
+    { id: "po_number", label: "P.O. Number", defaultVisible: true },
+    { id: "sp_equipment_type", label: "Equipment Type", defaultVisible: false },
+    { id: "stuffing_point", label: "Stuffing Point", defaultVisible: false },
+    { id: "container_no", label: "Container No.", defaultVisible: true },
+    { id: "carrier", label: "Carrier Preference", defaultVisible: false },
+    { id: "vessel", label: "Vessel Preference", defaultVisible: false },
+    { id: "remarks", label: "Remarks", defaultVisible: false },
+    { id: "created_date", label: "Created", defaultVisible: false },
+    { id: "created_by", label: "Created By", defaultVisible: false },
+    { id: "actions", label: "Actions", defaultVisible: true, locked: true },
+  ];
+
+  const {
+    visibleColumns,
+    isColumnModalOpen,
+    setIsColumnModalOpen,
+    updateColumnPreferences,
+    resetColumnPreferences,
+  } = useColumnPreferences({
+    storageKey: "pending-approvals-columns",
+    columns: availableColumns,
+  });
+
   const getStatusBadge = (status: string) => {
     const statusConfig: { [key: string]: { color: string; label: string } } = {
       "Awaiting MD Approval": {
@@ -449,6 +502,248 @@ export default function PendingApprovals() {
     const newSearchParams = new URLSearchParams(searchParams);
     newSearchParams.set("page", newPage.toString());
     navigate(`?${newSearchParams.toString()}`);
+  };
+
+  const getColumnCell = (plan: any, columnId: string) => {
+    const planData = plan.data as any;
+    const isConsolidation = (planData.shipment_type || "").toLowerCase().includes("consol");
+    const shippers = Array.isArray(planData.package_details)
+      ? planData.package_details.map((pkg: any) => pkg?.shipper).filter((s: any): s is string => Boolean(s))
+      : [];
+    const uniqueShippers = Array.from(new Set(shippers));
+    const primaryShipper = uniqueShippers[0];
+    const extraShippers = uniqueShippers.length > 1 ? uniqueShippers.length - 1 : 0;
+
+    switch (columnId) {
+      case "reference_number":
+        return (
+          <TableCell key={columnId} className="font-medium text-gray-900 sticky left-0 bg-white z-10">
+            <span
+              className="text-blue-600 hover:underline cursor-pointer"
+              onClick={() => navigate(`/shipment-plans/${plan.id}/edit?returnTo=/pending-approvals`)}
+            >
+              {planData.reference_number || "N/A"}
+            </span>
+          </TableCell>
+        );
+      case "customer":
+        return (
+          <TableCell key={columnId} className="font-medium text-gray-900">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-blue-500">•</span>
+              <span>{planData.container_movement?.customer || "N/A"}</span>
+            </div>
+          </TableCell>
+        );
+      case "business_branch":
+        return (
+          <TableCell key={columnId}>
+            <div className="flex items-center space-x-2 text-gray-700">
+              <span className="text-gray-400">🏢</span>
+              <span className="font-medium">{planData.bussiness_branch || "N/A"}</span>
+            </div>
+          </TableCell>
+        );
+      case "shipment_type":
+        return (
+          <TableCell key={columnId} className="text-gray-700 font-medium">
+            <Badge className="bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1 rounded-full text-xs font-semibold">
+              {planData.shipment_type || "N/A"}
+            </Badge>
+          </TableCell>
+        );
+      case "equipment_details":
+        return (
+          <TableCell key={columnId}>
+            {planData.equipment_details && planData.equipment_details.length > 0 ? (
+              <div className="space-y-1 text-sm text-gray-700">
+                {(() => {
+                  const equipmentCounts = planData.equipment_details.reduce((acc: any, equipment: any) => {
+                    const type = equipment.equipment_type;
+                    if (type) { acc[type] = (acc[type] || 0) + 1; }
+                    return acc;
+                  }, {});
+                  return Object.entries(equipmentCounts).map(([type, count]: [string, any]) => {
+                    const cleanType = typeof type === "string" ? type.replace(/\s*container$/i, "").trim() : type;
+                    return (
+                      <span key={type} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-gray-700 border border-slate-200 whitespace-nowrap">
+                        <span className="text-xs">📦</span>
+                        <span className="text-xs font-semibold whitespace-nowrap">{count} x</span>
+                        <span className="whitespace-nowrap">{cleanType}</span>
+                      </span>
+                    );
+                  });
+                })()}
+              </div>
+            ) : (
+              <span className="text-gray-500">N/A</span>
+            )}
+          </TableCell>
+        );
+      case "selling_price":
+        return (
+          <TableCell key={columnId} className="text-gray-800 font-medium">
+            {planData.container_movement?.selling_price || "N/A"}
+          </TableCell>
+        );
+      case "buying_price":
+        return (
+          <TableCell key={columnId} className="text-gray-800 font-medium">
+            {planData.container_movement?.buying_price || "N/A"}
+          </TableCell>
+        );
+      case "shipper":
+        return (
+          <TableCell key={columnId} className="text-gray-700">
+            {isConsolidation && (primaryShipper || extraShippers) ? (
+              <div className="relative inline-block">
+                <span
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-gray-700 border border-slate-200 text-sm font-medium cursor-help"
+                  onMouseEnter={() => setHoveredShipper(plan.id)}
+                  onMouseLeave={() => setHoveredShipper(null)}
+                >
+                  <span>{primaryShipper || "Shipper"}</span>
+                  {extraShippers > 0 && <span className="text-xs font-semibold">+{extraShippers}</span>}
+                </span>
+                {hoveredShipper === plan.id && uniqueShippers.length > 1 && (
+                  <div className="absolute z-50 mt-2 p-3 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[200px] left-0">
+                    <p className="text-xs font-semibold text-gray-500 uppercase mb-2">All Shippers</p>
+                    <div className="space-y-1">
+                      {uniqueShippers.map((shipper, idx) => (
+                        <div key={idx} className="text-sm text-gray-700 flex items-center gap-2">
+                          <span className="text-blue-500 text-xs">•</span>
+                          <span>{shipper}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              planData.package_details?.[0]?.shipper || "N/A"
+            )}
+          </TableCell>
+        );
+      case "loading_port":
+        return <TableCell key={columnId} className="text-gray-700">{planData.container_movement?.loading_port || "N/A"}</TableCell>;
+      case "port_of_discharge":
+        return <TableCell key={columnId} className="text-gray-700">{planData.container_movement?.port_of_discharge || "N/A"}</TableCell>;
+      case "final_place_of_delivery":
+        return <TableCell key={columnId} className="text-gray-700">{planData.container_movement?.delivery_till || "N/A"}</TableCell>;
+      case "consignee":
+        return <TableCell key={columnId} className="text-sm text-gray-700">{planData.container_movement?.consignee || "N/A"}</TableCell>;
+      case "destination_country":
+        return <TableCell key={columnId} className="text-sm text-gray-700">{planData.container_movement?.destination_country || "N/A"}</TableCell>;
+      case "incoterm":
+        return <TableCell key={columnId} className="text-sm text-gray-700">{planData.container_movement?.incoterm || "N/A"}</TableCell>;
+      case "freight_terms":
+        return <TableCell key={columnId} className="text-sm text-gray-700">{planData.container_movement?.freight_terms || "N/A"}</TableCell>;
+      case "free_time":
+        return <TableCell key={columnId} className="text-sm text-gray-700">{planData.container_movement?.free_time_in_days || "N/A"}</TableCell>;
+      case "delivery_till":
+        return <TableCell key={columnId} className="text-sm text-gray-700">{planData.container_movement?.delivery_till || "N/A"}</TableCell>;
+      case "preferred_etd":
+        return <TableCell key={columnId} className="text-sm text-gray-700">{planData.container_movement?.carrier_and_vessel_preference?.preferred_etd || "N/A"}</TableCell>;
+      case "rebate":
+        return <TableCell key={columnId} className="text-sm text-gray-700">{planData.container_movement?.rebate || "N/A"}</TableCell>;
+      case "credit_period":
+        return <TableCell key={columnId} className="text-sm text-gray-700">{planData.container_movement?.credit_period || "N/A"}</TableCell>;
+      case "invoice_number":
+        return <TableCell key={columnId} className="text-sm text-gray-700">{planData.package_details?.[0]?.invoice_number || "N/A"}</TableCell>;
+      case "commodity":
+        return <TableCell key={columnId} className="text-sm text-gray-700">{planData.package_details?.[0]?.commodity || "N/A"}</TableCell>;
+      case "volume":
+        return <TableCell key={columnId} className="text-sm text-gray-700">{planData.package_details?.[0]?.volume || "N/A"}</TableCell>;
+      case "gross_weight":
+        return <TableCell key={columnId} className="text-sm text-gray-700">{planData.package_details?.[0]?.gross_weight || "N/A"}</TableCell>;
+      case "num_packages":
+        return <TableCell key={columnId} className="text-sm text-gray-700">{planData.package_details?.[0]?.number_of_packages || "N/A"}</TableCell>;
+      case "cargo_ready_date":
+        return <TableCell key={columnId} className="text-sm text-gray-700">{planData.package_details?.[0]?.projected_cargo_ready_date || "N/A"}</TableCell>;
+      case "hs_code":
+        return <TableCell key={columnId} className="text-sm text-gray-700">{planData.package_details?.[0]?.hs_code || "N/A"}</TableCell>;
+      case "po_number":
+        return <TableCell key={columnId} className="text-sm text-gray-700">{planData.package_details?.[0]?.p_o_number || "N/A"}</TableCell>;
+      case "sp_equipment_type":
+        return <TableCell key={columnId} className="text-sm text-gray-700">{planData.equipment_details?.[0]?.equipment_type || "N/A"}</TableCell>;
+      case "stuffing_point":
+        return <TableCell key={columnId} className="text-sm text-gray-700">{planData.equipment_details?.[0]?.stuffing_point || "N/A"}</TableCell>;
+      case "container_no": {
+        const containers = (planData.equipment_details || [])
+          .map((eq: any) => eq.container_number)
+          .filter(Boolean);
+        return (
+          <TableCell key={columnId} className="text-sm text-gray-700">
+            {containers.length > 0 ? containers.join(", ") : "N/A"}
+          </TableCell>
+        );
+      }
+      case "carrier":
+        return <TableCell key={columnId} className="text-sm text-gray-700">{planData.container_movement?.carrier_and_vessel_preference?.carrier || "N/A"}</TableCell>;
+      case "vessel":
+        return <TableCell key={columnId} className="text-sm text-gray-700">{planData.container_movement?.carrier_and_vessel_preference?.vessel || "N/A"}</TableCell>;
+      case "remarks":
+        return (
+          <TableCell key={columnId} className="text-sm text-gray-700 max-w-xs">
+            <span className="truncate block" title={planData.remarks || ""}>{planData.remarks || "N/A"}</span>
+          </TableCell>
+        );
+      case "created_date":
+        return <TableCell key={columnId} className="text-sm text-gray-500">{formatDate(plan.createdAt)}</TableCell>;
+      case "created_by":
+        return (
+          <TableCell key={columnId} className="text-sm text-gray-600">
+            <div className="flex items-center space-x-2">
+              <div className="w-6 h-6 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full flex items-center justify-center">
+                <span className="text-xs font-medium text-gray-600">{plan.user?.name?.charAt(0)?.toUpperCase() || "?"}</span>
+              </div>
+              <span>{plan.user?.name || "N/A"}</span>
+            </div>
+          </TableCell>
+        );
+      case "actions":
+        return (
+          <TableCell key={columnId} onClick={(e) => e.stopPropagation()} className="text-right sticky right-0 bg-white z-10">
+            <div className="flex justify-end space-x-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-green-300 text-green-600 hover:bg-green-50"
+                onClick={() => {
+                  if (confirm("Are you sure you want to approve this shipment plan?")) {
+                    const form = document.createElement("form");
+                    form.method = "post";
+                    form.innerHTML = `<input type="hidden" name="action" value="approve" /><input type="hidden" name="id" value="${plan.id}" />`;
+                    document.body.appendChild(form);
+                    form.submit();
+                  }
+                }}
+              >
+                ✓ Approve
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-red-300 text-red-600 hover:bg-red-50"
+                onClick={() => {
+                  const reason = prompt("Please provide a reason for rejection:");
+                  if (reason?.trim()) {
+                    const form = document.createElement("form");
+                    form.method = "post";
+                    form.innerHTML = `<input type="hidden" name="action" value="reject" /><input type="hidden" name="id" value="${plan.id}" /><input type="hidden" name="rejectionReason" value="${reason}" />`;
+                    document.body.appendChild(form);
+                    form.submit();
+                  }
+                }}
+              >
+                ✗ Reject
+              </Button>
+            </div>
+          </TableCell>
+        );
+      default:
+        return <TableCell key={columnId}>N/A</TableCell>;
+    }
   };
 
   return (
@@ -553,6 +848,16 @@ export default function PendingApprovals() {
                 <Badge className="bg-blue-100 text-blue-800 border-blue-200 px-3 py-2">
                   {pagination.totalCount} waiting
                 </Badge>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsColumnModalOpen(true)}
+                  className="flex items-center space-x-2 border-gray-300 hover:border-blue-300 hover:bg-blue-50 transition-all duration-200"
+                  title="Customize which columns to display and their order"
+                >
+                  <span className="text-sm">⚙️</span>
+                  <span>Customize Columns</span>
+                </Button>
               </div>
             </div>
 
@@ -560,159 +865,30 @@ export default function PendingApprovals() {
               <Table>
                 <TableHeader className="bg-[#fffaf0]">
                   <TableRow className="text-gray-600">
-                    <TableHead className="w-44 font-semibold text-gray-800">Customer</TableHead>
-                    <TableHead className="w-36 font-semibold text-gray-800">Business Branch</TableHead>
-                    <TableHead className="w-32 font-semibold text-gray-800">Shipment Type</TableHead>
-                    <TableHead className="w-52 font-semibold text-gray-800">Equipment Details</TableHead>
-                    <TableHead className="w-32 font-semibold text-gray-800">Selling Price</TableHead>
-                    <TableHead className="w-44 font-semibold text-gray-800">Shipper</TableHead>
-                    <TableHead className="w-40 font-semibold text-gray-800">Loading Port</TableHead>
-                    <TableHead className="w-44 font-semibold text-gray-800">Port of Discharge</TableHead>
-                    <TableHead className="w-48 font-semibold text-gray-800">Final Place of Delivery</TableHead>
-                    <TableHead className="w-28 font-semibold text-gray-800 text-right">Actions</TableHead>
+                    {visibleColumns.map((col) => (
+                      <TableHead
+                        key={col.id}
+                        className={`font-semibold text-gray-800${col.id === "reference_number" ? " sticky left-0 bg-[#fffaf0] z-10" : col.id === "actions" ? " sticky right-0 bg-[#fffaf0] z-10 text-right" : ""}`}
+                      >
+                        {col.label}
+                      </TableHead>
+                    ))}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {shipmentPlans.map((plan) => {
-                    const planData = plan.data as any;
-                    const isConsolidation = (planData.shipment_type || "").toLowerCase().includes("consol");
-                    const shippers = Array.isArray(planData.package_details)
-                      ? planData.package_details
-                          .map((pkg: any) => pkg?.shipper)
-                          .filter((s: any): s is string => Boolean(s))
-                      : [];
-                    const uniqueShippers = Array.from(new Set(shippers));
-                    const primaryShipper = uniqueShippers[0];
-                    const extraShippers = uniqueShippers.length > 1 ? uniqueShippers.length - 1 : 0;
-                    const shipperTooltip = uniqueShippers.length > 0 ? uniqueShippers.join(", ") : undefined;
                     return (
                       <TableRow
                         key={plan.id}
-                        className="cursor-pointer transition-colors hover:bg-slate-50"
-                        onClick={() => navigate(`/shipment-plans/${plan.id}/edit?returnTo=/pending-approvals`)}
+                        className="transition-colors hover:bg-slate-50"
                       >
-                        <TableCell className="font-medium text-gray-900">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-blue-500">•</span>
-                            <span>{planData.container_movement?.customer || "N/A"}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center space-x-2 text-gray-700">
-                            <span className="text-gray-400">🏢</span>
-                            <span className="font-medium">{planData.bussiness_branch || "N/A"}</span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-gray-700 font-medium">
-                          <Badge className="bg-blue-50 text-blue-700 border border-blue-200 px-3 py-1 rounded-full text-xs font-semibold">
-                            {planData.shipment_type || "N/A"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {planData.equipment_details && planData.equipment_details.length > 0 ? (
-                            <div className="space-y-1 text-sm text-gray-700">
-                              {(() => {
-                                // Group equipment by type and count occurrences for a compact pill list
-                                const equipmentCounts = planData.equipment_details.reduce((acc: any, equipment: any) => {
-                                  const type = equipment.equipment_type;
-                                  if (type) {
-                                    acc[type] = (acc[type] || 0) + 1;
-                                  }
-                                  return acc;
-                                }, {});
-
-                                return Object.entries(equipmentCounts).map(([type, count]: [string, any]) => {
-                                  const cleanType = typeof type === "string" ? type.replace(/\s*container$/i, "").trim() : type;
-
-                                  return (
-                                  <span
-                                    key={type}
-                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-gray-700 border border-slate-200 whitespace-nowrap"
-                                  >
-                                    <span className="text-xs">📦</span>
-                                    <span className="text-xs font-semibold whitespace-nowrap">{count} x</span>
-                                    <span className="whitespace-nowrap">{cleanType}</span>
-                                  </span>
-                                  );
-                                });
-                              })()}
-                            </div>
-                          ) : (
-                            <span className="text-gray-500">N/A</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-gray-800 font-medium">
-                          {planData.container_movement?.selling_price || "N/A"}
-                        </TableCell>
-                        <TableCell className="text-gray-700">
-                          {isConsolidation && (primaryShipper || extraShippers) ? (
-                            <div className="relative inline-block">
-                              <span
-                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-100 text-gray-700 border border-slate-200 text-sm font-medium cursor-help"
-                                onMouseEnter={() => setHoveredShipper(plan.id)}
-                                onMouseLeave={() => setHoveredShipper(null)}
-                              >
-                                <span>{primaryShipper || "Shipper"}</span>
-                                {extraShippers > 0 && <span className="text-xs font-semibold">+{extraShippers}</span>}
-                              </span>
-                              {hoveredShipper === plan.id && uniqueShippers.length > 1 && (
-                                <div className="absolute z-50 mt-2 p-3 bg-white border border-gray-200 rounded-lg shadow-lg min-w-[200px] left-0">
-                                  <p className="text-xs font-semibold text-gray-500 uppercase mb-2">All Shippers</p>
-                                  <div className="space-y-1">
-                                    {uniqueShippers.map((shipper, idx) => (
-                                      <div key={idx} className="text-sm text-gray-700 flex items-center gap-2">
-                                        <span className="text-blue-500 text-xs">•</span>
-                                        <span>{shipper}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            planData.package_details?.[0]?.shipper || "N/A"
-                          )}
-                        </TableCell>
-                        <TableCell className="text-gray-700">
-                          {planData.container_movement?.loading_port || "N/A"}
-                        </TableCell>
-                        <TableCell className="text-gray-700">
-                          {planData.container_movement?.port_of_discharge || "N/A"}
-                        </TableCell>
-                        <TableCell className="text-gray-700">
-                          {planData.container_movement?.delivery_till || "N/A"}
-                        </TableCell>
-                        <TableCell onClick={(e) => e.stopPropagation()} className="text-right">
-                          <div className="flex justify-end space-x-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="border-red-300 text-red-600 hover:bg-red-50"
-                              onClick={() => {
-                                const reason = prompt("Please provide a reason for rejection:");
-                                if (reason?.trim()) {
-                                  const form = document.createElement("form");
-                                  form.method = "post";
-                                  form.innerHTML = `
-                                    <input type="hidden" name="action" value="reject" />
-                                    <input type="hidden" name="id" value="${plan.id}" />
-                                    <input type="hidden" name="rejectionReason" value="${reason}" />
-                                  `;
-                                  document.body.appendChild(form);
-                                  form.submit();
-                                }
-                              }}
-                            >
-                              ✗ Reject
-                            </Button>
-                          </div>
-                        </TableCell>
+                        {visibleColumns.map((col) => getColumnCell(plan, col.id))}
                       </TableRow>
                     );
                   })}
                   {shipmentPlans.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center py-10 text-gray-500">
+                      <TableCell colSpan={visibleColumns.length} className="text-center py-10 text-gray-500">
                         {search ? "No shipment plans found matching your search." : "No pending approvals found."}
                       </TableCell>
                     </TableRow>
@@ -763,6 +939,16 @@ export default function PendingApprovals() {
           )}
         </div>
       </div>
+
+      <ColumnSelectorModal
+        isOpen={isColumnModalOpen}
+        onClose={() => setIsColumnModalOpen(false)}
+        columns={availableColumns}
+        visibleColumns={visibleColumns}
+        onColumnChange={updateColumnPreferences}
+        onReset={resetColumnPreferences}
+        title="Customize Pending Approvals Columns"
+      />
     </AdminLayout>
   );
 }

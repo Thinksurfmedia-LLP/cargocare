@@ -823,6 +823,40 @@ export default function LinerBookings() {
     { id: "created_by", label: "Created By", defaultVisible: true },
     { id: "updated_date", label: "Last Updated", defaultVisible: true },
     { id: "type", label: "Type", defaultVisible: true },
+    // SP-derived fields (hidden by default)
+    { id: "incoterm", label: "Incoterm", defaultVisible: false },
+    { id: "freight_terms", label: "Freight Terms", defaultVisible: false },
+    { id: "free_time", label: "Free Time (Days)", defaultVisible: false },
+    { id: "delivery_till", label: "Delivery Till", defaultVisible: false },
+    { id: "preferred_etd", label: "Preferred ETD", defaultVisible: false },
+    { id: "rebate", label: "Rebate", defaultVisible: false },
+    { id: "credit_period", label: "Credit Period", defaultVisible: false },
+    { id: "shipper", label: "Shipper", defaultVisible: true },
+    { id: "invoice_number", label: "Invoice No.", defaultVisible: false },
+    { id: "commodity", label: "Commodity", defaultVisible: false },
+    { id: "volume", label: "Volume", defaultVisible: true },
+    { id: "gross_weight", label: "Gross Weight", defaultVisible: false },
+    { id: "num_packages", label: "No. of Packages", defaultVisible: true },
+    { id: "cargo_ready_date", label: "Cargo Ready Date", defaultVisible: false },
+    { id: "hs_code", label: "HS Code", defaultVisible: false },
+    { id: "po_number", label: "P.O. Number", defaultVisible: true },
+    { id: "sp_equipment_type", label: "Equipment Type (SP)", defaultVisible: false },
+    { id: "stuffing_point", label: "Stuffing Point", defaultVisible: false },
+    { id: "sp_remarks", label: "SP Remarks", defaultVisible: false },
+    // LB date/detail fields (hidden by default)
+    { id: "liner_booking_number", label: "Liner Booking No.", defaultVisible: false },
+    { id: "mbl_number", label: "MBL Number", defaultVisible: false },
+    { id: "contract", label: "Contract", defaultVisible: false },
+    { id: "temp_booking_number", label: "Temp. Booking No.", defaultVisible: false },
+    { id: "etd", label: "ETD", defaultVisible: false },
+    { id: "container_no", label: "Container No.", defaultVisible: true },
+    { id: "empty_pickup_from", label: "Empty Pickup From", defaultVisible: false },
+    { id: "empty_pickup_till", label: "Empty Pickup Till", defaultVisible: false },
+    { id: "gate_opening_date", label: "Gate Opening Date", defaultVisible: false },
+    { id: "gate_cutoff_date", label: "Gate Cutoff Date", defaultVisible: false },
+    { id: "si_cutoff_date", label: "SI Cut Off Date", defaultVisible: false },
+    { id: "booking_received_date", label: "Booking Received On", defaultVisible: false },
+    { id: "additional_remarks", label: "Additional Remarks", defaultVisible: false },
   ];
 
   const assignmentColumns = [
@@ -855,6 +889,13 @@ export default function LinerBookings() {
     { id: "created_date", label: "Created", defaultVisible: true },
     { id: "created_by", label: "Created By", defaultVisible: true },
     { id: "updated_date", label: "Last Updated", defaultVisible: true },
+    { id: "empty_pickup_from", label: "Empty Pickup From", defaultVisible: false },
+    { id: "empty_pickup_till", label: "Empty Pickup Till", defaultVisible: false },
+    { id: "gate_opening_date", label: "Gate Opening Date", defaultVisible: false },
+    { id: "gate_cutoff_date", label: "Gate Cutoff Date", defaultVisible: false },
+    { id: "si_cutoff_date", label: "SI Cut Off Date", defaultVisible: false },
+    { id: "booking_received_date", label: "Booking Received On", defaultVisible: false },
+    { id: "additional_remarks", label: "Additional Remarks", defaultVisible: false },
   ]
 
   // Use column preferences hook
@@ -1483,6 +1524,118 @@ export default function LinerBookings() {
             </span>
           </TableCell>
         )
+      // SP-derived fields (assignments only)
+      case "incoterm":
+      case "freight_terms":
+      case "free_time":
+      case "delivery_till":
+      case "preferred_etd":
+      case "rebate":
+      case "credit_period": {
+        if (!isAssignments) return <TableCell key={columnId}>N/A</TableCell>
+        const spData = isOrphaned
+          ? (booking.data as any)?._originalShipmentPlan
+          : booking?.shipmentPlan?.data
+        const cm = spData?.container_movement
+        const fieldMap: Record<string, string> = {
+          incoterm: cm?.incoterm,
+          freight_terms: cm?.freight_terms,
+          free_time: cm?.free_time_in_days,
+          delivery_till: cm?.delivery_till,
+          preferred_etd: cm?.carrier_and_vessel_preference?.preferred_etd,
+          rebate: cm?.rebate,
+          credit_period: cm?.credit_period,
+        }
+        return <TableCell key={columnId} className="text-sm text-gray-700">{fieldMap[columnId] || "N/A"}</TableCell>
+      }
+      case "shipper":
+      case "invoice_number":
+      case "commodity":
+      case "volume":
+      case "gross_weight":
+      case "num_packages":
+      case "cargo_ready_date":
+      case "hs_code":
+      case "po_number": {
+        if (!isAssignments) return <TableCell key={columnId}>N/A</TableCell>
+        const spDataPkg = isOrphaned
+          ? (booking.data as any)?._originalShipmentPlan
+          : booking?.shipmentPlan?.data
+        const pkg = spDataPkg?.package_details?.[0]
+        const pkgFieldMap: Record<string, string> = {
+          shipper: pkg?.shipper,
+          invoice_number: pkg?.invoice_number,
+          commodity: pkg?.commodity,
+          volume: pkg?.volume,
+          gross_weight: pkg?.gross_weight,
+          num_packages: pkg?.number_of_packages,
+          cargo_ready_date: pkg?.projected_cargo_ready_date,
+          hs_code: pkg?.hs_code,
+          po_number: pkg?.p_o_number,
+        }
+        return <TableCell key={columnId} className="text-sm text-gray-700">{pkgFieldMap[columnId] || "N/A"}</TableCell>
+      }
+      case "sp_equipment_type": {
+        if (!isAssignments) return <TableCell key={columnId}>N/A</TableCell>
+        const spDataEq = isOrphaned
+          ? (booking.data as any)?._originalShipmentPlan
+          : booking?.shipmentPlan?.data
+        return <TableCell key={columnId} className="text-sm text-gray-700">{spDataEq?.equipment_details?.[0]?.equipment_type || "N/A"}</TableCell>
+      }
+      case "stuffing_point": {
+        if (!isAssignments) return <TableCell key={columnId}>N/A</TableCell>
+        const spDataSP = isOrphaned
+          ? (booking.data as any)?._originalShipmentPlan
+          : booking?.shipmentPlan?.data
+        return <TableCell key={columnId} className="text-sm text-gray-700">{spDataSP?.equipment_details?.[0]?.stuffing_point || "N/A"}</TableCell>
+      }
+      case "sp_remarks": {
+        if (!isAssignments) return <TableCell key={columnId}>N/A</TableCell>
+        const spDataRem = isOrphaned
+          ? (booking.data as any)?._originalShipmentPlan
+          : booking?.shipmentPlan?.data
+        return <TableCell key={columnId} className="text-sm text-gray-700 max-w-xs"><span className="truncate block">{spDataRem?.remarks || "N/A"}</span></TableCell>
+      }
+      case "liner_booking_number":
+        if (!isAssignments) return <TableCell key={columnId}>N/A</TableCell>
+        return <TableCell key={columnId} className="text-sm text-gray-700">{(booking.data as any)?.liner_booking_details?.[0]?.liner_booking_number || "N/A"}</TableCell>
+      case "mbl_number":
+        if (!isAssignments) return <TableCell key={columnId}>N/A</TableCell>
+        return <TableCell key={columnId} className="text-sm text-gray-700">{(booking.data as any)?.liner_booking_details?.[0]?.mbl_number || "N/A"}</TableCell>
+      case "contract":
+        if (!isAssignments) return <TableCell key={columnId}>N/A</TableCell>
+        return <TableCell key={columnId} className="text-sm text-gray-700">{(booking.data as any)?.liner_booking_details?.[0]?.contract || "N/A"}</TableCell>
+      case "temp_booking_number":
+        if (!isAssignments) return <TableCell key={columnId}>N/A</TableCell>
+        return <TableCell key={columnId} className="text-sm text-gray-700">{(booking.data as any)?.liner_booking_details?.[0]?.temporary_booking_number || "N/A"}</TableCell>
+      case "etd":
+        if (!isAssignments) return <TableCell key={columnId}>N/A</TableCell>
+        return <TableCell key={columnId} className="text-sm text-gray-700">{formatDate((booking.data as any)?.liner_booking_details?.[0]?.etd) || "N/A"}</TableCell>
+      case "container_no": {
+        if (!isAssignments) return <TableCell key={columnId}>N/A</TableCell>
+        const spDataCN = isOrphaned
+          ? (booking.data as any)?._originalShipmentPlan
+          : booking?.shipmentPlan?.data
+        const containers = (spDataCN?.equipment_details || [])
+          .map((eq: any) => eq.container_number)
+          .filter(Boolean)
+        return <TableCell key={columnId} className="text-sm text-gray-700">{containers.length > 0 ? containers.join(", ") : "N/A"}</TableCell>
+      }
+      // LB date fields (available for both assignments and non-assignments via renderCellContent for non-assignments)
+      case "empty_pickup_from":
+        return <TableCell key={columnId} className="text-sm text-gray-700">{formatDate((booking.data as any)?.liner_booking_details?.[0]?.empty_pickup_validity_from) || "N/A"}</TableCell>
+      case "empty_pickup_till":
+        return <TableCell key={columnId} className="text-sm text-gray-700">{formatDate((booking.data as any)?.liner_booking_details?.[0]?.empty_pickup_validity_till) || "N/A"}</TableCell>
+      case "gate_opening_date":
+        return <TableCell key={columnId} className="text-sm text-gray-700">{formatDate((booking.data as any)?.liner_booking_details?.[0]?.estimate_gate_opening_date) || "N/A"}</TableCell>
+      case "gate_cutoff_date":
+        return <TableCell key={columnId} className="text-sm text-gray-700">{formatDate((booking.data as any)?.liner_booking_details?.[0]?.estimated_gate_cutoff_date) || "N/A"}</TableCell>
+      case "si_cutoff_date":
+        return <TableCell key={columnId} className="text-sm text-gray-700">{formatDate((booking.data as any)?.liner_booking_details?.[0]?.s_i_cut_off_date) || "N/A"}</TableCell>
+      case "booking_received_date":
+        return <TableCell key={columnId} className="text-sm text-gray-700">{formatDate((booking.data as any)?.liner_booking_details?.[0]?.booking_received_from_carrier_on) || "N/A"}</TableCell>
+      case "additional_remarks":
+        return <TableCell key={columnId} className="text-sm text-gray-700 max-w-xs"><span className="truncate block">{(booking.data as any)?.liner_booking_details?.[0]?.additional_remarks || "N/A"}</span></TableCell>
       default:
         return <TableCell key={columnId}>N/A</TableCell>
     }
@@ -1541,6 +1694,20 @@ export default function LinerBookings() {
         return booking.user.name
       case "updated_date":
         return formatDateTime(booking.updatedAt)
+      case "empty_pickup_from":
+        return formatDate(booking.data?.liner_booking_details?.[0]?.empty_pickup_validity_from)
+      case "empty_pickup_till":
+        return formatDate(booking.data?.liner_booking_details?.[0]?.empty_pickup_validity_till)
+      case "gate_opening_date":
+        return formatDate(booking.data?.liner_booking_details?.[0]?.estimate_gate_opening_date)
+      case "gate_cutoff_date":
+        return formatDate(booking.data?.liner_booking_details?.[0]?.estimated_gate_cutoff_date)
+      case "si_cutoff_date":
+        return formatDate(booking.data?.liner_booking_details?.[0]?.s_i_cut_off_date)
+      case "booking_received_date":
+        return formatDate(booking.data?.liner_booking_details?.[0]?.booking_received_from_carrier_on)
+      case "additional_remarks":
+        return booking.data?.liner_booking_details?.[0]?.additional_remarks || "N/A"
       default:
         return "N/A"
     }
