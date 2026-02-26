@@ -917,7 +917,7 @@ export default function ShipmentPlans() {
   // Define base columns available to all users
   const baseColumns = [
     { id: "checkbox", label: "Select", defaultVisible: true, locked: true },
-    { id: "reference_number", label: "Reference No.", defaultVisible: true },
+    { id: "reference_number", label: "Reference No.", defaultVisible: true, locked: true },
     { id: "business_branch", label: "Business Branch", defaultVisible: true },
     { id: "shipment_type", label: "Type", defaultVisible: true },
     { id: "customer", label: "Customer", defaultVisible: true },
@@ -1208,7 +1208,7 @@ export default function ShipmentPlans() {
     switch (columnId) {
       case "checkbox":
         return (
-          <TableCell key={columnId} className="pl-6">
+          <TableCell key={columnId} className="pl-6 sticky left-0 z-20 bg-white">
             <div onClick={(event) => event.stopPropagation()}>
               <Checkbox
                 checked={selectedIds.includes(plan.id)}
@@ -1219,10 +1219,16 @@ export default function ShipmentPlans() {
         );
       case "reference_number":
         return (
-          <TableCell key={columnId} className="font-semibold text-gray-900">
+          <TableCell key={columnId} className="font-semibold text-gray-900 sticky left-12 z-20 bg-white shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)]">
             <div className="flex items-center space-x-2">
               <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
-              <span>{plan.data.reference_number || "N/A"}</span>
+              <Link
+                to={`/shipment-plans/${plan.id}/edit`}
+                onClick={(e) => e.stopPropagation()}
+                className="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+              >
+                {plan.data.reference_number || "N/A"}
+              </Link>
             </div>
           </TableCell>
         );
@@ -1593,7 +1599,7 @@ export default function ShipmentPlans() {
 
                     if (columnId === "checkbox") {
                       return (
-                        <TableHead key={columnId} className="w-12 pl-6">
+                        <TableHead key={columnId} className="w-12 pl-6 sticky left-0 z-30 bg-slate-50">
                           <Checkbox
                             checked={
                               selectedIds.length === shipmentPlans.length &&
@@ -1601,6 +1607,17 @@ export default function ShipmentPlans() {
                             }
                             onChange={(e) => handleSelectAll(e.target.checked)}
                           />
+                        </TableHead>
+                      );
+                    }
+
+                    if (columnId === "reference_number") {
+                      return (
+                        <TableHead
+                          key={columnId}
+                          className="font-semibold text-gray-900 text-sm sticky left-12 z-30 bg-slate-50 shadow-[2px_0_5px_-1px_rgba(0,0,0,0.1)]"
+                        >
+                          {column.label}
                         </TableHead>
                       );
                     }
@@ -1662,8 +1679,7 @@ export default function ShipmentPlans() {
                   shipmentPlans.map((plan: any, index: number) => (
                     <TableRow
                       key={plan.id}
-                      onClick={(event) => handleRowClick(plan.id, event)}
-                      className={`hover:bg-blue-50/50 hover:shadow-sm hover:border-l-4 hover:border-l-blue-500 transition-all duration-200 cursor-pointer ${
+                      className={`transition-all duration-200 ${
                         index % 2 === 0 ? "bg-white" : "bg-gray-50/30"
                       }`}
                     >

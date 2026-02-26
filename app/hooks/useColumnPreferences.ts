@@ -67,12 +67,9 @@ export function useColumnPreferences({ storageKey, columns }: UseColumnPreferenc
           }
         });
         
-        // Ensure locked columns are included
-        lockedColumns.forEach(id => {
-          if (!orderedColumns.includes(id)) {
-            orderedColumns.unshift(id); // Add locked columns at the beginning
-          }
-        });
+        // Ensure locked columns are always at the front in their definition order
+        const nonLockedOrdered = orderedColumns.filter(id => !lockedColumns.includes(id));
+        orderedColumns = [...lockedColumns, ...nonLockedOrdered];
         
         if (orderedColumns.length > 0) {
           setVisibleColumns(orderedColumns);

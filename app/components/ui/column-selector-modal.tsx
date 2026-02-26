@@ -154,7 +154,7 @@ export function ColumnSelectorModal({
                 <ul className="text-sm text-blue-700 space-y-1 ml-6">
                   <li>• Check/uncheck boxes to show/hide columns</li>
                   <li>• Drag visible columns (blue background) to reorder</li>
-                  <li>• Fixed columns (like Select/Actions) cannot be hidden</li>
+                  <li>• Fixed columns (like Select and Reference No.) cannot be hidden or reordered</li>
                 </ul>
               </div>
             </div>

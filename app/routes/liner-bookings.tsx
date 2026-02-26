@@ -797,7 +797,7 @@ export default function LinerBookings() {
   // Column definitions for the table - different for assignments vs bookings
   const baseAssignmentColumns = [
     { id: "checkbox", label: "Select", defaultVisible: true, locked: true },
-    { id: "reference_number", label: "Reference No.", defaultVisible: true },
+    { id: "reference_number", label: "Reference No.", defaultVisible: true, locked: true },
     { id: "customer", label: "Customer", defaultVisible: true },
     { id: "business_branch", label: "Business Branch", defaultVisible: true },
     { id: "loading_port", label: "Loading Port", defaultVisible: true },
@@ -1074,7 +1074,7 @@ export default function LinerBookings() {
     switch (columnId) {
       case "checkbox":
         return (
-          <TableCell key={columnId} className="pl-6">
+          <TableCell key={columnId} className="pl-6 sticky left-0 z-20 bg-white">
             <div onClick={(event) => event.stopPropagation()}>
               <Checkbox
                 checked={selectedBookings.includes(booking.id)}
@@ -1089,11 +1089,32 @@ export default function LinerBookings() {
               ? (booking.data as any)?._originalShipmentPlan?.reference_number
               : booking.shipmentPlan?.data?.reference_number)
           : booking.data?.reference_number || booking.shipmentPlan?.data?.reference_number
+        const handleRefClick = (e: React.MouseEvent) => {
+          e.stopPropagation();
+          if (isViewOnly || isOrphaned) return;
+          const originalId =
+            typeof booking.id === "string" && booking.id.includes("#")
+              ? (rows.find((r: any) => r.id === booking.id)?.__originalId ?? booking.id.split("#")[0])
+              : booking.id;
+          const dest = isAssignments
+            ? `/liner-bookings/${originalId}/edit?assignmentId=${originalId}`
+            : `/liner-bookings/${originalId}/edit`;
+          navigate(dest);
+        };
         return (
-          <TableCell key={columnId} className={`font-semibold ${isOrphaned ? 'text-gray-600' : 'text-gray-900'}`}>
+          <TableCell key={columnId} className={`font-semibold sticky left-12 z-20 bg-white shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)] ${isOrphaned ? 'text-gray-600' : 'text-gray-900'}`}>
             <div className="flex items-center space-x-2">
               <span className={`w-2 h-2 rounded-full ${isOrphaned ? 'bg-gray-400' : 'bg-green-500'}`}></span>
-              <span>{referenceNumber || "N/A"}</span>
+              {!isOrphaned && !isViewOnly ? (
+                <span
+                  onClick={handleRefClick}
+                  className="text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                >
+                  {referenceNumber || "N/A"}
+                </span>
+              ) : (
+                <span>{referenceNumber || "N/A"}</span>
+              )}
               {isOrphaned && (
                 <div className="flex items-center space-x-1">
                   <div 
@@ -1731,7 +1752,7 @@ export default function LinerBookings() {
 
                       if (columnId === "checkbox") {
                         return (
-                          <TableHead key={columnId} className="w-12 pl-6">
+                          <TableHead key={columnId} className="w-12 pl-6 sticky left-0 z-30 bg-slate-50">
                             <div onClick={(event) => event.stopPropagation()}>
                               <Checkbox
                                 checked={selectedBookings.length === rows.length && rows.length > 0}
@@ -1815,6 +1836,14 @@ export default function LinerBookings() {
                         }
                       }
 
+                      if (columnId === "reference_number") {
+                        return (
+                          <TableHead key={columnId} className={`font-semibold text-gray-900 text-sm sticky left-12 z-30 bg-slate-50 shadow-[2px_0_5px_-1px_rgba(0,0,0,0.1)] ${getColumnWidth(columnId)}`}>
+                            {column.label}
+                          </TableHead>
+                        )
+                      }
+
                       return (
                         <TableHead key={columnId} className={`font-semibold text-gray-900 text-sm ${getColumnWidth(columnId)}`}>
                           {column.label}
@@ -1834,13 +1863,8 @@ export default function LinerBookings() {
                         key={booking.id}
                         className={`
                           transition-colors duration-150
-                          ${isOrphaned 
-                            ? 'opacity-60 bg-gray-100/70 hover:bg-gray-150/70' 
-                            : 'hover:bg-gray-50 cursor-pointer'
-                          }
-                          ${isViewOnly ? 'cursor-not-allowed' : ''}
+                          ${isOrphaned ? 'opacity-60 bg-gray-100/70' : ''}
                         `}
-                        onClick={(event) => !isViewOnly ? handleRowClick(booking.id, event) : undefined}
                       >
                         {visibleColumns.map((columnId) => getColumnData(booking, columnId, isOrphaned, isViewOnly))}
                       </TableRow>
