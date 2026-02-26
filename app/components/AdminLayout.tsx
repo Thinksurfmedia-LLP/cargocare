@@ -283,7 +283,7 @@ export function AdminLayout({ user, children }: AdminLayoutProps) {
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col overflow-y-auto bg-gradient-to-b from-[#fffdf3] via-[#fff7d6] to-[#ffeeb8]">{children}</div>
+      <div className="flex-1 flex flex-col overflow-hidden bg-gradient-to-b from-[#fffdf3] via-[#fff7d6] to-[#ffeeb8]">{children}</div>
     </div>
   )
 }

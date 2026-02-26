@@ -1595,9 +1595,9 @@ export default function LinerBookings() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-auto p-6 bg-gray-50">
+      <div className="flex-1 overflow-hidden p-6 bg-gray-50 flex flex-col">
         {/* Search Bar */}
-        <div className="mb-6">
+        <div className="mb-4 shrink-0">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <div className="flex flex-col lg:flex-row gap-6 items-start lg:items-center justify-between">
               <div className="flex-1 max-w-2xl">
@@ -1658,17 +1658,17 @@ export default function LinerBookings() {
 
         {/* Success/Error Messages */}
         {actionData?.success && (
-          <div className="mb-6 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">
+          <div className="mb-4 shrink-0 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">
             {actionData.success}
           </div>
         )}
         {actionData?.error && (
-          <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">{actionData.error}</div>
+          <div className="mb-4 shrink-0 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">{actionData.error}</div>
         )}
 
         {/* Enhanced Table */}
-        <div key={`${tab}-${isAssignments}`} className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
+        <div key={`${tab}-${isAssignments}`} className="bg-white rounded-xl shadow-lg border border-gray-200 flex flex-col flex-1 min-h-0">
+          <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white shrink-0">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
                 <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-4">
@@ -1715,6 +1715,7 @@ export default function LinerBookings() {
             </div>
           </div>
 
+          <div className="flex-1 overflow-auto min-h-0">
           {isLoading ? (
             <div className="p-12 text-center">
               <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4 animate-spin">
@@ -1742,9 +1743,8 @@ export default function LinerBookings() {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
               <Table>
-                <TableHeader className="bg-gradient-to-r from-slate-50 to-white">
+                <TableHeader className="bg-gradient-to-r from-slate-50 to-white sticky top-0 z-10">
                   <TableRow className="border-gray-200">
                     {visibleColumns.map((columnId) => {
                       const column = availableColumns.find((col) => col.id === columnId)
@@ -1872,12 +1872,12 @@ export default function LinerBookings() {
                   })}
                 </TableBody>
               </Table>
-            </div>
           )}
+          </div>
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">
+            <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 shrink-0">
               <div className="flex items-center justify-between">
                 <div className="text-sm text-gray-700">
                   Showing {(currentPage - 1) * 10 + 1} to {Math.min(currentPage * 10, totalCount)} of {totalCount}{" "}

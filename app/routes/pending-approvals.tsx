@@ -453,7 +453,7 @@ export default function PendingApprovals() {
 
   return (
     <AdminLayout user={user}>
-      <div className="min-h-full">
+      <div className="flex-1 overflow-auto">
         {/* Page Header */}
         <div className="bg-white border-b border-gray-200">
           <div className="px-6 py-6 flex items-center justify-between">
