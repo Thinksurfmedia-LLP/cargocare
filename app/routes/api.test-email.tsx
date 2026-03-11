@@ -42,9 +42,15 @@ export async function action({ request }: ActionFunctionArgs) {
         return json({ error: "No active MD users found" }, { status: 400 });
       }
 
+      const adminUsersForTest = await prisma.user.findMany({
+        where: { role: { name: "ADMIN" }, isActive: true },
+        select: { email: true },
+      });
+      const allRecipientEmails = [...new Set([...mdEmails, ...adminUsersForTest.map((u: any) => u.email)])];
+
       const baseUrl = process.env.BASE_URL || "http://localhost:3000";
 
-      const success = await emailService.sendNewApprovalNotification(mdEmails, {
+      const success = await emailService.sendNewApprovalNotification(allRecipientEmails, {
         referenceNumber: "TEST-001",
         customer: "Test Customer Ltd",
         businessBranch: "Mumbai Branch",
@@ -63,9 +69,9 @@ export async function action({ request }: ActionFunctionArgs) {
       return json({
         success,
         message: success
-          ? `Test new approval notification sent to ${mdEmails.length} MD(s)`
+          ? `Test new approval notification sent to ${allRecipientEmails.length} recipient(s)`
           : "Failed to send test email",
-        recipients: mdEmails,
+        recipients: allRecipientEmails,
       });
     }
 
@@ -84,6 +90,12 @@ export async function action({ request }: ActionFunctionArgs) {
       if (mdEmails.length === 0) {
         return json({ error: "No active MD users found" }, { status: 400 });
       }
+
+      const adminUsersForReminderTest = await prisma.user.findMany({
+        where: { role: { name: "ADMIN" }, isActive: true },
+        select: { email: true },
+      });
+      const allReminderEmails = [...new Set([...mdEmails, ...adminUsersForReminderTest.map((u: any) => u.email)])];
 
       const testShipments = [
         {
@@ -113,7 +125,7 @@ export async function action({ request }: ActionFunctionArgs) {
       const baseUrl = process.env.BASE_URL || "http://localhost:3000";
 
       const success = await emailService.sendDailyReminderNotification(
-        mdEmails,
+        allReminderEmails,
         testShipments.length,
         testShipments,
         `${baseUrl}/pending-approvals`
@@ -122,9 +134,9 @@ export async function action({ request }: ActionFunctionArgs) {
       return json({
         success,
         message: success
-          ? `Test daily reminder sent to ${mdEmails.length} MD(s)`
+          ? `Test daily reminder sent to ${allReminderEmails.length} recipient(s)`
           : "Failed to send test email",
-        recipients: mdEmails,
+        recipients: allReminderEmails,
       });
     }
 

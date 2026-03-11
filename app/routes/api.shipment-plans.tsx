@@ -275,6 +275,11 @@ export async function action({ request }: ActionFunctionArgs) {
           });
 
           const mdEmails = mdUsers.map((user: any) => user.email);
+          const adminUsers = await prisma.user.findMany({
+            where: { role: { name: "ADMIN" }, isActive: true },
+            select: { email: true },
+          });
+          const allRecipientEmails = [...new Set([...mdEmails, ...adminUsers.map((u: any) => u.email)])];
           console.log("📋 Found MD users:", mdUsers.length, "emails:", mdEmails);
 
           if (mdEmails.length > 0) {
@@ -318,9 +323,9 @@ export async function action({ request }: ActionFunctionArgs) {
 
             console.log("📧 Email Data:", emailData);
 
-            await emailService.sendNewApprovalNotification(mdEmails, emailData);
+            await emailService.sendNewApprovalNotification(allRecipientEmails, emailData);
 
-            console.log(`✅ New approval notification sent to ${mdEmails.length} MD(s) for shipment plan ${shipmentPlan.id}`);
+            console.log(`✅ New approval notification sent to ${allRecipientEmails.length} recipient(s) for shipment plan ${shipmentPlan.id}`);
           } else {
             console.log("⚠️  No MD users found - email not sent");
           }

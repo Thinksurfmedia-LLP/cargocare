@@ -1520,6 +1520,17 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
           const containerMovement = shipmentData.container_movement || {};
 
+          // Add admin emails
+          const adminUsersForApproval = await prisma.user.findMany({
+            where: { role: { name: "ADMIN" }, isActive: true },
+            select: { email: true },
+          });
+          for (const adminUser of adminUsersForApproval) {
+            if (adminUser.email && !recipientEmails.includes(adminUser.email)) {
+              recipientEmails.push(adminUser.email);
+            }
+          }
+
           await emailService.sendShipmentApprovedNotification(recipientEmails, {
             referenceNumber: shipmentData.reference_number || "N/A",
             customer: containerMovement.customer || "N/A",
@@ -1576,6 +1587,17 @@ export async function action({ request, params }: ActionFunctionArgs) {
           const containerMovement = shipmentData.container_movement || {};
           const rejectionComment = (formData.get("rejection_comment") as string) || "";
 
+          // Add admin emails
+          const adminUsersForRejection = await prisma.user.findMany({
+            where: { role: { name: "ADMIN" }, isActive: true },
+            select: { email: true },
+          });
+          for (const adminUser of adminUsersForRejection) {
+            if (adminUser.email && !recipientEmails.includes(adminUser.email)) {
+              recipientEmails.push(adminUser.email);
+            }
+          }
+
           await emailService.sendShipmentRejectedNotification(recipientEmails, {
             referenceNumber: shipmentData.reference_number || "N/A",
             customer: containerMovement.customer || "N/A",
@@ -1623,6 +1645,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
           });
 
           const mdEmails = mdUsers.map((u: any) => u.email);
+          const adminUsersForDraft = await prisma.user.findMany({
+            where: { role: { name: "ADMIN" }, isActive: true },
+            select: { email: true },
+          });
+          const allRecipientEmails = [...new Set([...mdEmails, ...adminUsersForDraft.map((u: any) => u.email)])];
           console.log("📋 Found MD users:", mdUsers.length, "emails:", mdEmails);
 
           if (mdEmails.length > 0) {
@@ -1661,7 +1688,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
               .filter((name: string) => name && name.trim() !== '')
               .join(', ') || 'N/A';
 
-            await emailService.sendNewApprovalNotification(mdEmails, {
+            await emailService.sendNewApprovalNotification(allRecipientEmails, {
               referenceNumber: shipmentData.reference_number || "N/A",
               customer: containerMovement.customer || "N/A",
               businessBranch: shipmentData.bussiness_branch || "N/A",
@@ -1677,7 +1704,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
               shipperNames: shipperNames,
             });
 
-            console.log(`✅ Draft submission notification sent to ${mdEmails.length} MD(s) for shipment plan ${planId}`);
+            console.log(`✅ Draft submission notification sent to ${allRecipientEmails.length} recipient(s) for shipment plan ${planId}`);
           } else {
             console.log("⚠️  No MD users found - email not sent");
           }

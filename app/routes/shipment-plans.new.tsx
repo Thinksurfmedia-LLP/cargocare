@@ -414,6 +414,11 @@ export async function action({ request }: ActionFunctionArgs) {
           });
 
           const mdEmails = mdUsers.map((user: any) => user.email);
+          const adminUsers = await prisma.user.findMany({
+            where: { role: { name: "ADMIN" }, isActive: true },
+            select: { email: true },
+          });
+          const allRecipientEmails = [...new Set([...mdEmails, ...adminUsers.map((u: any) => u.email)])];
           console.log("📋 Found MD users:", mdUsers.length, "emails:", mdEmails);
 
           if (mdEmails.length > 0) {
@@ -451,7 +456,7 @@ export async function action({ request }: ActionFunctionArgs) {
               .filter((name: string) => name && name.trim() !== '')
               .join(', ') || 'N/A';
 
-            await emailService.sendNewApprovalNotification(mdEmails, {
+            await emailService.sendNewApprovalNotification(allRecipientEmails, {
               referenceNumber: shipmentData.reference_number || "N/A",
               customer: containerMovement.customer || "N/A",
               businessBranch: shipmentData.bussiness_branch || "N/A",
@@ -467,9 +472,7 @@ export async function action({ request }: ActionFunctionArgs) {
               shipperNames: shipperNames,
             });
 
-            console.log(`✅ New approval notification sent to ${mdEmails.length} MD(s) for shipment plan ${shipmentPlan.id}`);
-          } else {
-            console.log("⚠️  No MD users found - email not sent");
+            console.log(`✅ New approval notification sent to ${allRecipientEmails.length} recipient(s) for shipment plan ${shipmentPlan.id}`);
           }
         } catch (emailError) {
           console.error("❌ Failed to send new approval notification:", emailError);

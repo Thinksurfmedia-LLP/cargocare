@@ -269,6 +269,17 @@ export async function action({ request }: ActionFunctionArgs) {
 
         const containerMovement = planData.container_movement || {};
 
+        // Add admin emails
+        const adminUsersForApproval = await prisma.user.findMany({
+          where: { role: { name: "ADMIN" }, isActive: true },
+          select: { email: true },
+        });
+        for (const adminUser of adminUsersForApproval) {
+          if (adminUser.email && !recipientEmails.includes(adminUser.email)) {
+            recipientEmails.push(adminUser.email);
+          }
+        }
+
         await emailService.sendShipmentApprovedNotification(recipientEmails, {
           referenceNumber: planData.reference_number || "N/A",
           customer: containerMovement.customer || "N/A",
@@ -348,6 +359,17 @@ export async function action({ request }: ActionFunctionArgs) {
         // Add shipment plan creator (owner) email
         if (existingPlan.user?.email && !recipientEmails.includes(existingPlan.user.email)) {
           recipientEmails.push(existingPlan.user.email);
+        }
+
+        // Add admin emails
+        const adminUsersForRejection = await prisma.user.findMany({
+          where: { role: { name: "ADMIN" }, isActive: true },
+          select: { email: true },
+        });
+        for (const adminUser of adminUsersForRejection) {
+          if (adminUser.email && !recipientEmails.includes(adminUser.email)) {
+            recipientEmails.push(adminUser.email);
+          }
         }
 
         // Format equipment

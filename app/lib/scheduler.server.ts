@@ -69,6 +69,12 @@ class SchedulerService {
 
       const mdEmails = mdUsers.map((user: any) => user.email);
 
+      const adminUsers = await prisma.user.findMany({
+        where: { role: { name: "ADMIN" }, isActive: true },
+        select: { email: true },
+      });
+      const allRecipientEmails = [...new Set([...mdEmails, ...adminUsers.map((u: any) => u.email)])];
+
       if (mdEmails.length === 0) {
         console.log('No active MD users found - skipping daily reminder');
         return;
@@ -110,14 +116,14 @@ class SchedulerService {
 
       // Send reminder email
       const success = await emailService.sendDailyReminderNotification(
-        mdEmails,
+        allRecipientEmails,
         pendingApprovals.length,
         shipments,
         `${baseUrl}/pending-approvals`
       );
 
       if (success) {
-        console.log(`Daily reminder sent successfully to ${mdEmails.length} MD(s) for ${pendingApprovals.length} pending approval(s)`);
+        console.log(`Daily reminder sent successfully to ${allRecipientEmails.length} recipient(s) for ${pendingApprovals.length} pending approval(s)`);
       } else {
         console.error('Failed to send daily reminder email');
       }
