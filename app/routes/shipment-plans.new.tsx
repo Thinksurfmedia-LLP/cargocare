@@ -419,9 +419,9 @@ export async function action({ request }: ActionFunctionArgs) {
             select: { email: true },
           });
           const allRecipientEmails = [...new Set([...mdEmails, ...adminUsers.map((u: any) => u.email)])];
-          console.log("📋 Found MD users:", mdUsers.length, "emails:", mdEmails);
+          console.log("📋 Found MD users:", mdUsers.length, "Admin users:", adminUsers.length, "All recipients:", allRecipientEmails);
 
-          if (mdEmails.length > 0) {
+          if (allRecipientEmails.length > 0) {
             const baseUrl = process.env.BASE_URL || "http://localhost:5173";
 
             const containerMovement = shipmentData.container_movement || {};

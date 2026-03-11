@@ -280,9 +280,9 @@ export async function action({ request }: ActionFunctionArgs) {
             select: { email: true },
           });
           const allRecipientEmails = [...new Set([...mdEmails, ...adminUsers.map((u: any) => u.email)])];
-          console.log("📋 Found MD users:", mdUsers.length, "emails:", mdEmails);
+          console.log("📋 Found MD users:", mdUsers.length, "Admin users:", adminUsers.length, "All recipients:", allRecipientEmails);
 
-          if (mdEmails.length > 0) {
+          if (allRecipientEmails.length > 0) {
             const baseUrl = process.env.BASE_URL || "http://localhost:5173";
 
             console.log("📦 DEBUG - Data keys:", Object.keys(data));
@@ -327,7 +327,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
             console.log(`✅ New approval notification sent to ${allRecipientEmails.length} recipient(s) for shipment plan ${shipmentPlan.id}`);
           } else {
-            console.log("⚠️  No MD users found - email not sent");
+            console.log("⚠️  No MD or ADMIN users found - email not sent");
           }
         } catch (emailError) {
           console.error("❌ Failed to send new approval notification:", emailError);

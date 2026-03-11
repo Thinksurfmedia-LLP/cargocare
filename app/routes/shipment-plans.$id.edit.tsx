@@ -1650,9 +1650,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
             select: { email: true },
           });
           const allRecipientEmails = [...new Set([...mdEmails, ...adminUsersForDraft.map((u: any) => u.email)])];
-          console.log("📋 Found MD users:", mdUsers.length, "emails:", mdEmails);
+          console.log("📋 Found MD users:", mdUsers.length, "Admin users:", adminUsersForDraft.length, "All recipients:", allRecipientEmails);
 
-          if (mdEmails.length > 0) {
+          if (allRecipientEmails.length > 0) {
             const baseUrl = process.env.BASE_URL || "http://localhost:5173";
 
             const containerMovement = shipmentData.container_movement || {};
@@ -1706,7 +1706,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
             console.log(`✅ Draft submission notification sent to ${allRecipientEmails.length} recipient(s) for shipment plan ${planId}`);
           } else {
-            console.log("⚠️  No MD users found - email not sent");
+            console.log("⚠️  No MD or ADMIN users found - email not sent");
           }
         } catch (emailError) {
           console.error("❌ Failed to send draft submission notification:", emailError);
