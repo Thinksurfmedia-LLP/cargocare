@@ -1046,20 +1046,20 @@ export default function ShipmentPlans() {
     // Determine current milestone status
     if (loadedCompleted === totalEquipments) {
       return "Loaded on Vessel";
-    } else if (gateInCompleted === totalEquipments) {
-      return "Gate In Completed";
     } else if (stuffingCompleted === totalEquipments) {
       return "Container Stuffing Completed";
+    } else if (gateInCompleted === totalEquipments) {
+      return "Gate In Completed";
     } else if (emptyPickupCompleted === totalEquipments) {
       return "Empty Container Picked Up";
-    } else if (emptyPickupCompleted > 0) {
-      return `Empty Pickup: ${emptyPickupCompleted}/${totalEquipments}`;
+    } else if (loadedCompleted > 0) {
+      return `Loaded: ${loadedCompleted}/${totalEquipments}`;
     } else if (stuffingCompleted > 0) {
       return `Stuffing: ${stuffingCompleted}/${totalEquipments}`;
     } else if (gateInCompleted > 0) {
       return `Gate In: ${gateInCompleted}/${totalEquipments}`;
-    } else if (loadedCompleted > 0) {
-      return `Loaded: ${loadedCompleted}/${totalEquipments}`;
+    } else if (emptyPickupCompleted > 0) {
+      return `Empty Pickup: ${emptyPickupCompleted}/${totalEquipments}`;
     } else {
       return "Pending";
     }

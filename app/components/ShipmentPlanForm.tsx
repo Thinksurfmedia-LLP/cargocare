@@ -656,10 +656,10 @@ export function ShipmentPlanForm({
     let newStatus = "Pending";
     if (equipment.loadedStatus) {
       newStatus = "Loaded on Board";
-    } else if (equipment.gateInStatus) {
-      newStatus = "Gated In";
     } else if (equipment.stuffingStatus) {
       newStatus = "Stuffing Completed";
+    } else if (equipment.gateInStatus) {
+      newStatus = "Gated In";
     } else if (equipment.emptyPickupStatus) {
       newStatus = "Empty Picked Up";
     }
@@ -3047,54 +3047,6 @@ export function ShipmentPlanForm({
                                               )}
                                             </div>
 
-                                            {/* Stuffing Status */}
-                                            <div className="space-y-2">
-                                              <div className="flex items-center space-x-2">
-                                                <Checkbox
-                                                  id={`stuffing_status_${index}`}
-                                                  checked={
-                                                    equipment.stuffingStatus
-                                                  }
-                                                  disabled={
-                                                    !equipment.emptyPickupStatus || !equipment.emptyPickupDate || !equipment.container_number
-                                                  }
-                                                  onChange={(e) =>
-                                                    updateEquipmentStatus(
-                                                      index,
-                                                      "stuffingStatus",
-                                                      e.target.checked
-                                                    )
-                                                  }
-                                                />
-                                                <Label
-                                                  htmlFor={`stuffing_status_${index}`}
-                                                  className={`text-sm ${
-                                                    !equipment.emptyPickupStatus || !equipment.emptyPickupDate || !equipment.container_number
-                                                      ? "text-gray-400"
-                                                      : ""
-                                                  }`}
-                                                >
-                                                  Stuffing Completed
-                                                </Label>
-                                              </div>
-                                              {equipment.stuffingStatus && (
-                                                <Input
-                                                  type="date"
-                                                  name={`equipment_details[${index}][stuffingDate]`}
-                                                  value={equipment.stuffingDate}
-                                                  onChange={(e) =>
-                                                    updateEquipmentStatus(
-                                                      index,
-                                                      "stuffingDate",
-                                                      e.target.value
-                                                    )
-                                                  }
-                                                  className="text-sm"
-                                                  placeholder="Stuffing date"
-                                                />
-                                              )}
-                                            </div>
-
                                             {/* Gate In Status */}
                                             <div className="space-y-2">
                                               <div className="flex items-center space-x-2">
@@ -3104,7 +3056,7 @@ export function ShipmentPlanForm({
                                                     equipment.gateInStatus
                                                   }
                                                   disabled={
-                                                    !equipment.container_number || !equipment.stuffingStatus || !equipment.stuffingDate
+                                                    !equipment.emptyPickupStatus || !equipment.emptyPickupDate || !equipment.container_number
                                                   }
                                                   onChange={(e) =>
                                                     updateEquipmentStatus(
@@ -3117,7 +3069,7 @@ export function ShipmentPlanForm({
                                                 <Label
                                                   htmlFor={`gate_in_status_${index}`}
                                                   className={`text-sm ${
-                                                    !equipment.container_number || !equipment.stuffingStatus || !equipment.stuffingDate
+                                                    !equipment.emptyPickupStatus || !equipment.emptyPickupDate || !equipment.container_number
                                                       ? "text-gray-400"
                                                       : ""
                                                   }`}
@@ -3143,6 +3095,54 @@ export function ShipmentPlanForm({
                                               )}
                                             </div>
 
+                                            {/* Stuffing Status */}
+                                            <div className="space-y-2">
+                                              <div className="flex items-center space-x-2">
+                                                <Checkbox
+                                                  id={`stuffing_status_${index}`}
+                                                  checked={
+                                                    equipment.stuffingStatus
+                                                  }
+                                                  disabled={
+                                                    !equipment.container_number || !equipment.gateInStatus || !equipment.gateInDate
+                                                  }
+                                                  onChange={(e) =>
+                                                    updateEquipmentStatus(
+                                                      index,
+                                                      "stuffingStatus",
+                                                      e.target.checked
+                                                    )
+                                                  }
+                                                />
+                                                <Label
+                                                  htmlFor={`stuffing_status_${index}`}
+                                                  className={`text-sm ${
+                                                    !equipment.container_number || !equipment.gateInStatus || !equipment.gateInDate
+                                                      ? "text-gray-400"
+                                                      : ""
+                                                  }`}
+                                                >
+                                                  Stuffing Completed
+                                                </Label>
+                                              </div>
+                                              {equipment.stuffingStatus && (
+                                                <Input
+                                                  type="date"
+                                                  name={`equipment_details[${index}][stuffingDate]`}
+                                                  value={equipment.stuffingDate}
+                                                  onChange={(e) =>
+                                                    updateEquipmentStatus(
+                                                      index,
+                                                      "stuffingDate",
+                                                      e.target.value
+                                                    )
+                                                  }
+                                                  className="text-sm"
+                                                  placeholder="Stuffing date"
+                                                />
+                                              )}
+                                            </div>
+
                                             {/* Loaded Status */}
                                             <div className="space-y-2">
                                               <div className="flex items-center space-x-2">
@@ -3152,7 +3152,7 @@ export function ShipmentPlanForm({
                                                     equipment.loadedStatus
                                                   }
                                                   disabled={
-                                                    !equipment.container_number || !equipment.gateInStatus || !equipment.gateInDate
+                                                    !equipment.container_number || !equipment.stuffingStatus || !equipment.stuffingDate
                                                   }
                                                   onChange={(e) =>
                                                     updateEquipmentStatus(
@@ -3165,7 +3165,7 @@ export function ShipmentPlanForm({
                                                 <Label
                                                   htmlFor={`loaded_status_${index}`}
                                                   className={`text-sm ${
-                                                    !equipment.container_number || !equipment.gateInStatus || !equipment.gateInDate
+                                                    !equipment.container_number || !equipment.stuffingStatus || !equipment.stuffingDate
                                                       ? "text-gray-400"
                                                       : ""
                                                   }`}
