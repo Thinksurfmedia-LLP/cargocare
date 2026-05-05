@@ -190,11 +190,28 @@ export async function action({ request }: ActionFunctionArgs) {
             }, { status: 400 });
           }
 
-          // Update the equipment with the container number
+          // Get status fields from request body (if provided)
+          const statusFields = body.statusFields || {};
+
+          // Update the equipment with the container number and status fields
           const updatedEquipmentDetails = [...planData.equipment_details];
           updatedEquipmentDetails[equipmentIndex] = {
             ...equipment,
-            container_number: containerNumber
+            container_number: containerNumber,
+            // Update status fields if provided
+            ...(statusFields.status !== undefined && { status: statusFields.status }),
+            ...(statusFields.emptyPickupStatus !== undefined && { emptyPickupStatus: statusFields.emptyPickupStatus }),
+            ...(statusFields.stuffingStatus !== undefined && { stuffingStatus: statusFields.stuffingStatus }),
+            ...(statusFields.gateInStatus !== undefined && { gateInStatus: statusFields.gateInStatus }),
+            ...(statusFields.loadedStatus !== undefined && { loadedStatus: statusFields.loadedStatus }),
+            ...(statusFields.emptyPickupDate !== undefined && { emptyPickupDate: statusFields.emptyPickupDate }),
+            ...(statusFields.stuffingDate !== undefined && { stuffingDate: statusFields.stuffingDate }),
+            ...(statusFields.gateInDate !== undefined && { gateInDate: statusFields.gateInDate }),
+            ...(statusFields.loadedDate !== undefined && { loadedDate: statusFields.loadedDate }),
+            ...(statusFields.siFiledStatus !== undefined && { siFiledStatus: statusFields.siFiledStatus }),
+            ...(statusFields.siFiledDate !== undefined && { siFiledDate: statusFields.siFiledDate }),
+            ...(statusFields.isfensFiledStatus !== undefined && { isfensFiledStatus: statusFields.isfensFiledStatus }),
+            ...(statusFields.isfensFiledDate !== undefined && { isfensFiledDate: statusFields.isfensFiledDate }),
           };
 
           const updatedPlanData = {

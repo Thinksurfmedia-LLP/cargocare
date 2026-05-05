@@ -223,9 +223,14 @@ export function ShipmentPlanForm({
                 stuffingDate: equipment.stuffingDate || "",
                 gateInDate: equipment.gateInDate || "",
                 loadedDate: equipment.loadedDate || "",
+                siFiledStatus: equipment.siFiledStatus || false,
+                siFiledDate: equipment.siFiledDate || "",
+                isfensFiledStatus: equipment.isfensFiledStatus || false,
+                isfensFiledDate: equipment.isfensFiledDate || "",
                 hblNumber: equipment.hblNumber || "",
                 mblNumber: equipment.mblNumber || "",
                 vesselName: equipment.vesselName || "",
+                container_number: equipment.container_number || "",
               },
             ];
           }
@@ -2616,6 +2621,37 @@ export function ShipmentPlanForm({
                                         name={`equipment_details[${index}][status]`}
                                         value={equipment.status || "Pending"}
                                       />
+                                      {/* Hidden fields for status checkboxes - ensures values are always submitted */}
+                                      <input
+                                        type="hidden"
+                                        name={`equipment_details[${index}][emptyPickupStatus]`}
+                                        value={equipment.emptyPickupStatus ? "true" : "false"}
+                                      />
+                                      <input
+                                        type="hidden"
+                                        name={`equipment_details[${index}][stuffingStatus]`}
+                                        value={equipment.stuffingStatus ? "true" : "false"}
+                                      />
+                                      <input
+                                        type="hidden"
+                                        name={`equipment_details[${index}][gateInStatus]`}
+                                        value={equipment.gateInStatus ? "true" : "false"}
+                                      />
+                                      <input
+                                        type="hidden"
+                                        name={`equipment_details[${index}][loadedStatus]`}
+                                        value={equipment.loadedStatus ? "true" : "false"}
+                                      />
+                                      <input
+                                        type="hidden"
+                                        name={`equipment_details[${index}][siFiledStatus]`}
+                                        value={equipment.siFiledStatus ? "true" : "false"}
+                                      />
+                                      <input
+                                        type="hidden"
+                                        name={`equipment_details[${index}][isfensFiledStatus]`}
+                                        value={equipment.isfensFiledStatus ? "true" : "false"}
+                                      />
 
                                       {/* Equipment Details Grid */}
                                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2760,7 +2796,7 @@ export function ShipmentPlanForm({
                                                 button.innerHTML = '...';
                                                 
                                                 try {
-                                                  // Make API call to save container number
+                                                  // Make API call to save container number and status
                                                   const response = await fetch('/api/shipment-plans', {
                                                     method: 'POST',
                                                     headers: {
@@ -2772,6 +2808,22 @@ export function ShipmentPlanForm({
                                                       equipmentIndex: index,
                                                       trackingNumber: equipment.trackingNumber,
                                                       containerNumber: containerNumber,
+                                                      // Include all status fields
+                                                      statusFields: {
+                                                        status: equipment.status,
+                                                        emptyPickupStatus: equipment.emptyPickupStatus,
+                                                        stuffingStatus: equipment.stuffingStatus,
+                                                        gateInStatus: equipment.gateInStatus,
+                                                        loadedStatus: equipment.loadedStatus,
+                                                        emptyPickupDate: equipment.emptyPickupDate,
+                                                        stuffingDate: equipment.stuffingDate,
+                                                        gateInDate: equipment.gateInDate,
+                                                        loadedDate: equipment.loadedDate,
+                                                        siFiledStatus: equipment.siFiledStatus,
+                                                        siFiledDate: equipment.siFiledDate,
+                                                        isfensFiledStatus: equipment.isfensFiledStatus,
+                                                        isfensFiledDate: equipment.isfensFiledDate,
+                                                      },
                                                     }),
                                                   });
                                                   
@@ -2957,8 +3009,6 @@ export function ShipmentPlanForm({
                                               <div className="flex items-center space-x-2">
                                                 <Checkbox
                                                   id={`empty_pickup_status_${index}`}
-                                                  name={`equipment_details[${index}][emptyPickupStatus]`}
-                                                  value="true"
                                                   checked={
                                                     equipment.emptyPickupStatus
                                                   }
@@ -3002,8 +3052,6 @@ export function ShipmentPlanForm({
                                               <div className="flex items-center space-x-2">
                                                 <Checkbox
                                                   id={`stuffing_status_${index}`}
-                                                  name={`equipment_details[${index}][stuffingStatus]`}
-                                                  value="true"
                                                   checked={
                                                     equipment.stuffingStatus
                                                   }
@@ -3052,8 +3100,6 @@ export function ShipmentPlanForm({
                                               <div className="flex items-center space-x-2">
                                                 <Checkbox
                                                   id={`gate_in_status_${index}`}
-                                                  name={`equipment_details[${index}][gateInStatus]`}
-                                                  value="true"
                                                   checked={
                                                     equipment.gateInStatus
                                                   }
@@ -3102,8 +3148,6 @@ export function ShipmentPlanForm({
                                               <div className="flex items-center space-x-2">
                                                 <Checkbox
                                                   id={`loaded_status_${index}`}
-                                                  name={`equipment_details[${index}][loadedStatus]`}
-                                                  value="true"
                                                   checked={
                                                     equipment.loadedStatus
                                                   }
@@ -3152,8 +3196,6 @@ export function ShipmentPlanForm({
                                               <div className="flex items-center space-x-2">
                                                 <Checkbox
                                                   id={`si_filed_status_${index}`}
-                                                  name={`equipment_details[${index}][siFiledStatus]`}
-                                                  value="true"
                                                   checked={
                                                     equipment.siFiledStatus
                                                   }
@@ -3195,8 +3237,6 @@ export function ShipmentPlanForm({
                                               <div className="flex items-center space-x-2">
                                                 <Checkbox
                                                   id={`isfens_filed_status_${index}`}
-                                                  name={`equipment_details[${index}][isfensFiledStatus]`}
-                                                  value="true"
                                                   checked={
                                                     equipment.isfensFiledStatus
                                                   }
@@ -3450,7 +3490,7 @@ export function ShipmentPlanForm({
                                                       <div className="text-xs font-medium text-gray-600">
                                                         Liner Booking Number
                                                       </div>
-                                                      <div className="p-2 bg-white border border-gray-200 rounded text-xs text-gray-800 font-medium text-blue-700">
+                                                      <div className="p-2 bg-white border border-gray-200 rounded text-xs font-medium text-blue-700">
                                                         {matchingDetail.liner_booking_number}
                                                       </div>
                                                     </div>
