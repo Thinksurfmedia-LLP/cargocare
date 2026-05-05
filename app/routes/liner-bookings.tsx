@@ -547,6 +547,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
               select: { 
                 id: true, 
                 data: true, 
+                createdAt: true,
                 shipmentAssignmentId: true,
                 user: { select: { id: true, name: true, email: true } }
               } 
@@ -621,6 +622,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
             select: {
               id: true,
               data: true,
+              createdAt: true,
               linerBookingId: true,
             },
           },
@@ -1309,11 +1311,17 @@ export default function LinerBookings() {
           </TableCell>
         )
       case "created_date":
+        // For assignments, show the original shipment plan creation date
+        // For liner bookings, show the booking creation date
+        const createdDate = isAssignments && booking?.shipmentPlan?.createdAt
+          ? booking.shipmentPlan.createdAt
+          : booking.createdAt
+        
         return (
           <TableCell key={columnId} className="text-sm text-gray-500">
             <div className="flex items-center space-x-2">
               <span className="text-gray-400">📅</span>
-              <span>{formatDateTime(booking.createdAt)}</span>
+              <span>{formatDateTime(createdDate)}</span>
             </div>
           </TableCell>
         )

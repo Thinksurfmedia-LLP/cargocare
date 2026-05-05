@@ -10,3 +10,8 @@ uploads/
 
 .vercel
 nul
+
+# Environment variables
+.env
+.env.local
+.env.*.local
