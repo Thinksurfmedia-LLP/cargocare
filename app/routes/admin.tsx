@@ -205,6 +205,14 @@ export default function AdminPanel() {
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [showChangePasswordModal, setShowChangePasswordModal] = useState<string | null>(null);
   const [deleteConfirmModal, setDeleteConfirmModal] = useState<string | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const filteredUsers = users.filter((u: any) => 
+    u.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    u.role.name.replace(/_/g, ' ').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (u.businessBranch?.name?.toLowerCase() || "").includes(searchTerm.toLowerCase())
+  );
 
   // Close modals on successful action
   useEffect(() => {
@@ -316,9 +324,23 @@ export default function AdminPanel() {
                   Manage user accounts, roles, and activation status
                 </p>
               </div>
-              <Button onClick={() => setShowAddUserModal(true)} className="bg-green-600 hover:bg-green-700">
-                ➕ Add New User
-              </Button>
+              <div className="flex items-center gap-4">
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <span className="text-gray-400 text-sm">🔍</span>
+                  </div>
+                  <Input
+                    type="text"
+                    placeholder="Search users..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-64 pl-10 pr-4 py-1.5 h-9 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  />
+                </div>
+                <Button onClick={() => setShowAddUserModal(true)} className="bg-green-600 hover:bg-green-700 h-9">
+                  ➕ Add New User
+                </Button>
+              </div>
             </div>
           </div>
           <div className="overflow-x-scroll overflow-y-auto flex-1 min-h-0 custom-scrollbar pb-2">
@@ -356,7 +378,14 @@ export default function AdminPanel() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {users.map((userRecord: any) => (
+                  {filteredUsers.length === 0 ? (
+                    <tr>
+                      <td colSpan={user.role.name != "MD" ? 8 : 5} className="px-6 py-12 text-center text-gray-500">
+                        {searchTerm ? "No users found matching your search." : "No users found."}
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredUsers.map((userRecord: any) => (
                     <tr key={userRecord.id} className="hover:bg-gray-50 transition-colors duration-150 group">
                       <td className="px-6 py-4 whitespace-nowrap sticky left-0 z-20 bg-white group-hover:bg-gray-50 shadow-[2px_0_5px_-1px_rgba(0,0,0,0.1)] transition-colors duration-150">
                         <div>
@@ -493,7 +522,8 @@ export default function AdminPanel() {
                       )}
 
                     </tr>
-                  ))}
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
