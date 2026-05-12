@@ -1,5 +1,6 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction } from "react-router";
-import { Form, Link, redirect, useActionData, useNavigation } from "react-router";
+import { Form, Link, redirect, useActionData, useNavigation, useLoaderData } from "react-router";
+import { Turnstile } from "@marsidev/react-turnstile";
 import { getUser } from "~/lib/auth.server";
 import { prisma } from "~/lib/prisma.server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~/components/ui/card";
@@ -21,7 +22,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
   if (user) {
     return redirect("/dashboard");
   }
-  return null;
+  
+  // Provide a testing key by default if environment variable is missing
+  const turnstileSiteKey = process.env.TURNSTILE_SITE_KEY || "1x00000000000000000000AA";
+  
+  return { turnstileSiteKey };
 }
 
 export async function action({ request }: ActionFunctionArgs) {
@@ -32,6 +37,26 @@ export async function action({ request }: ActionFunctionArgs) {
     const name = formData.get("name") as string;
     const firstName = formData.get("firstName") as string;
     const lastName = formData.get("lastName") as string;
+
+    // CAPTCHA verification
+    const turnstileResponse = formData.get("cf-turnstile-response");
+    if (!turnstileResponse) {
+      return { error: "Please complete the CAPTCHA to verify you are human." };
+    }
+
+    const turnstileSecretKey = process.env.TURNSTILE_SECRET_KEY || "1x0000000000000000000000000000000AA";
+    const verifyResponse = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: `secret=${encodeURIComponent(turnstileSecretKey)}&response=${encodeURIComponent(turnstileResponse as string)}`,
+    });
+
+    const verifyData = await verifyResponse.json();
+    if (!verifyData.success) {
+      return { error: "CAPTCHA verification failed. Please try again." };
+    }
 
     if (!email || !password || !name) {
       return { error: "Email, password, and name are required" };
@@ -94,6 +119,7 @@ export async function action({ request }: ActionFunctionArgs) {
 export default function Signup() {
   const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
+  const loaderData = useLoaderData<typeof loader>();
   const isSubmitting = navigation.state === "submitting";
 
   if (actionData?.success) {
@@ -207,6 +233,10 @@ export default function Signup() {
                   {actionData.error}
                 </div>
               )}
+
+              <div className="flex justify-center my-4">
+                <Turnstile siteKey={loaderData?.turnstileSiteKey || "1x00000000000000000000AA"} />
+              </div>
 
               <Button 
                 type="submit" 

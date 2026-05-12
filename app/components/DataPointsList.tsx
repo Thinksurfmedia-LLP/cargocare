@@ -44,7 +44,7 @@ export function DataPointsList({ title, icon, description, basePath, items, user
     <AdminLayout user={user}>
       {/* Page Header */}
       <div className="bg-white border-b border-gray-200">
-        <div className="px-6 py-6">
+        <div className="px-6 py-3">
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-3">
               <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
@@ -67,9 +67,9 @@ export function DataPointsList({ title, icon, description, basePath, items, user
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-auto p-6 bg-gray-50">
+      <div className="flex-1 overflow-hidden flex flex-col bg-white">
         {actionData?.error && (
-          <div className="mb-6 bg-red-50 border-l-4 border-red-400 p-4 rounded-lg">
+          <div className="m-4 shrink-0 bg-red-50 border-l-4 border-red-400 p-4 rounded-lg">
             <div className="flex">
               <div className="flex-shrink-0">
                 <span className="text-red-400 text-xl">⚠️</span>
@@ -83,7 +83,7 @@ export function DataPointsList({ title, icon, description, basePath, items, user
         )}
 
         {actionData?.success && (
-          <div className="mb-6 bg-green-50 border-l-4 border-green-400 p-4 rounded-lg">
+          <div className="m-4 shrink-0 bg-green-50 border-l-4 border-green-400 p-4 rounded-lg">
             <div className="flex">
               <div className="flex-shrink-0">
                 <span className="text-green-400 text-xl">✅</span>
@@ -96,51 +96,43 @@ export function DataPointsList({ title, icon, description, basePath, items, user
           </div>
         )}
 
-        <div className="max-w-7xl mx-auto">
-          {/* Search and Filters */}
-          <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden mb-6">
-            <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-900">Search & Filter</h2>
-                  <p className="text-sm text-gray-600 mt-1">Find specific {title.toLowerCase()}</p>
-                </div>
-              </div>
-            </div>
-            
-            <div className="p-6">
-              <div className="flex items-center space-x-4">
-                <div className="flex-1">
-                  <Label htmlFor="search">Search {title}</Label>
+        {/* Unified Table Container */}
+        <div className="flex flex-col flex-1 min-h-0 overflow-hidden bg-white">
+          {/* Search Bar */}
+          <div className="p-3 border-b border-gray-200 shrink-0">
+            <div className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
+              <div className="flex-1 max-w-2xl">
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <span className="text-gray-400 text-sm">🔍</span>
+                  </div>
                   <Input
                     id="search"
                     type="text"
                     placeholder={`Search ${title.toLowerCase()}...`}
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="mt-1"
+                    className="w-full pl-10 pr-4 py-1.5 h-8 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 text-sm"
                   />
                 </div>
-                <div className="text-sm text-gray-600">
-                  Showing {filteredItems.length} of {items.length} items
-                </div>
+              </div>
+              <div className="text-sm text-gray-600 bg-gray-50 px-3 py-2 rounded-lg shrink-0">
+                Showing <span className="font-medium">{filteredItems.length}</span> of <span className="font-medium">{items.length}</span> {title.toLowerCase()}
               </div>
             </div>
           </div>
 
-          {/* Data Table */}
-          <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-900">{title} List</h2>
-                  <p className="text-sm text-gray-600 mt-1">Manage your {title.toLowerCase()}</p>
-                </div>
+          <div className="px-4 py-2 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white shrink-0">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900">{title} List</h3>
+                <p className="text-sm text-gray-500">Manage your {title.toLowerCase()}</p>
               </div>
             </div>
+          </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full">
+          <div className="overflow-x-scroll overflow-y-auto flex-1 min-h-0 custom-scrollbar pb-2">
+            <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
                     {columns.map((column) => (
@@ -211,8 +203,7 @@ export function DataPointsList({ title, icon, description, basePath, items, user
                     ))
                   )}
                 </tbody>
-              </table>
-            </div>
+            </table>
           </div>
         </div>
       </div>

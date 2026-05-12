@@ -122,19 +122,22 @@ export function AdminLayout({ user, children }: AdminLayoutProps) {
       <div className="w-64 bg-slate-800 shadow-xl flex flex-col">
         {" "}
         {/* Enhanced Logo/Header */}
-        <div className="h-20 flex items-center px-6 bg-slate-900 border-b border-slate-700 pb-3 pt-3">
-          <div className="flex items-center space-x-3">
-            <div className="w-9 h-9 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
-              <span className="text-white font-bold text-lg">C</span>
+        <div className="h-24 flex items-center justify-center px-4 bg-slate-900 border-b border-slate-700">
+          <div className="flex flex-col items-center space-y-2 w-full">
+            <div className="bg-white px-3 py-2 rounded-lg w-full flex justify-center shadow-inner">
+              <img 
+                src="https://cargocarelogistics.in/wp-content/uploads/2022/08/New-ccl-logo-color-495x101px.png" 
+                alt="Cargocare Logistics Logo" 
+                className="h-7 w-auto object-contain" 
+              />
             </div>
-            <div>
-              <h1 className="font-bold text-white">Cargocare Logistics</h1>
-              <p className="text-xs text-slate-400">Booking Management System</p>
-            </div>
+            <p className="text-[10px] text-slate-400 uppercase tracking-widest font-semibold text-center w-full">
+              Booking Management System
+            </p>
           </div>
         </div>{" "}
         {/* Enhanced Navigation */}
-        <nav className="flex-1 p-4 space-y-2">
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto min-h-0">
           {navItems
             .filter((item) => item.show)
             .map((item) => (

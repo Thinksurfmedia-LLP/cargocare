@@ -269,7 +269,7 @@ export default function AdminPanel() {
     <AdminLayout user={user}>
       {/* Page Header */}
       <div className="bg-white border-b border-gray-200">
-        <div className="px-6 py-6">
+        <div className="px-6 py-3">
           <div className="flex justify-between items-center">
             <div>
               <h1 className="text-2xl font-semibold text-gray-900">User Management</h1>
@@ -288,45 +288,44 @@ export default function AdminPanel() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 overflow-auto p-6 bg-gray-50">
+      <div className="flex-1 overflow-hidden flex flex-col bg-white">
         {actionData?.success && (
-          <div className="mb-6 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">
+          <div className="m-4 shrink-0 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded">
             {actionData.success}
           </div>
         )}
 
         {actionData?.error && (
-          <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+          <div className="m-4 shrink-0 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
             {actionData.error}
           </div>
         )}
 
         {downloadError && (
-          <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+          <div className="m-4 shrink-0 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
             {downloadError}
           </div>
         )}
 
-        <Card>
-          <CardHeader>
+        <div className="flex flex-col flex-1 min-h-0 overflow-hidden bg-white">
+          <div className="px-4 py-3 border-b border-gray-200 shrink-0">
             <div className="flex justify-between items-start">
               <div>
-                <CardTitle>Users</CardTitle>
-                <CardDescription>
+                <h3 className="text-lg font-semibold text-gray-900">Users</h3>
+                <p className="text-sm text-gray-500">
                   Manage user accounts, roles, and activation status
-                </CardDescription>
+                </p>
               </div>
               <Button onClick={() => setShowAddUserModal(true)} className="bg-green-600 hover:bg-green-700">
                 ➕ Add New User
               </Button>
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
+          </div>
+          <div className="overflow-x-scroll overflow-y-auto flex-1 min-h-0 custom-scrollbar pb-2">
               <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
+                <thead className="bg-gray-50 sticky top-0 z-10">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky left-0 z-30 bg-gray-50 shadow-[2px_0_5px_-1px_rgba(0,0,0,0.1)]">
                       User
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -358,8 +357,8 @@ export default function AdminPanel() {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {users.map((userRecord: any) => (
-                    <tr key={userRecord.id}>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                    <tr key={userRecord.id} className="hover:bg-gray-50 transition-colors duration-150 group">
+                      <td className="px-6 py-4 whitespace-nowrap sticky left-0 z-20 bg-white group-hover:bg-gray-50 shadow-[2px_0_5px_-1px_rgba(0,0,0,0.1)] transition-colors duration-150">
                         <div>
                           <div className="text-sm font-medium text-gray-900">
                             {userRecord.name}
@@ -498,14 +497,7 @@ export default function AdminPanel() {
                 </tbody>
               </table>
             </div>
-
-            {users.length === 0 && (
-              <div className="text-center py-8 text-gray-500">
-                No users found.
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          </div>
 
         {/* Add User Modal */}
         {showAddUserModal && (

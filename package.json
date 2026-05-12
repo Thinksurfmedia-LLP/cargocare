@@ -13,6 +13,7 @@
     "db:studio": "prisma studio"
   },
   "dependencies": {
+    "@marsidev/react-turnstile": "^1.5.2",
     "@prisma/client": "^6.15.0",
     "@radix-ui/react-tabs": "^1.1.13",
     "@react-router/node": "^7.5.3",
@@ -24,10 +25,10 @@
     "bcryptjs": "^3.0.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "exceljs": "^4.3.0",
     "fs": "^0.0.1-security",
     "isbot": "^5.1.27",
     "lucide-react": "^0.514.0",
-    "exceljs": "^4.3.0",
     "node-cron": "^4.2.1",
     "nodemailer": "^7.0.6",
     "path": "^0.12.7",

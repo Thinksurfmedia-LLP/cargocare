@@ -152,7 +152,7 @@ export function SearchableSelect({
           type="text"
           value={displayValue}
           placeholder={placeholder}
-          className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 pr-10 ${
+          className={`w-full px-2 py-1 h-8 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 pr-10 ${
             disabled ? "bg-gray-100 cursor-not-allowed" : "bg-white cursor-text"
           } ${className}`}
           disabled={disabled}
@@ -186,7 +186,7 @@ export function SearchableSelect({
             filteredOptions.map((option, index) => (
               <div
                 key={option.value}
-                className={`px-3 py-2 cursor-pointer flex items-center space-x-2 text-sm ${
+                className={`px-2 py-1.5 cursor-pointer flex items-center space-x-2 text-xs ${
                   index === highlightedIndex
                     ? "bg-blue-100 text-blue-900"
                     : selectedValue === option.value
