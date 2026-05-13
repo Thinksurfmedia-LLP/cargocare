@@ -233,6 +233,11 @@ export async function action({ request }: ActionFunctionArgs) {
         // Add MD email (the current user who approved)
         recipientEmails.push(user.email);
 
+        // Add plan creator (shipment planner) email
+        if (existingPlan.user?.email && !recipientEmails.includes(existingPlan.user.email)) {
+          recipientEmails.push(existingPlan.user.email);
+        }
+
         // Add salesperson email
         let salesPersonName = "Not Assigned";
         if (existingPlan.salesPerson) {
