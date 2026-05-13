@@ -2,8 +2,8 @@
 
 import type React from "react";
 
-import { Form, Link } from "react-router";
-import { useState, useEffect } from "react";
+import { Form, Link, useSubmit } from "react-router";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
@@ -308,6 +308,12 @@ export function ShipmentPlanForm({
   // State for cancel shipment plan confirmation
   const [showCancelConfirmation, setShowCancelConfirmation] = useState<boolean>(false);
   const [isCancelling, setIsCancelling] = useState<boolean>(false);
+
+  // State for business branch confirmation dialog (create mode only)
+  const [showBranchConfirmDialog, setShowBranchConfirmDialog] = useState<boolean>(false);
+  const branchConfirmedRef = useRef(false);
+  const formRef = useRef<HTMLFormElement>(null);
+  const submit = useSubmit();
 
   // Add state to track the selected business branch:
   const [selectedBusinessBranch, setSelectedBusinessBranch] = useState<string>(
@@ -885,6 +891,13 @@ export function ShipmentPlanForm({
       return;
     }
 
+    // In create mode, show branch confirmation before submitting
+    if (mode === "create" && selectedBusinessBranch) {
+      e.preventDefault();
+      setShowBranchConfirmDialog(true);
+      return;
+    }
+
     // Allow form submission if validation passes
     setIsFormSubmitting(true);
   };
@@ -1052,7 +1065,7 @@ export function ShipmentPlanForm({
 
   return (
     <div className="max-w-5xl mx-auto">
-      <Form method="post" className="" onSubmit={handleFormSubmit}>
+      <Form ref={formRef} method="post" className="" onSubmit={handleFormSubmit}>
         {/* Sticky Header - Inside the form */}
         <div className="sticky z-40 bg-white rounded-t-xl shadow-lg border border-gray-200 px-6 py-4" style={{ top: '-25px' }}>
           <div className="flex items-center justify-between">
@@ -1899,6 +1912,9 @@ export function ShipmentPlanForm({
                         className="text-sm font-semibold text-gray-700"
                       >
                         Business Branch <span className="text-red-500">*</span>
+                        {mode === "edit" && (
+                          <span className="ml-2 text-xs font-normal text-amber-600">🔒 Cannot be changed</span>
+                        )}
                       </Label>
                       <SearchableSelect
                         id="bussiness_branch"
@@ -1915,6 +1931,7 @@ export function ShipmentPlanForm({
                           })
                         )}
                         placeholder="Select business branch"
+                        disabled={mode === "edit"}
                         className="border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
                         onChange={(value) => setSelectedBusinessBranch(value)}
                       />
@@ -4241,6 +4258,60 @@ export function ShipmentPlanForm({
                 ) : (
                   <span>Yes, Delete Plan</span>
                 )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Business Branch Confirmation Dialog */}
+      {showBranchConfirmDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-500 to-blue-700 px-6 py-4">
+              <h3 className="text-xl font-bold text-white flex items-center">
+                <span className="mr-2">⚠️</span>
+                Confirm Business Branch
+              </h3>
+            </div>
+            <div className="p-6">
+              <p className="text-gray-700 mb-4">
+                You have selected{" "}
+                <span className="font-semibold text-blue-700">{selectedBusinessBranch}</span>{" "}
+                as the business branch.
+              </p>
+              <div className="bg-amber-50 border border-amber-300 rounded-lg p-4 text-sm text-amber-800">
+                <p className="font-semibold mb-1">Important</p>
+                <p>
+                  Once the shipment plan is booked, the business branch{" "}
+                  <span className="font-semibold">cannot be changed</span>. Please make sure
+                  you have selected the correct branch before proceeding.
+                </p>
+              </div>
+            </div>
+            <div className="bg-gray-50 px-6 py-4 flex justify-end space-x-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowBranchConfirmDialog(false)}
+                className="px-4 py-2 border-gray-300 rounded-lg hover:bg-gray-100"
+              >
+                Go Back
+              </Button>
+              <Button
+                type="button"
+                onClick={() => {
+                  setShowBranchConfirmDialog(false);
+                  setIsFormSubmitting(true);
+                  if (formRef.current) {
+                    const formData = new FormData(formRef.current);
+                    formData.set("submitAction", "submit");
+                    submit(formData, { method: "post" });
+                  }
+                }}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium"
+              >
+                Yes, Proceed
               </Button>
             </div>
           </div>
