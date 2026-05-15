@@ -1506,6 +1506,22 @@ export async function action({ request, params }: ActionFunctionArgs) {
             linerBrokerName = linerBrokerUser?.name || "Not Assigned";
           }
 
+          // Add all other liner bookers in the same business branch
+          const otherLinerBookers = await prisma.user.findMany({
+            where: {
+              role: { name: "LINER_BOOKING_TEAM" },
+              isActive: true,
+              businessBranch: { name: shipmentData.bussiness_branch },
+              NOT: { id: linerBrokerId ?? undefined },
+            },
+            select: { email: true },
+          });
+          for (const booker of otherLinerBookers) {
+            if (booker.email && !recipientEmails.includes(booker.email)) {
+              recipientEmails.push(booker.email);
+            }
+          }
+
           // Format equipment
           const equipmentDetailsData = shipmentData.equipment_details || [];
           const equipmentCounts = equipmentDetailsData.reduce((acc: any, eq: any) => {
