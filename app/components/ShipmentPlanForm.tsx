@@ -3021,7 +3021,7 @@ export function ShipmentPlanForm({
                                             Individual Status Tracking
                                           </h6>
                                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            {/* Empty Pickup Status */}
+                                            {/* 1. Empty Pickup Status */}
                                             <div className="space-y-2">
                                               <div className="flex items-center space-x-2">
                                                 <Checkbox
@@ -3064,13 +3064,13 @@ export function ShipmentPlanForm({
                                               )}
                                             </div>
 
-                                            {/* Gate In Status */}
+                                            {/* 2. SI Filed Status */}
                                             <div className="space-y-2">
                                               <div className="flex items-center space-x-2">
                                                 <Checkbox
-                                                  id={`gate_in_status_${index}`}
+                                                  id={`si_filed_status_${index}`}
                                                   checked={
-                                                    equipment.gateInStatus
+                                                    equipment.siFiledStatus
                                                   }
                                                   disabled={
                                                     !equipment.emptyPickupStatus || !equipment.emptyPickupDate || !equipment.container_number
@@ -3078,41 +3078,89 @@ export function ShipmentPlanForm({
                                                   onChange={(e) =>
                                                     updateEquipmentStatus(
                                                       index,
-                                                      "gateInStatus",
+                                                      "siFiledStatus",
                                                       e.target.checked
                                                     )
                                                   }
                                                 />
                                                 <Label
-                                                  htmlFor={`gate_in_status_${index}`}
+                                                  htmlFor={`si_filed_status_${index}`}
                                                   className={`text-sm ${
                                                     !equipment.emptyPickupStatus || !equipment.emptyPickupDate || !equipment.container_number
                                                       ? "text-gray-400"
                                                       : ""
                                                   }`}
                                                 >
-                                                  Gated In
+                                                  SI Filed
                                                 </Label>
                                               </div>
-                                              {equipment.gateInStatus && (
+                                              {equipment.siFiledStatus && (
                                                 <Input
                                                   type="date"
-                                                  name={`equipment_details[${index}][gateInDate]`}
-                                                  value={equipment.gateInDate}
+                                                  name={`equipment_details[${index}][siFiledDate]`}
+                                                  value={equipment.siFiledDate}
                                                   onChange={(e) =>
                                                     updateEquipmentStatus(
                                                       index,
-                                                      "gateInDate",
+                                                      "siFiledDate",
                                                       e.target.value
                                                     )
                                                   }
                                                   className="text-sm"
-                                                  placeholder="Gate in date"
+                                                  placeholder="SI filed date"
                                                 />
                                               )}
                                             </div>
 
-                                            {/* Stuffing Status */}
+                                            {/* 3. ISF/ENS Filed Status */}
+                                            <div className="space-y-2">
+                                              <div className="flex items-center space-x-2">
+                                                <Checkbox
+                                                  id={`isfens_filed_status_${index}`}
+                                                  checked={
+                                                    equipment.isfensFiledStatus
+                                                  }
+                                                  disabled={
+                                                    !equipment.emptyPickupStatus || !equipment.emptyPickupDate || !equipment.container_number
+                                                  }
+                                                  onChange={(e) =>
+                                                    updateEquipmentStatus(
+                                                      index,
+                                                      "isfensFiledStatus",
+                                                      e.target.checked
+                                                    )
+                                                  }
+                                                />
+                                                <Label
+                                                  htmlFor={`isfens_filed_status_${index}`}
+                                                  className={`text-sm ${
+                                                    !equipment.emptyPickupStatus || !equipment.emptyPickupDate || !equipment.container_number
+                                                      ? "text-gray-400"
+                                                      : ""
+                                                  }`}
+                                                >
+                                                  ISF/ENS Filed
+                                                </Label>
+                                              </div>
+                                              {equipment.isfensFiledStatus && (
+                                                <Input
+                                                  type="date"
+                                                  name={`equipment_details[${index}][isfensFiledDate]`}
+                                                  value={equipment.isfensFiledDate}
+                                                  onChange={(e) =>
+                                                    updateEquipmentStatus(
+                                                      index,
+                                                      "isfensFiledDate",
+                                                      e.target.value
+                                                    )
+                                                  }
+                                                  className="text-sm"
+                                                  placeholder="ISF/ENS filed date"
+                                                />
+                                              )}
+                                            </div>
+
+                                            {/* 4. Stuffing Status */}
                                             <div className="space-y-2">
                                               <div className="flex items-center space-x-2">
                                                 <Checkbox
@@ -3121,7 +3169,7 @@ export function ShipmentPlanForm({
                                                     equipment.stuffingStatus
                                                   }
                                                   disabled={
-                                                    !equipment.container_number || !equipment.gateInStatus || !equipment.gateInDate
+                                                    !equipment.emptyPickupStatus || !equipment.emptyPickupDate || !equipment.container_number
                                                   }
                                                   onChange={(e) =>
                                                     updateEquipmentStatus(
@@ -3134,7 +3182,7 @@ export function ShipmentPlanForm({
                                                 <Label
                                                   htmlFor={`stuffing_status_${index}`}
                                                   className={`text-sm ${
-                                                    !equipment.container_number || !equipment.gateInStatus || !equipment.gateInDate
+                                                    !equipment.emptyPickupStatus || !equipment.emptyPickupDate || !equipment.container_number
                                                       ? "text-gray-400"
                                                       : ""
                                                   }`}
@@ -3160,7 +3208,55 @@ export function ShipmentPlanForm({
                                               )}
                                             </div>
 
-                                            {/* Loaded Status */}
+                                            {/* 5. Gate In Status */}
+                                            <div className="space-y-2">
+                                              <div className="flex items-center space-x-2">
+                                                <Checkbox
+                                                  id={`gate_in_status_${index}`}
+                                                  checked={
+                                                    equipment.gateInStatus
+                                                  }
+                                                  disabled={
+                                                    !equipment.siFiledStatus || !equipment.siFiledDate || !equipment.stuffingStatus || !equipment.stuffingDate
+                                                  }
+                                                  onChange={(e) =>
+                                                    updateEquipmentStatus(
+                                                      index,
+                                                      "gateInStatus",
+                                                      e.target.checked
+                                                    )
+                                                  }
+                                                />
+                                                <Label
+                                                  htmlFor={`gate_in_status_${index}`}
+                                                  className={`text-sm ${
+                                                    !equipment.siFiledStatus || !equipment.siFiledDate || !equipment.stuffingStatus || !equipment.stuffingDate
+                                                      ? "text-gray-400"
+                                                      : ""
+                                                  }`}
+                                                >
+                                                  Gated In
+                                                </Label>
+                                              </div>
+                                              {equipment.gateInStatus && (
+                                                <Input
+                                                  type="date"
+                                                  name={`equipment_details[${index}][gateInDate]`}
+                                                  value={equipment.gateInDate}
+                                                  onChange={(e) =>
+                                                    updateEquipmentStatus(
+                                                      index,
+                                                      "gateInDate",
+                                                      e.target.value
+                                                    )
+                                                  }
+                                                  className="text-sm"
+                                                  placeholder="Gate in date"
+                                                />
+                                              )}
+                                            </div>
+
+                                            {/* 6. Loaded Status */}
                                             <div className="space-y-2">
                                               <div className="flex items-center space-x-2">
                                                 <Checkbox
@@ -3169,7 +3265,7 @@ export function ShipmentPlanForm({
                                                     equipment.loadedStatus
                                                   }
                                                   disabled={
-                                                    !equipment.container_number || !equipment.stuffingStatus || !equipment.stuffingDate
+                                                    !equipment.siFiledStatus || !equipment.siFiledDate || !equipment.stuffingStatus || !equipment.stuffingDate
                                                   }
                                                   onChange={(e) =>
                                                     updateEquipmentStatus(
@@ -3182,7 +3278,7 @@ export function ShipmentPlanForm({
                                                 <Label
                                                   htmlFor={`loaded_status_${index}`}
                                                   className={`text-sm ${
-                                                    !equipment.container_number || !equipment.stuffingStatus || !equipment.stuffingDate
+                                                    !equipment.siFiledStatus || !equipment.siFiledDate || !equipment.stuffingStatus || !equipment.stuffingDate
                                                       ? "text-gray-400"
                                                       : ""
                                                   }`}
@@ -3204,88 +3300,6 @@ export function ShipmentPlanForm({
                                                   }
                                                   className="text-sm"
                                                   placeholder="Loading date"
-                                                />
-                                              )}
-                                            </div>
-
-                                            {/* SI Filed Status */}
-                                            <div className="space-y-2">
-                                              <div className="flex items-center space-x-2">
-                                                <Checkbox
-                                                  id={`si_filed_status_${index}`}
-                                                  checked={
-                                                    equipment.siFiledStatus
-                                                  }
-                                                  onChange={(e) =>
-                                                    updateEquipmentStatus(
-                                                      index,
-                                                      "siFiledStatus",
-                                                      e.target.checked
-                                                    )
-                                                  }
-                                                />
-                                                <Label
-                                                  htmlFor={`si_filed_status_${index}`}
-                                                  className="text-sm"
-                                                >
-                                                  SI Filed
-                                                </Label>
-                                              </div>
-                                              {equipment.siFiledStatus && (
-                                                <Input
-                                                  type="date"
-                                                  name={`equipment_details[${index}][siFiledDate]`}
-                                                  value={equipment.siFiledDate}
-                                                  onChange={(e) =>
-                                                    updateEquipmentStatus(
-                                                      index,
-                                                      "siFiledDate",
-                                                      e.target.value
-                                                    )
-                                                  }
-                                                  className="text-sm"
-                                                  placeholder="SI filed date"
-                                                />
-                                              )}
-                                            </div>
-
-                                            {/* ISF/ENS Filed Status */}
-                                            <div className="space-y-2">
-                                              <div className="flex items-center space-x-2">
-                                                <Checkbox
-                                                  id={`isfens_filed_status_${index}`}
-                                                  checked={
-                                                    equipment.isfensFiledStatus
-                                                  }
-                                                  onChange={(e) =>
-                                                    updateEquipmentStatus(
-                                                      index,
-                                                      "isfensFiledStatus",
-                                                      e.target.checked
-                                                    )
-                                                  }
-                                                />
-                                                <Label
-                                                  htmlFor={`isfens_filed_status_${index}`}
-                                                  className="text-sm"
-                                                >
-                                                  ISF/ENS Filed
-                                                </Label>
-                                              </div>
-                                              {equipment.isfensFiledStatus && (
-                                                <Input
-                                                  type="date"
-                                                  name={`equipment_details[${index}][isfensFiledDate]`}
-                                                  value={equipment.isfensFiledDate}
-                                                  onChange={(e) =>
-                                                    updateEquipmentStatus(
-                                                      index,
-                                                      "isfensFiledDate",
-                                                      e.target.value
-                                                    )
-                                                  }
-                                                  className="text-sm"
-                                                  placeholder="ISF/ENS filed date"
                                                 />
                                               )}
                                             </div>
