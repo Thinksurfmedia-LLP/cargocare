@@ -180,8 +180,9 @@ export async function action({ request }: ActionFunctionArgs) {
       }
 
       // Check if the plan is in "Awaiting MD Approval" status
+      // Also accept null booking_status (legacy plans created before status field was set)
       const planData = existingPlan.data as any;
-      if (planData.booking_status !== "Awaiting MD Approval") {
+      if (planData.booking_status !== "Awaiting MD Approval" && planData.booking_status !== null) {
         return {
           error: "Only plans with 'Awaiting MD Approval' status can be approved",
         };

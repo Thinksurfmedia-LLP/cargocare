@@ -1332,6 +1332,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
     // If already approved by MD (Awaiting Booking), keep it as approved unless MD is taking action
     else if (existingPlan?.data?.booking_status === "Awaiting Booking" && md_approval_status !== "approved" && md_approval_status !== "rejected") {
       bookingStatus = "Awaiting Booking"
+    }
+    // If awaiting MD approval (or null = legacy plans with no status set), lock the status
+    // until the MD explicitly approves or rejects — edits by anyone else must not change it
+    else if ((existingPlan?.data?.booking_status === "Awaiting MD Approval" || !existingPlan?.data?.booking_status) && md_approval_status !== "approved" && md_approval_status !== "rejected") {
+      bookingStatus = "Awaiting MD Approval"
     } else {
       //update booking status
       if (md_approval_status === "approved" && md_approval_rejection === "") {
@@ -1340,8 +1345,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
         linerBrokerId = formData.get("liner_broker_approval") as string
 
         // Check if the plan is in "Awaiting MD Approval" status
+        // Also accept null booking_status (legacy plans created before status field was set)
         const planData = existingPlan.data as any
-        if (planData.booking_status !== "Awaiting MD Approval") {
+        if (planData.booking_status !== "Awaiting MD Approval" && planData.booking_status !== null) {
           return {
             error: "Only plans with 'Awaiting MD Approval' status can be approved",
           }
@@ -1351,7 +1357,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
       } else if (md_approval_rejection != "") {
         bookingStatus = "Awaiting MD Approval"
       } else {
-        bookingStatus = booking_status
+        // Fall back to the existing DB status if the form didn't submit one
+        // (the booking_status Select is disabled in edit mode so it is not submitted)
+        bookingStatus = booking_status || (existingPlan.data as any).booking_status || "Awaiting MD Approval"
       }
     }
 
