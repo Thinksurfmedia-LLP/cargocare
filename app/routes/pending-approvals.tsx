@@ -671,8 +671,13 @@ export default function PendingApprovals() {
         return <TableCell key={columnId} className="text-gray-700">{planData.container_movement?.loading_port || "N/A"}</TableCell>;
       case "port_of_discharge":
         return <TableCell key={columnId} className="text-gray-700">{planData.container_movement?.port_of_discharge || "N/A"}</TableCell>;
-      case "final_place_of_delivery":
-        return <TableCell key={columnId} className="text-gray-700">{planData.container_movement?.delivery_till || "N/A"}</TableCell>;
+      case "final_place_of_delivery": {
+        const deliveryTill = planData.container_movement?.delivery_till;
+        const displayValue = deliveryTill === "Port"
+          ? planData.container_movement?.port_of_discharge
+          : planData.container_movement?.final_place_of_delivery;
+        return <TableCell key={columnId} className="text-gray-700">{displayValue || "N/A"}</TableCell>;
+      }
       case "consignee":
         return <TableCell key={columnId} className="text-sm text-gray-700">{planData.container_movement?.consignee || "N/A"}</TableCell>;
       case "destination_country":
