@@ -1599,6 +1599,25 @@ export function ShipmentPlanForm({
               </div>
             )}
 
+            {/* MD Remarks (if any) */}
+            {mode === "edit" && planData?.remarks && (
+              <div className="px-6 py-5 border-b border-gray-100 bg-blue-50/30">
+                <div className="flex items-start space-x-3">
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-blue-100 text-blue-600 flex-shrink-0">
+                    <span className="text-sm">💬</span>
+                  </div>
+                  <div className="w-full">
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">
+                      MD Remarks
+                    </h3>
+                    <div className="p-3 bg-white border border-blue-100 rounded-lg text-sm text-gray-700 whitespace-pre-wrap">
+                      {planData.remarks}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Accordion Sections */}
             <Accordion className="space-y-0">
               {/* MD Approval Status - Only visible when booking status is rejected and user is ADMIN */}

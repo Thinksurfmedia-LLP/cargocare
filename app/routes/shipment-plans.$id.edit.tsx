@@ -1566,6 +1566,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
             portOfLoading: containerMovement.loading_port || "N/A",
             portOfDischarge: containerMovement.port_of_discharge || "N/A",
             shipmentPlansUrl: `${baseUrl}/shipment-plans`,
+            remarks: shipmentData.remarks || undefined,
           });
 
           console.log(`✅ Approval notification sent to ${recipientEmails.length} recipient(s): ${recipientEmails.join(', ')}`);

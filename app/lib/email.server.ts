@@ -525,6 +525,7 @@ This is an automated daily reminder from Cargo Care System.
       portOfLoading: string;
       portOfDischarge: string;
       shipmentPlansUrl: string;
+      remarks?: string;
     }
   ): Promise<boolean> {
     const subject = `✅ Shipment Plan ${shipmentData.customer} - ${shipmentData.referenceNumber} Approved by MD for Booking`;
@@ -694,6 +695,12 @@ This is an automated daily reminder from Cargo Care System.
                   <span class="detail-label">POD</span>
                   <span class="detail-value">${shipmentData.portOfDischarge || 'N/A'}</span>
                 </div>
+                ${shipmentData.remarks ? `
+                <div class="detail-row" style="background-color: #f0fdf4;">
+                  <span class="detail-label">MD Remarks</span>
+                  <span class="detail-value" style="white-space: pre-wrap; font-style: italic;">${shipmentData.remarks}</span>
+                </div>
+                ` : ''}
               </div>
 
               <div class="btn-container">
@@ -723,6 +730,7 @@ Shipment Details:
 - Equipment: ${shipmentData.equipmentType}
 - Port of Loading: ${shipmentData.portOfLoading}
 - Port of Discharge: ${shipmentData.portOfDischarge}
+${shipmentData.remarks ? `- MD Remarks: ${shipmentData.remarks}` : ''}
 
 Please visit ${shipmentData.shipmentPlansUrl} to view the shipment plans.
 
