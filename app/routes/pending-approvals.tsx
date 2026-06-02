@@ -560,7 +560,7 @@ export default function PendingApprovals() {
     switch (columnId) {
       case "reference_number":
         return (
-          <TableCell key={columnId} className="font-medium text-gray-900 sticky left-0 bg-white z-10">
+          <TableCell key={columnId} className="font-medium text-gray-900 sticky left-0 bg-white group-hover:bg-slate-50 z-20 shadow-[4px_0_6px_-2px_rgba(0,0,0,0.06)]">
             <span
               className="text-blue-600 hover:underline cursor-pointer"
               onClick={() => navigate(`/shipment-plans/${plan.id}/edit?returnTo=/pending-approvals`)}
@@ -749,24 +749,8 @@ export default function PendingApprovals() {
         );
       case "actions":
         return (
-          <TableCell key={columnId} onClick={(e) => e.stopPropagation()} className="text-right sticky right-0 bg-white z-10">
+          <TableCell key={columnId} onClick={(e) => e.stopPropagation()} className="text-right sticky right-0 bg-white group-hover:bg-slate-50 z-10 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.06)]">
             <div className="flex justify-end space-x-2">
-              <Button
-                size="sm"
-                variant="outline"
-                className="border-green-300 text-green-600 hover:bg-green-50"
-                onClick={() => {
-                  if (confirm("Are you sure you want to approve this shipment plan?")) {
-                    const form = document.createElement("form");
-                    form.method = "post";
-                    form.innerHTML = `<input type="hidden" name="action" value="approve" /><input type="hidden" name="id" value="${plan.id}" />`;
-                    document.body.appendChild(form);
-                    form.submit();
-                  }
-                }}
-              >
-                ✓ Approve
-              </Button>
               <Button
                 size="sm"
                 variant="outline"
@@ -907,7 +891,7 @@ export default function PendingApprovals() {
               </div>
             </div>
 
-            <div className="overflow-x-auto overflow-y-visible">
+            <div className="overflow-x-auto">
               <Table>
                 <TableHeader className="bg-[#fffaf0]">
                   <TableRow className="text-gray-600">
@@ -917,7 +901,7 @@ export default function PendingApprovals() {
                       return (
                         <TableHead
                           key={columnId}
-                          className={`font-semibold text-gray-800${columnId === "reference_number" ? " sticky left-0 bg-[#fffaf0] z-10" : columnId === "actions" ? " sticky right-0 bg-[#fffaf0] z-10 text-right" : ""}`}
+                          className={`font-semibold text-gray-800${columnId === "reference_number" ? " sticky left-0 bg-[#fffaf0] z-30 shadow-[4px_0_6px_-2px_rgba(0,0,0,0.06)]" : columnId === "actions" ? " sticky right-0 bg-[#fffaf0] z-20 text-right shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.06)]" : ""}`}
                         >
                           {col.label}
                         </TableHead>
@@ -930,7 +914,7 @@ export default function PendingApprovals() {
                     return (
                       <TableRow
                         key={plan.id}
-                        className="transition-colors hover:bg-slate-50"
+                        className="group transition-colors hover:bg-slate-50"
                       >
                         {visibleColumns.map((columnId) => getColumnCell(plan, columnId))}
                       </TableRow>
