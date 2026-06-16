@@ -649,6 +649,14 @@ export function ShipmentPlanForm({
     setEquipmentDetails(updatedEquipment);
   };
 
+  const updateEquipmentField = (index: number, field: string, value: string) => {
+    setEquipmentDetails((prev: any[]) => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  };
+
   // Update individual equipment status
   const updateEquipmentStatus = (index: number, field: string, value: any) => {
     const updatedEquipment = [...equipmentDetails];
@@ -2930,6 +2938,7 @@ export function ShipmentPlanForm({
                                                   [index]: e.target.value,
                                                 })
                                               );
+                                              updateEquipmentField(index, "stuffing_point", e.target.value);
                                             }}
                                           >
                                             <option value="">
@@ -2960,6 +2969,7 @@ export function ShipmentPlanForm({
                                                 defaultValue={
                                                   equipment.empty_container_pick_up_from
                                                 }
+                                                onChange={(e) => updateEquipmentField(index, "empty_container_pick_up_from", e.target.value)}
                                               >
                                                 <option value="">
                                                   Select pickup location
@@ -2985,6 +2995,7 @@ export function ShipmentPlanForm({
                                                 defaultValue={
                                                   equipment.container_handover_location
                                                 }
+                                                onChange={(e) => updateEquipmentField(index, "container_handover_location", e.target.value)}
                                               >
                                                 <option value="">
                                                   Select handover location
@@ -3010,6 +3021,7 @@ export function ShipmentPlanForm({
                                                 defaultValue={
                                                   equipment.empty_container_pick_up_location
                                                 }
+                                                onChange={(e) => updateEquipmentField(index, "empty_container_pick_up_location", e.target.value)}
                                                 placeholder="Enter empty container pickup location"
                                               />
                                             </div>
@@ -3026,6 +3038,7 @@ export function ShipmentPlanForm({
                                                 defaultValue={
                                                   equipment.container_handover_at
                                                 }
+                                                onChange={(e) => updateEquipmentField(index, "container_handover_at", e.target.value)}
                                                 placeholder="Enter container handover location"
                                               />
                                             </div>
@@ -3839,11 +3852,11 @@ export function ShipmentPlanForm({
                           .filter(
                             (port: any) =>
                               !destinationCountry ||
-                              port.country === destinationCountry
+                              port.country.trim() === destinationCountry.trim()
                           )
                           .map((port: any) => ({
                             value: port.name,
-                            label: `🏢 ${port.name}, ${port.country}`,
+                            label: `🏢 ${port.name}, ${port.country.trim()}`,
                           }))}
                         placeholder={
                           destinationCountry

@@ -32,8 +32,8 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 
   const formData = await request.formData();
-  const name = formData.get("name") as string;
-  const country = formData.get("country") as string;
+  const name = (formData.get("name") as string)?.trim();
+  const country = (formData.get("country") as string)?.trim();
 
   if (!name || !country) {
     return Response.json({ error: "Name and country are required" }, { status: 400 });
