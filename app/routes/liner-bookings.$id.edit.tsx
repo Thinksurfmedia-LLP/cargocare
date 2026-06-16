@@ -1517,7 +1517,7 @@ await prisma.$transaction(async (tx) => {
         if (!spData.container_movement) {
           spData.container_movement = {};
         }
-        spData.container_movement.buying_price = parseFloat(buyingPrice);
+        spData.container_movement.buying_price = buyingPrice.trim();
         console.log("[DEBUG] Assignment All Booking Assigned - Updated buying price:", buyingPrice);
       }
 
@@ -1815,7 +1815,7 @@ await prisma.$transaction(async (tx) => {
           if (!shipmentPlanData.container_movement) {
             shipmentPlanData.container_movement = {};
           }
-          shipmentPlanData.container_movement.buying_price = parseFloat(buyingPrice);
+          shipmentPlanData.container_movement.buying_price = buyingPrice.trim();
           console.log("[DEBUG] All Booking Assigned - Updated buying price:", buyingPrice);
         }
 
@@ -1994,7 +1994,7 @@ await prisma.$transaction(async (tx) => {
           if (!shipmentPlanData.container_movement) {
             shipmentPlanData.container_movement = {};
           }
-          shipmentPlanData.container_movement.buying_price = parseFloat(buyingPrice);
+          shipmentPlanData.container_movement.buying_price = buyingPrice.trim();
           console.log("[DEBUG] Regular update - Updated buying price:", buyingPrice);
         }
         

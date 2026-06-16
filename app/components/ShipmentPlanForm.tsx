@@ -2150,8 +2150,6 @@ export function ShipmentPlanForm({
                       <Input
                         id="buying_price"
                         name="buying_price"
-                        type="number"
-                        step="0.01"
                         defaultValue={planData.container_movement?.buying_price}
                         placeholder="Enter buying price (optional)"
                       />

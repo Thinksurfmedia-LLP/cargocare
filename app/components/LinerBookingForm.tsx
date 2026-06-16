@@ -1965,8 +1965,6 @@ export function LinerBookingForm({
                                     </Label>
                                     <Input
                                       name="buying_price"
-                                      type="number"
-                                      step="0.01"
                                       placeholder="Enter buying price"
                                       className="text-sm"
                                       required
