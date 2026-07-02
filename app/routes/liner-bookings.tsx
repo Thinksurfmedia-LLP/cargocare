@@ -1638,21 +1638,6 @@ export default function LinerBookings() {
           : booking?.shipmentPlan?.data
         return <TableCell key={columnId} className="text-sm text-gray-700 max-w-xs"><span className="truncate block">{spDataRem?.remarks || "N/A"}</span></TableCell>
       }
-      case "liner_booking_number":
-        if (!isAssignments) return <TableCell key={columnId}>N/A</TableCell>
-        return <TableCell key={columnId} className="text-sm text-gray-700">{(booking.data as any)?.liner_booking_details?.[0]?.liner_booking_number || "N/A"}</TableCell>
-      case "mbl_number":
-        if (!isAssignments) return <TableCell key={columnId}>N/A</TableCell>
-        return <TableCell key={columnId} className="text-sm text-gray-700">{(booking.data as any)?.liner_booking_details?.[0]?.mbl_number || "N/A"}</TableCell>
-      case "contract":
-        if (!isAssignments) return <TableCell key={columnId}>N/A</TableCell>
-        return <TableCell key={columnId} className="text-sm text-gray-700">{(booking.data as any)?.liner_booking_details?.[0]?.contract || "N/A"}</TableCell>
-      case "temp_booking_number":
-        if (!isAssignments) return <TableCell key={columnId}>N/A</TableCell>
-        return <TableCell key={columnId} className="text-sm text-gray-700">{(booking.data as any)?.liner_booking_details?.[0]?.temporary_booking_number || "N/A"}</TableCell>
-      case "etd":
-        if (!isAssignments) return <TableCell key={columnId}>N/A</TableCell>
-        return <TableCell key={columnId} className="text-sm text-gray-700">{formatDate((booking.data as any)?.liner_booking_details?.[0]?.etd) || "N/A"}</TableCell>
       case "container_no": {
         if (!isAssignments) return <TableCell key={columnId}>N/A</TableCell>
         const spDataCN = isOrphaned

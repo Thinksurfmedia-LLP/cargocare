@@ -12,7 +12,9 @@
       "Bash(npx prisma db push:*)",
       "Bash(npx prisma generate)",
       "Bash(powershell -Command:*)",
-      "Bash(npx prisma migrate:*)"
+      "Bash(npx prisma migrate:*)",
+      "Bash(cd \"c:/Users/rishikalpa/Projects/cargocare\" && git diff HEAD~1 HEAD --name-only && echo \"---\" && grep -n \"trimStringFields\\\\|updateEquipmentField\\\\|parseFloat\\(buyingPrice\\)\" app/lib/prisma.server.ts app/components/ShipmentPlanForm.tsx \"app/routes/liner-bookings.\\\\$id.edit.tsx\" 2>/dev/null | head -20)",
+      "Read(//c/Users/rishikalpa/Projects/cargocare/app/routes/**)"
     ],
     "deny": [],
     "ask": []

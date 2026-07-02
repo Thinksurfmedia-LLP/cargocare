@@ -3833,7 +3833,7 @@ export function LinerBookingForm({
                                       linerBooking?.shipmentPlan &&
                                       getShipmentPlanEquipment().length > 0 && (
                                         <>
-                                          <div>
+                                          <div className="md:col-span-2">
                                             <label
                                               htmlFor={`liner_booking_details[${index}][equipment_type]`}
                                               className="block text-sm font-medium text-gray-700"
@@ -3853,33 +3853,68 @@ export function LinerBookingForm({
                                                   e.target.value
                                                 )
                                               }
+                                              disabled={allocatedBookingDetails.has(
+                                                originalIndex
+                                              )}
                                               className="text-sm"
                                             >
                                               <option value="">
                                                 -- Select Equipment --
                                               </option>
-                                              {getUnallocatedEquipmentTypes().map(
-                                                (
-                                                  equipment: any,
-                                                  eqIndex: number
-                                                ) => (
-                                                  <option
-                                                    key={`${equipment.trackingNumber}-${eqIndex}`}
-                                                    value={`${equipment.equipment_type}|${equipment.trackingNumber}`}
-                                                  >
-                                                    {`${equipment.equipment_type} (${equipment.trackingNumber})`}
-                                                  </option>
-                                                )
-                                              )}
+                                              {(() => {
+                                                const unallocatedOptions =
+                                                  getUnallocatedEquipmentTypes();
+                                                const currentValue =
+                                                  detail.equipment_type || "";
+                                                const isCurrentListed =
+                                                  unallocatedOptions.some(
+                                                    (equipment: any) =>
+                                                      `${equipment.equipment_type}|${equipment.trackingNumber}` ===
+                                                      currentValue
+                                                  );
+                                                const [
+                                                  currentType,
+                                                  currentTracking,
+                                                ] = currentValue.split("|");
+                                                return (
+                                                  <>
+                                                    {currentValue &&
+                                                      !isCurrentListed && (
+                                                        <option
+                                                          value={currentValue}
+                                                        >
+                                                          {currentTracking &&
+                                                          currentTracking !==
+                                                            "undefined"
+                                                            ? `${currentType} (${currentTracking})`
+                                                            : currentType}
+                                                        </option>
+                                                      )}
+                                                    {unallocatedOptions.map(
+                                                      (
+                                                        equipment: any,
+                                                        eqIndex: number
+                                                      ) => (
+                                                        <option
+                                                          key={`${equipment.trackingNumber}-${eqIndex}`}
+                                                          value={`${equipment.equipment_type}|${equipment.trackingNumber}`}
+                                                        >
+                                                          {`${equipment.equipment_type} (${equipment.trackingNumber})`}
+                                                        </option>
+                                                      )
+                                                    )}
+                                                  </>
+                                                );
+                                              })()}
                                             </Select>
                                           </div>
 
-                                          <div className="space-y-2">
-                                            <Label className="text-xs font-medium text-gray-600">
-                                              Booking For
-                                            </Label>
-                                            <div className="p-2 bg-gray-50 border border-gray-200 rounded text-xs text-gray-700">
-                                              {detail.equipment_type
+                                          <input
+                                            type="hidden"
+                                            name={`liner_booking_details[${index}][booking_for]`}
+                                            value={
+                                              detail.booking_for ||
+                                              (detail.equipment_type
                                                 ? (() => {
                                                     const [
                                                       equipmentType,
@@ -3894,32 +3929,9 @@ export function LinerBookingForm({
                                                       ? `${equipmentType} (${trackingNumber})`
                                                       : equipmentType;
                                                   })()
-                                                : "Select equipment"}
-                                            </div>
-                                            <input
-                                              type="hidden"
-                                              name={`liner_booking_details[${index}][booking_for]`}
-                                              value={
-                                                detail.booking_for ||
-                                                (detail.equipment_type
-                                                  ? (() => {
-                                                      const [
-                                                        equipmentType,
-                                                        trackingNumber,
-                                                      ] =
-                                                        detail.equipment_type.split(
-                                                          "|"
-                                                        );
-                                                      return trackingNumber &&
-                                                        trackingNumber !==
-                                                          "undefined"
-                                                        ? `${equipmentType} (${trackingNumber})`
-                                                        : equipmentType;
-                                                    })()
-                                                  : "")
-                                              }
-                                            />
-                                          </div>
+                                                : "")
+                                            }
+                                          />
                                         </>
                                       )}
 
@@ -4003,6 +4015,9 @@ export function LinerBookingForm({
                                                   );
                                                 }
                                               }}
+                                              disabled={allocatedBookingDetails.has(
+                                                originalIndex
+                                              )}
                                               className="text-sm"
                                             >
                                               <option value="">
