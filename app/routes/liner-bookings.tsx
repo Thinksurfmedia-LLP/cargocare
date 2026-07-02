@@ -2056,7 +2056,8 @@ export default function LinerBookings() {
                         onClick={!isAssignments ? (e) => {
                           const target = e.target as HTMLElement
                           if (!target.closest('button, a, input, [role="checkbox"]')) {
-                            navigate(`/liner-bookings/${booking.id}/edit`)
+                            const originalId = booking.__originalId ?? booking.id.split("#")[0]
+                            navigate(`/liner-bookings/${originalId}/edit`)
                           }
                         } : undefined}
                         className={`

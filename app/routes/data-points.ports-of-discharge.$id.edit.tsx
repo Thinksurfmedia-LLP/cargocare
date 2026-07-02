@@ -5,6 +5,7 @@ import { prisma } from "~/lib/prisma.server";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
+import { SearchableSelect } from "~/components/ui/searchable-select";
 import { AdminLayout } from "~/components/AdminLayout";
 
 export const meta: MetaFunction = () => {
@@ -34,7 +35,11 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
     throw new Response("Port of discharge not found", { status: 404 });
   }
 
-  return { user, portOfDischarge };
+  const destinationCountries = await prisma.destinationCountry.findMany({
+    orderBy: { name: "asc" },
+  });
+
+  return { user, portOfDischarge, destinationCountries };
 }
 
 export async function action({ request, params }: ActionFunctionArgs) {
@@ -51,16 +56,27 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
   const formData = await request.formData();
   const name = (formData.get("name") as string)?.trim();
-  const country = (formData.get("country") as string)?.trim();
+  const countryInput = (formData.get("country") as string)?.trim();
 
-  if (!name || !country) {
+  if (!name || !countryInput) {
     return Response.json({ error: "Name and country are required" }, { status: 400 });
+  }
+
+  const matchedCountry = await prisma.destinationCountry.findFirst({
+    where: { name: { equals: countryInput, mode: "insensitive" } },
+  });
+
+  if (!matchedCountry) {
+    return Response.json(
+      { error: "Please select a valid destination country from the list" },
+      { status: 400 }
+    );
   }
 
   try {
     await prisma.portOfDischarge.update({
       where: { id },
-      data: { name, country },
+      data: { name, country: matchedCountry.name },
     });
     return redirect("/data-points/ports-of-discharge");
   } catch (error: any) {
@@ -73,7 +89,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
 }
 
 export default function EditPortOfDischargePage() {
-  const { user, portOfDischarge } = useLoaderData<typeof loader>();
+  const { user, portOfDischarge, destinationCountries } = useLoaderData<typeof loader>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
 
@@ -113,14 +129,16 @@ export default function EditPortOfDischargePage() {
 
             <div>
               <Label htmlFor="country">Country</Label>
-              <Input
+              <SearchableSelect
                 id="country"
                 name="country"
-                type="text"
-                required
                 defaultValue={portOfDischarge.country}
+                options={destinationCountries.map((c) => ({
+                  value: c.name,
+                  label: c.name,
+                }))}
+                placeholder="Search and select destination country..."
                 className="mt-1"
-                placeholder="Enter country name"
               />
             </div>
 

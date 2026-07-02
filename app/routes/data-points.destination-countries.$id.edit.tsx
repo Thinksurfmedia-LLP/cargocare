@@ -1,5 +1,5 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs, MetaFunction } from "react-router";
-import { Form, useLoaderData, useNavigation, redirect, Link } from "react-router";
+import { Form, useLoaderData, useActionData, useNavigation, redirect, Link } from "react-router";
 import { requireAuth } from "~/lib/auth.server";
 import { prisma } from "~/lib/prisma.server";
 import { Button } from "~/components/ui/button";
@@ -50,10 +50,18 @@ export async function action({ request, params }: ActionFunctionArgs) {
   }
 
   const formData = await request.formData();
-  const name = formData.get("name") as string;
+  const name = (formData.get("name") as string)?.trim();
 
   if (!name) {
-    return Response.json({ error: "Name is required" }, { status: 400 });
+    return { error: "Name is required" };
+  }
+
+  const existing = await prisma.destinationCountry.findFirst({
+    where: { name: { equals: name, mode: "insensitive" }, NOT: { id } },
+  });
+
+  if (existing) {
+    return { error: `A destination country named "${existing.name}" already exists` };
   }
 
   try {
@@ -65,14 +73,15 @@ export async function action({ request, params }: ActionFunctionArgs) {
   } catch (error: any) {
     console.error("Error updating destination country:", error);
     if (error.code === "P2002") {
-      return Response.json({ error: "Destination country name already exists" }, { status: 400 });
+      return { error: "Destination country name already exists" };
     }
-    return Response.json({ error: "Failed to update destination country" }, { status: 500 });
+    return { error: "Failed to update destination country" };
   }
 }
 
 export default function EditDestinationCountryPage() {
   const { user, destinationCountry } = useLoaderData<typeof loader>();
+  const actionData = useActionData<typeof action>();
   const navigation = useNavigation();
   const isSubmitting = navigation.state === "submitting";
 
@@ -97,6 +106,20 @@ export default function EditDestinationCountryPage() {
           </div>
 
           <Form method="post" className="px-6 py-6 space-y-6">
+            {actionData?.error && (
+              <div className="bg-red-50 border-l-4 border-red-400 p-4 rounded-lg">
+                <div className="flex">
+                  <div className="flex-shrink-0">
+                    <span className="text-red-400 text-xl">⚠️</span>
+                  </div>
+                  <div className="ml-3">
+                    <p className="text-sm text-red-700 font-medium">Error</p>
+                    <p className="text-sm text-red-600 mt-1">{actionData.error}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div>
               <Label htmlFor="name">Country Name</Label>
               <Input
