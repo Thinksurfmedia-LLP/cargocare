@@ -4109,8 +4109,8 @@ export function ShipmentPlanForm({
                 user?.role.name === "MD" ||
                 user?.role.name === "SHIPMENT_PLAN_TEAM") && (
                 <>
-                  {/* Delete Shipment Plan Button - Only show in edit mode */}
-                  {mode === "edit" && (user?.role.name === "ADMIN" || user?.role.name === "SHIPMENT_PLAN_TEAM") && (
+                  {/* Delete Shipment Plan Button - Only show in edit mode, ADMIN only */}
+                  {mode === "edit" && user?.role.name === "ADMIN" && (
                     <Button
                       type="button"
                       onClick={() => setShowCancelConfirmation(true)}

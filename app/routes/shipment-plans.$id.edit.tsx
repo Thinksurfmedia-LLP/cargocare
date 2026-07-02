@@ -287,8 +287,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
     if (cancelShipmentPlan) {
       console.log("[CANCEL] Cancel shipment plan requested for planId:", planId)
 
-      // Only allow SHIPMENT_PLAN_TEAM and ADMIN to cancel
-      if (user.role.name !== "SHIPMENT_PLAN_TEAM" && user.role.name !== "ADMIN") {
+      // Only allow ADMIN to delete a shipment plan
+      if (user.role.name !== "ADMIN") {
         return { error: "You don't have permission to cancel this shipment plan" }
       }
 

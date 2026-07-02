@@ -381,6 +381,11 @@ export async function action({ request }: ActionFunctionArgs) {
     const formData = await request.formData();
     const action = formData.get("action") as string;
     if (action === "delete") {
+      // Only ADMIN can delete shipment plans
+      if (user.role.name !== "ADMIN") {
+        return { error: "You don't have permission to delete shipment plans" };
+      }
+
       const ids = formData.getAll("selectedIds") as string[];
       const deleteChoice = formData.get("deleteChoice") as string; // 'delete_both' or 'orphan_assignments'
       const deletionReason = formData.get("deletionReason") as string;
@@ -1728,25 +1733,27 @@ export default function ShipmentPlans() {
                     >
                       ✏️ Bulk Edit
                     </Button>
-                    <Form method="post">
-                      <input type="hidden" name="action" value="delete" />
-                      {selectedIds.map((id) => (
-                        <input
-                          key={id}
-                          type="hidden"
-                          name="selectedIds"
-                          value={id}
-                        />
-                      ))}
-                      <Button
-                        type="submit"
-                        size="sm"
-                        className="bg-red-500 hover:bg-red-600 text-white"
-                        disabled={isSubmitting}
-                      >
-                        {isSubmitting ? "Deleting..." : "Delete Selected"}
-                      </Button>
-                    </Form>
+                    {user.role.name === "ADMIN" && (
+                      <Form method="post">
+                        <input type="hidden" name="action" value="delete" />
+                        {selectedIds.map((id) => (
+                          <input
+                            key={id}
+                            type="hidden"
+                            name="selectedIds"
+                            value={id}
+                          />
+                        ))}
+                        <Button
+                          type="submit"
+                          size="sm"
+                          className="bg-red-500 hover:bg-red-600 text-white"
+                          disabled={isSubmitting}
+                        >
+                          {isSubmitting ? "Deleting..." : "Delete Selected"}
+                        </Button>
+                      </Form>
+                    )}
                   </div>
                 )}
               </div>
