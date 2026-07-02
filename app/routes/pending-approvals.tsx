@@ -312,6 +312,12 @@ export async function action({ request }: ActionFunctionArgs) {
           equipmentType: formattedEquipment,
           portOfLoading: containerMovement.loading_port || "N/A",
           portOfDischarge: containerMovement.port_of_discharge || "N/A",
+          commodity: planData.package_details?.[0]?.commodity || "N/A",
+          hsCode: planData.package_details?.[0]?.hs_code || "N/A",
+          weight: planData.package_details?.[0]?.gross_weight || "N/A",
+          preferredVessel: containerMovement.carrier_and_vessel_preference?.vessel || "N/A",
+          deliveryTill: containerMovement.delivery_till || "N/A",
+          finalPlaceOfDelivery: containerMovement.final_place_of_delivery || "N/A",
           shipmentPlansUrl: `${baseUrl}/shipment-plans`,
           remarks: planData.remarks || undefined,
         });

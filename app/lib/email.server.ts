@@ -524,6 +524,12 @@ This is an automated daily reminder from Cargo Care System.
       equipmentType: string;
       portOfLoading: string;
       portOfDischarge: string;
+      hsCode?: string;
+      deliveryTill?: string;
+      preferredVessel?: string;
+      weight?: string;
+      finalPlaceOfDelivery?: string;
+      commodity?: string;
       shipmentPlansUrl: string;
       remarks?: string;
     }
@@ -695,6 +701,30 @@ This is an automated daily reminder from Cargo Care System.
                   <span class="detail-label">POD</span>
                   <span class="detail-value">${shipmentData.portOfDischarge || 'N/A'}</span>
                 </div>
+                <div class="detail-row">
+                  <span class="detail-label">Commodity</span>
+                  <span class="detail-value">${shipmentData.commodity || 'N/A'}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">HS Code</span>
+                  <span class="detail-value">${shipmentData.hsCode || 'N/A'}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Weight</span>
+                  <span class="detail-value">${shipmentData.weight || 'N/A'}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Preferred Vessel</span>
+                  <span class="detail-value">${shipmentData.preferredVessel || 'N/A'}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Delivery Till</span>
+                  <span class="detail-value">${shipmentData.deliveryTill || 'N/A'}</span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-label">Final Place of Delivery</span>
+                  <span class="detail-value">${shipmentData.finalPlaceOfDelivery || 'N/A'}</span>
+                </div>
                 ${shipmentData.remarks ? `
                 <div class="detail-row" style="background-color: #f0fdf4;">
                   <span class="detail-label">MD Remarks</span>
@@ -730,6 +760,12 @@ Shipment Details:
 - Equipment: ${shipmentData.equipmentType}
 - Port of Loading: ${shipmentData.portOfLoading}
 - Port of Discharge: ${shipmentData.portOfDischarge}
+- Commodity: ${shipmentData.commodity || 'N/A'}
+- HS Code: ${shipmentData.hsCode || 'N/A'}
+- Weight: ${shipmentData.weight || 'N/A'}
+- Preferred Vessel: ${shipmentData.preferredVessel || 'N/A'}
+- Delivery Till: ${shipmentData.deliveryTill || 'N/A'}
+- Final Place of Delivery: ${shipmentData.finalPlaceOfDelivery || 'N/A'}
 ${shipmentData.remarks ? `- MD Remarks: ${shipmentData.remarks}` : ''}
 
 Please visit ${shipmentData.shipmentPlansUrl} to view the shipment plans.
