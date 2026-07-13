@@ -467,6 +467,88 @@ export async function loader({ request }: LoaderFunctionArgs) {
             searchConditions.push({ id: { in: (assignedBrokerMatches as any[]).map((row: any) => row.id) } })
           }
         }
+
+        // Search in the original shipment plan creator's name (assignments show this in "Created By")
+        if (tab === "assignments") {
+          const planCreatorMatches = await prisma.$queryRaw`
+            SELECT sa.id FROM "shipment_assignments" sa
+            JOIN "shipment_plans" sp ON sp."shipmentAssignmentId" = sa.id
+            JOIN "users" u ON sp."userId" = u.id
+            WHERE u.name ILIKE ${`%${search}%`}
+          `;
+          if ((planCreatorMatches as any[]).length > 0) {
+            searchConditions.push({ id: { in: (planCreatorMatches as any[]).map((row: any) => row.id) } })
+          }
+        }
+
+        // Search in shipment plan final place of delivery (case-insensitive via join)
+        if (tab === "assignments") {
+          const fpodMatches = await prisma.$queryRaw`
+            SELECT sa.id FROM "shipment_assignments" sa
+            JOIN "shipment_plans" sp ON sp."shipmentAssignmentId" = sa.id
+            WHERE sp.data->'container_movement'->>'final_place_of_delivery' ILIKE ${`%${search}%`}
+          `;
+          if ((fpodMatches as any[]).length > 0) {
+            searchConditions.push({ id: { in: (fpodMatches as any[]).map((row: any) => row.id) } })
+          }
+        }
+
+        // Search in shipment plan remarks / stuffing point (case-insensitive via join)
+        if (tab === "assignments") {
+          const remarksAndStuffingMatches = await prisma.$queryRaw`
+            SELECT sa.id FROM "shipment_assignments" sa
+            JOIN "shipment_plans" sp ON sp."shipmentAssignmentId" = sa.id
+            WHERE sp.data->>'remarks' ILIKE ${`%${search}%`}
+               OR sp.data->'equipment_details'->0->>'stuffing_point' ILIKE ${`%${search}%`}
+          `;
+          if ((remarksAndStuffingMatches as any[]).length > 0) {
+            searchConditions.push({ id: { in: (remarksAndStuffingMatches as any[]).map((row: any) => row.id) } })
+          }
+        }
+
+        // Search across every container number allocated to the shipment plan (assignments show all of them)
+        if (tab === "assignments") {
+          const containerNoMatches = await prisma.$queryRaw`
+            SELECT DISTINCT sa.id FROM "shipment_assignments" sa
+            JOIN "shipment_plans" sp ON sp."shipmentAssignmentId" = sa.id,
+            jsonb_array_elements(COALESCE(sp.data->'equipment_details', '[]'::jsonb)) AS eq
+            WHERE eq->>'container_number' ILIKE ${`%${search}%`}
+          `;
+          if ((containerNoMatches as any[]).length > 0) {
+            searchConditions.push({ id: { in: (containerNoMatches as any[]).map((row: any) => row.id) } })
+          }
+        }
+
+        // Search across every shipper on consolidated shipment plans (the Shipper column lists all of them)
+        if (tab === "assignments") {
+          const shipperMatches = await prisma.$queryRaw`
+            SELECT DISTINCT sa.id FROM "shipment_assignments" sa
+            JOIN "shipment_plans" sp ON sp."shipmentAssignmentId" = sa.id,
+            jsonb_array_elements(COALESCE(sp.data->'package_details', '[]'::jsonb)) AS pkg
+            WHERE pkg->>'shipper' ILIKE ${`%${search}%`}
+          `;
+          if ((shipperMatches as any[]).length > 0) {
+            searchConditions.push({ id: { in: (shipperMatches as any[]).map((row: any) => row.id) } })
+          }
+        }
+
+        // Search the remaining package-details fields shown in hidden columns (invoice no., commodity, volume, etc.)
+        if (tab === "assignments") {
+          const packageFieldMatches = await prisma.$queryRaw`
+            SELECT sa.id FROM "shipment_assignments" sa
+            JOIN "shipment_plans" sp ON sp."shipmentAssignmentId" = sa.id
+            WHERE sp.data->'package_details'->0->>'invoice_number' ILIKE ${`%${search}%`}
+               OR sp.data->'package_details'->0->>'commodity' ILIKE ${`%${search}%`}
+               OR sp.data->'package_details'->0->>'volume' ILIKE ${`%${search}%`}
+               OR sp.data->'package_details'->0->>'gross_weight' ILIKE ${`%${search}%`}
+               OR sp.data->'package_details'->0->>'number_of_packages' ILIKE ${`%${search}%`}
+               OR sp.data->'package_details'->0->>'hs_code' ILIKE ${`%${search}%`}
+               OR sp.data->'package_details'->0->>'p_o_number' ILIKE ${`%${search}%`}
+          `;
+          if ((packageFieldMatches as any[]).length > 0) {
+            searchConditions.push({ id: { in: (packageFieldMatches as any[]).map((row: any) => row.id) } })
+          }
+        }
       } catch (error) {
         console.error("Error in raw SQL search:", error)
       }
