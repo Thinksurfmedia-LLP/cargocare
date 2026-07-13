@@ -341,6 +341,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
               email: true,
             },
           },
+          linerBooking: {
+            select: { data: true },
+          },
+          shipmentAssignment: {
+            select: { data: true },
+          },
         },
         orderBy: {
           createdAt: "desc",
@@ -1197,6 +1203,54 @@ export default function ShipmentPlans() {
     );
   };
 
+  // Extract the tracking number a liner booking detail refers to
+  // (handles both the direct `trackingNumber` field and the legacy "equipmentType|trackingNumber" format)
+  const getDetailTrackingNumber = (detail: any): string | null => {
+    if (!detail) return null;
+    if (detail.trackingNumber) return detail.trackingNumber;
+    if (typeof detail.booking_for === "string" && detail.booking_for.includes("|")) {
+      return detail.booking_for.split("|")[1] || null;
+    }
+    return null;
+  };
+
+  // Find the Liner Booking Number allocated to a specific piece of equipment
+  const getEquipmentLinerBookingNumber = (plan: any, equipment: any): string | null => {
+    const trackingNumber = equipment?.trackingNumber;
+    if (!trackingNumber) return null;
+
+    const detailSources: any[] = [
+      ...(Array.isArray(plan?.linerBooking?.data?.liner_booking_details)
+        ? plan.linerBooking.data.liner_booking_details
+        : []),
+      ...(Array.isArray(plan?.shipmentAssignment?.data?.liner_booking_details)
+        ? plan.shipmentAssignment.data.liner_booking_details
+        : []),
+    ];
+
+    const match = detailSources.find(
+      (detail: any) => getDetailTrackingNumber(detail) === trackingNumber
+    );
+    return match?.liner_booking_number || null;
+  };
+
+  // Determine the milestone status for a single piece of equipment (not the plan-wide aggregate)
+  const getEquipmentStatusLabel = (equipment: any): string => {
+    if (equipment?.loadedStatus && equipment?.loadedDate) return "Loaded on Vessel";
+    if (equipment?.stuffingStatus && equipment?.stuffingDate) return "Container Stuffing Completed";
+    if (equipment?.gateInStatus && equipment?.gateInDate) return "Gate In Completed";
+    if (equipment?.emptyPickupStatus && equipment?.emptyPickupDate) return "Empty Container Picked Up";
+    return "Pending";
+  };
+
+  const equipmentStatusDotColor: Record<string, string> = {
+    "Loaded on Vessel": "bg-green-500",
+    "Container Stuffing Completed": "bg-purple-500",
+    "Gate In Completed": "bg-blue-500",
+    "Empty Container Picked Up": "bg-yellow-500",
+    Pending: "bg-gray-400",
+  };
+
   const getStatusBadge = (status: string) => {
     const statusConfig: Record<
       string,
@@ -1456,12 +1510,49 @@ export default function ShipmentPlans() {
             </div>
           </TableCell>
         );
-      case "milestone_status":
+      case "milestone_status": {
+        const equipmentDetails = Array.isArray(plan.data?.equipment_details)
+          ? plan.data.equipment_details
+          : [];
+        const isBooked = plan.data?.booking_status === "Booked";
+
+        if (isBooked && equipmentDetails.length > 0) {
+          return (
+            <TableCell key={columnId}>
+              <div className="flex flex-col gap-1 max-h-28 overflow-y-auto min-w-[220px] py-1">
+                {equipmentDetails.map((equipment: any, idx: number) => {
+                  const lbn =
+                    getEquipmentLinerBookingNumber(plan, equipment) ||
+                    equipment.trackingNumber ||
+                    `Container ${idx + 1}`;
+                  const label = getEquipmentStatusLabel(equipment);
+                  return (
+                    <div
+                      key={idx}
+                      className="flex items-center gap-1.5 text-xs whitespace-nowrap"
+                    >
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                          equipmentStatusDotColor[label] || "bg-gray-400"
+                        }`}
+                      />
+                      <span className="font-semibold text-gray-800">{lbn}</span>
+                      <span className="text-gray-400">-</span>
+                      <span className="text-gray-600">{label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </TableCell>
+          );
+        }
+
         return (
           <TableCell key={columnId}>
             {getMilestoneStatusBadge(getMilestoneStatus(plan))}
           </TableCell>
         );
+      }
       case "created_by":
         return (
           <TableCell key={columnId} className="text-sm text-gray-600">
@@ -1526,12 +1617,38 @@ export default function ShipmentPlans() {
             {(plan.data as any).container_movement?.credit_period || "N/A"}
           </TableCell>
         );
-      case "shipper":
+      case "shipper": {
+        const packageDetails = Array.isArray((plan.data as any)?.package_details)
+          ? (plan.data as any).package_details
+          : [];
+        const shippers = packageDetails
+          .map((pkg: any) => pkg?.shipper)
+          .filter((shipper: any) => typeof shipper === "string" && shipper.trim() !== "");
+
+        if (shippers.length > 1) {
+          return (
+            <TableCell key={columnId}>
+              <div className="flex flex-col gap-1 max-h-28 overflow-y-auto min-w-[160px] py-1">
+                {shippers.map((shipper: string, idx: number) => (
+                  <div
+                    key={idx}
+                    className="flex items-center gap-1.5 text-xs whitespace-nowrap"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-blue-500" />
+                    <span className="text-gray-700">{shipper}</span>
+                  </div>
+                ))}
+              </div>
+            </TableCell>
+          );
+        }
+
         return (
           <TableCell key={columnId} className="text-sm text-gray-700">
-            {(plan.data as any).package_details?.[0]?.shipper || "N/A"}
+            {shippers[0] || "N/A"}
           </TableCell>
         );
+      }
       case "invoice_number":
         return (
           <TableCell key={columnId} className="text-sm text-gray-700">

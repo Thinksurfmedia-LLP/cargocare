@@ -490,6 +490,89 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const unmapping_reason = formData.get("unmapping_reason") as string
     const booking_released_to = formData.get("booking_released_to") as string
 
+    // Save shipment assignment as draft: persist the exact in-progress state
+    // (both already-allocated bookings and still-in-progress "Request Booking" cards)
+    // without requiring any mandatory fields to be complete.
+    if (assignmentId && specialAction === "save_draft") {
+      console.log("[v0] save_draft action started", { assignmentId })
+
+      const current = await prisma.shipmentAssignment.findUnique({
+        where: { id: assignmentId },
+      })
+
+      if (!current) {
+        return Response.json({ error: "Shipment assignment not found" }, { status: 404 })
+      }
+
+      const assignmentData = (current.data as any) || {}
+
+      if (assignmentData.carrier_booking_status === "Booked") {
+        return Response.json({ error: "Cannot save a booked assignment as draft" }, { status: 400 })
+      }
+
+      // Parse the in-progress "Request Booking" cards (not yet individually allocated)
+      const draftRequestedBookingDetails: any[] = []
+      let reqIndex = 0
+      const getRequestedField = (index: number, field: string) =>
+        (formData.get(`requested_booking_details[${index}][${field}]`) as string) || ""
+
+      while (
+        formData.get(`requested_booking_details[${reqIndex}][equipment_type]`) !== null ||
+        formData.get(`requested_booking_details[${reqIndex}][temporary_booking_number]`) !== null
+      ) {
+        draftRequestedBookingDetails.push({
+          temporary_booking_number: getRequestedField(reqIndex, "temporary_booking_number"),
+          suffix_for_anticipatory_temporary_booking_number: getRequestedField(
+            reqIndex,
+            "suffix_for_anticipatory_temporary_booking_number",
+          ),
+          liner_booking_number: getRequestedField(reqIndex, "liner_booking_number"),
+          mbl_number: getRequestedField(reqIndex, "mbl_number"),
+          carrier: getRequestedField(reqIndex, "carrier"),
+          contract: getRequestedField(reqIndex, "contract"),
+          original_planned_vessel: getRequestedField(reqIndex, "original_planned_vessel"),
+          e_t_d_of_original_planned_vessel: getRequestedField(reqIndex, "e_t_d_of_original_planned_vessel"),
+          revised_vessel: getRequestedField(reqIndex, "revised_vessel"),
+          etd_of_revised_vessel: getRequestedField(reqIndex, "etd_of_revised_vessel"),
+          empty_pickup_validity_from: getRequestedField(reqIndex, "empty_pickup_validity_from"),
+          empty_pickup_validity_till: getRequestedField(reqIndex, "empty_pickup_validity_till"),
+          estimate_gate_opening_date: getRequestedField(reqIndex, "estimate_gate_opening_date"),
+          estimated_gate_cutoff_date: getRequestedField(reqIndex, "estimated_gate_cutoff_date"),
+          s_i_cut_off_date: getRequestedField(reqIndex, "s_i_cut_off_date"),
+          booking_received_from_carrier_on: getRequestedField(reqIndex, "booking_received_from_carrier_on"),
+          additional_remarks: getRequestedField(reqIndex, "additional_remarks"),
+          line_booking_copy: getRequestedField(reqIndex, "line_booking_copy"),
+          equipment_type: getRequestedField(reqIndex, "equipment_type"),
+          booking_for: getRequestedField(reqIndex, "booking_for"),
+          trackingNumber: getRequestedField(reqIndex, "trackingNumber"),
+          displayName: getRequestedField(reqIndex, "displayName"),
+          loading_port: getRequestedField(reqIndex, "loading_port"),
+          destination_country: getRequestedField(reqIndex, "destination_country"),
+          port_of_discharge: getRequestedField(reqIndex, "port_of_discharge"),
+        })
+        reqIndex++
+      }
+
+      const updatedAssignmentData = {
+        ...assignmentData,
+        ...(carrier_booking_status ? { carrier_booking_status } : {}),
+        ...(typeof unmapping_request === "boolean" ? { unmapping_request } : {}),
+        ...(unmapping_reason ? { unmapping_reason } : {}),
+        ...(booking_released_to ? { booking_released_to } : {}),
+        requested_booking_details: draftRequestedBookingDetails,
+        draft_saved_at: new Date().toISOString(),
+      }
+
+      await prisma.shipmentAssignment.update({
+        where: { id: assignmentId },
+        data: { data: updatedAssignmentData },
+      })
+
+      console.log("[v0] save_draft - saved", draftRequestedBookingDetails.length, "in-progress booking detail(s)")
+
+      return redirect(`/liner-bookings/${params.id}/edit?assignmentId=${assignmentId}&draft_saved=true`)
+    }
+
     // Handle buying price for shipment plan update
     const buyingPrice = formData.get("buying_price") as string
 

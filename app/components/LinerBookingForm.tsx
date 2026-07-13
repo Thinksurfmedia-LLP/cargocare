@@ -2,7 +2,7 @@
 
 import type React from "react";
 
-import { Form, Link, useNavigation } from "react-router";
+import { Form, Link, useNavigation, useSearchParams } from "react-router";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
@@ -52,6 +52,7 @@ export function LinerBookingForm({
 }: LinerBookingFormProps) {
   const navigation = useNavigation();
   const { addToast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Extract data from the JSON field for edit mode
   const data = mode === "edit" ? (linerBooking?.data as any) : null;
@@ -1613,6 +1614,22 @@ export function LinerBookingForm({
     }
   }, [actionData?.error, addToast, parsedErrors]);
 
+  // Show a toast when the shipment assignment was just saved as a draft
+  useEffect(() => {
+    if (searchParams.get("draft_saved") !== "true") return;
+
+    addToast({
+      type: "success",
+      title: "Draft Saved",
+      description: "The shipment assignment has been saved as a draft. Your current allocation progress is preserved exactly as it was.",
+      duration: 6000,
+    });
+
+    const newParams = new URLSearchParams(searchParams);
+    newParams.delete("draft_saved");
+    setSearchParams(newParams, { replace: true });
+  }, [searchParams, addToast, setSearchParams]);
+
   // On validation errors, jump to the first errored field (fallback to summary)
   useEffect(() => {
     if (!actionData || !(actionData as any)?.fieldErrors) return;
@@ -1703,6 +1720,19 @@ export function LinerBookingForm({
               <span className="text-xs px-2 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-100 whitespace-nowrap">
                 {currentStatus}
               </span>
+              {isAssignment && mode === "edit" && currentStatus !== "Booked" && (
+                <Button
+                  type="submit"
+                  form="liner-booking-form"
+                  name="_action"
+                  value="save_draft"
+                  disabled={isSubmitting}
+                  variant="outline"
+                  className="inline-flex items-center px-3 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+                >
+                  {isSubmitting ? "Saving..." : "💾 Save as Draft"}
+                </Button>
+              )}
               <Button
                 type="submit"
                 form="liner-booking-form"
@@ -3323,6 +3353,42 @@ export function LinerBookingForm({
                               </>
                             )}
 
+                            {/* Hidden form inputs to persist in-progress "Request Booking" cards
+                                (not yet individually allocated) so "Save as Draft" restores them exactly. */}
+                            {isAssignment && requestedBookingDetails.length > 0 && (
+                              <>
+                                {requestedBookingDetails.map((detail: any, index: number) => (
+                                  <div key={`draft-requested-${index}`}>
+                                    <input type="hidden" name={`requested_booking_details[${index}][temporary_booking_number]`} value={detail.temporary_booking_number || ""} />
+                                    <input type="hidden" name={`requested_booking_details[${index}][suffix_for_anticipatory_temporary_booking_number]`} value={detail.suffix_for_anticipatory_temporary_booking_number || ""} />
+                                    <input type="hidden" name={`requested_booking_details[${index}][liner_booking_number]`} value={detail.liner_booking_number || ""} />
+                                    <input type="hidden" name={`requested_booking_details[${index}][mbl_number]`} value={detail.mbl_number || ""} />
+                                    <input type="hidden" name={`requested_booking_details[${index}][carrier]`} value={detail.carrier || ""} />
+                                    <input type="hidden" name={`requested_booking_details[${index}][contract]`} value={detail.contract || ""} />
+                                    <input type="hidden" name={`requested_booking_details[${index}][original_planned_vessel]`} value={detail.original_planned_vessel || ""} />
+                                    <input type="hidden" name={`requested_booking_details[${index}][e_t_d_of_original_planned_vessel]`} value={detail.e_t_d_of_original_planned_vessel || ""} />
+                                    <input type="hidden" name={`requested_booking_details[${index}][revised_vessel]`} value={detail.revised_vessel || ""} />
+                                    <input type="hidden" name={`requested_booking_details[${index}][etd_of_revised_vessel]`} value={detail.etd_of_revised_vessel || ""} />
+                                    <input type="hidden" name={`requested_booking_details[${index}][empty_pickup_validity_from]`} value={detail.empty_pickup_validity_from || ""} />
+                                    <input type="hidden" name={`requested_booking_details[${index}][empty_pickup_validity_till]`} value={detail.empty_pickup_validity_till || ""} />
+                                    <input type="hidden" name={`requested_booking_details[${index}][estimate_gate_opening_date]`} value={detail.estimate_gate_opening_date || ""} />
+                                    <input type="hidden" name={`requested_booking_details[${index}][estimated_gate_cutoff_date]`} value={detail.estimated_gate_cutoff_date || ""} />
+                                    <input type="hidden" name={`requested_booking_details[${index}][s_i_cut_off_date]`} value={detail.s_i_cut_off_date || ""} />
+                                    <input type="hidden" name={`requested_booking_details[${index}][booking_received_from_carrier_on]`} value={detail.booking_received_from_carrier_on || ""} />
+                                    <input type="hidden" name={`requested_booking_details[${index}][additional_remarks]`} value={detail.additional_remarks || ""} />
+                                    <input type="hidden" name={`requested_booking_details[${index}][line_booking_copy]`} value={detail.line_booking_copy || ""} />
+                                    <input type="hidden" name={`requested_booking_details[${index}][equipment_type]`} value={detail.equipment_type || ""} />
+                                    <input type="hidden" name={`requested_booking_details[${index}][booking_for]`} value={detail.booking_for || ""} />
+                                    <input type="hidden" name={`requested_booking_details[${index}][trackingNumber]`} value={detail.trackingNumber || ""} />
+                                    <input type="hidden" name={`requested_booking_details[${index}][displayName]`} value={detail.displayName || ""} />
+                                    <input type="hidden" name={`requested_booking_details[${index}][loading_port]`} value={detail.loading_port || ""} />
+                                    <input type="hidden" name={`requested_booking_details[${index}][destination_country]`} value={detail.destination_country || ""} />
+                                    <input type="hidden" name={`requested_booking_details[${index}][port_of_discharge]`} value={detail.port_of_discharge || ""} />
+                                  </div>
+                                ))}
+                              </>
+                            )}
+
                             {/* Request booking UI - Always show when on request tab */}
                             {isAssignment && assignmentTab === "request" && currentStatus !== "Booked" && (
                               <div className="flex justify-between items-center mb-4">
@@ -4883,6 +4949,19 @@ export function LinerBookingForm({
                     >
                       Cancel
                     </Link>
+
+                    {isAssignment && mode === "edit" && currentStatus !== "Booked" && (
+                      <Button
+                        type="submit"
+                        name="_action"
+                        value="save_draft"
+                        disabled={isSubmitting}
+                        variant="outline"
+                        className="inline-flex items-center px-6 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+                      >
+                        {isSubmitting ? "Saving..." : "💾 Save as Draft"}
+                      </Button>
+                    )}
 
                     <div className="flex justify-end space-x-4 border-t border-gray-200">
                       {/* Debug info removed */}

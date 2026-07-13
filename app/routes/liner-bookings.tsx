@@ -1221,13 +1221,30 @@ export default function LinerBookings() {
             </div>
           </TableCell>
         )
-      case "status":
+      case "status": {
         const statusValue = isAssignments
           ? (isOrphaned 
               ? (booking.data as any)?._originalShipmentPlan?.booking_status || booking.data?.carrier_booking_status
               : booking?.shipmentPlan?.data?.booking_status || booking.data?.carrier_booking_status)
           : booking.data?.carrier_booking_status
-        return <TableCell key={columnId}>{getStatusBadge(statusValue)}</TableCell>
+        const isDraft = isAssignments && !!(booking.data as any)?.draft_saved_at && statusValue !== "Booked"
+        return (
+          <TableCell key={columnId}>
+            <div className="flex items-center gap-2 flex-wrap">
+              {getStatusBadge(statusValue)}
+              {isDraft && (
+                <span
+                  className="inline-flex items-center space-x-1 px-2 py-1 rounded-full text-xs font-semibold text-amber-800 bg-gradient-to-r from-amber-100 to-amber-50 border border-amber-300"
+                  title="This assignment has unsaved allocation progress saved as a draft"
+                >
+                  <span>💾</span>
+                  <span>Draft</span>
+                </span>
+              )}
+            </div>
+          </TableCell>
+        )
+      }
       case "vessel":
         const vesselValue = isAssignments
           ? (isOrphaned 
