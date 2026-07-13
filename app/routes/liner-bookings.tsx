@@ -14,6 +14,7 @@ import {
 } from "react-router"
 import { requireAuth } from "~/lib/auth.server"
 import { prisma } from "~/lib/prisma.server"
+import { renderContainerStatusCell, renderShipperCell } from "~/lib/container-status"
 import { Button } from "~/components/ui/button"
 import { Input } from "~/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/ui/table"
@@ -1531,24 +1532,19 @@ export default function LinerBookings() {
             </div>
           </TableCell>
         )
-      case "container_status":
+      case "container_status": {
         if (!isAssignments) return <TableCell key={columnId}>N/A</TableCell>
-        const containerStatus = isOrphaned
-          ? (booking.data as any)?._originalShipmentPlan?.container_tracking?.container_current_status
-          : booking?.shipmentPlan?.data?.container_tracking?.container_current_status
+        const spDataForStatus = isOrphaned
+          ? (booking.data as any)?._originalShipmentPlan
+          : booking?.shipmentPlan?.data
+        const containerStatusPlanLike = {
+          data: spDataForStatus,
+          shipmentAssignment: { data: booking?.data },
+        }
         return (
-          <TableCell key={columnId}>
-            <span
-              className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
-                containerStatus === "Booked"
-                  ? "bg-green-100 text-green-800"
-                  : "bg-yellow-100 text-yellow-800"
-              } border border-gray-200`}
-            >
-              {containerStatus || "N/A"}
-            </span>
-          </TableCell>
+          <TableCell key={columnId}>{renderContainerStatusCell(containerStatusPlanLike)}</TableCell>
         )
+      }
       case "type":
         if (!isAssignments) return <TableCell key={columnId}>N/A</TableCell>
         const shipmentType = isOrphaned
@@ -1585,7 +1581,17 @@ export default function LinerBookings() {
         }
         return <TableCell key={columnId} className="text-sm text-gray-700">{fieldMap[columnId] || "N/A"}</TableCell>
       }
-      case "shipper":
+      case "shipper": {
+        if (!isAssignments) return <TableCell key={columnId}>N/A</TableCell>
+        const spDataShipper = isOrphaned
+          ? (booking.data as any)?._originalShipmentPlan
+          : booking?.shipmentPlan?.data
+        return (
+          <TableCell key={columnId} className="text-sm text-gray-700">
+            {renderShipperCell(spDataShipper?.package_details)}
+          </TableCell>
+        )
+      }
       case "invoice_number":
       case "commodity":
       case "volume":
@@ -1600,7 +1606,6 @@ export default function LinerBookings() {
           : booking?.shipmentPlan?.data
         const pkg = spDataPkg?.package_details?.[0]
         const pkgFieldMap: Record<string, string> = {
-          shipper: pkg?.shipper,
           invoice_number: pkg?.invoice_number,
           commodity: pkg?.commodity,
           volume: pkg?.volume,

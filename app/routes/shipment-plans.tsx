@@ -15,6 +15,10 @@ import {
 } from "react-router";
 import { requireAuth } from "~/lib/auth.server";
 import { prisma } from "~/lib/prisma.server";
+import {
+  renderContainerStatusCell,
+  renderShipperCell,
+} from "~/lib/container-status";
 import { Card, CardContent } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
@@ -1001,7 +1005,6 @@ export default function ShipmentPlans() {
     ...(user.role.name === "ADMIN" || user.role.name === "MD" ? priceColumns : []),
     { id: "carrier", label: "Carrier", defaultVisible: true },
     { id: "vessel", label: "Vessel", defaultVisible: true },
-    { id: "container_status", label: "Container Status", defaultVisible: true },
     { id: "created_date", label: "Created", defaultVisible: true },
     { id: "created_by", label: "Created By", defaultVisible: true },
     // Only show Last Updated column to ADMIN and SHIPMENT_PLAN_TEAM
@@ -1072,183 +1075,6 @@ export default function ShipmentPlans() {
     } else {
       setSelectedIds(selectedIds.filter((id) => id !== planId));
     }
-  };
-
-  // Function to determine milestone status based on equipment details
-  const getMilestoneStatus = (plan: any) => {
-    const equipmentDetails = plan.data?.equipment_details || [];
-    if (equipmentDetails.length === 0) return "No Equipment";
-
-    // Count equipments with each milestone completed
-    let emptyPickupCompleted = 0;
-    let stuffingCompleted = 0;
-    let gateInCompleted = 0;
-    let loadedCompleted = 0;
-    const totalEquipments = equipmentDetails.length;
-
-    equipmentDetails.forEach((equipment: any) => {
-      if (equipment.emptyPickupStatus && equipment.emptyPickupDate) emptyPickupCompleted++;
-      if (equipment.stuffingStatus && equipment.stuffingDate) stuffingCompleted++;
-      if (equipment.gateInStatus && equipment.gateInDate) gateInCompleted++;
-      if (equipment.loadedStatus && equipment.loadedDate) loadedCompleted++;
-    });
-
-    // Determine current milestone status
-    if (loadedCompleted === totalEquipments) {
-      return "Loaded on Vessel";
-    } else if (stuffingCompleted === totalEquipments) {
-      return "Container Stuffing Completed";
-    } else if (gateInCompleted === totalEquipments) {
-      return "Gate In Completed";
-    } else if (emptyPickupCompleted === totalEquipments) {
-      return "Empty Container Picked Up";
-    } else if (loadedCompleted > 0) {
-      return `Loaded: ${loadedCompleted}/${totalEquipments}`;
-    } else if (stuffingCompleted > 0) {
-      return `Stuffing: ${stuffingCompleted}/${totalEquipments}`;
-    } else if (gateInCompleted > 0) {
-      return `Gate In: ${gateInCompleted}/${totalEquipments}`;
-    } else if (emptyPickupCompleted > 0) {
-      return `Empty Pickup: ${emptyPickupCompleted}/${totalEquipments}`;
-    } else {
-      return "Pending";
-    }
-  };
-
-  const getMilestoneStatusBadge = (status: string) => {
-    const statusConfig: Record<string, { color: string; bg: string; border: string; icon: string }> = {
-      "Loaded on Vessel": {
-        color: "text-green-800",
-        bg: "bg-green-100",
-        border: "border-green-300",
-        icon: "🚢"
-      },
-      "Gate In Completed": {
-        color: "text-blue-800",
-        bg: "bg-blue-100",
-        border: "border-blue-300",
-        icon: "🚪"
-      },
-      "Container Stuffing Completed": {
-        color: "text-purple-800",
-        bg: "bg-purple-100",
-        border: "border-purple-300",
-        icon: "📦"
-      },
-      "Empty Container Picked Up": {
-        color: "text-yellow-800",
-        bg: "bg-yellow-100",
-        border: "border-yellow-300",
-        icon: "🚛"
-      },
-      "Pending": {
-        color: "text-gray-600",
-        bg: "bg-gray-100",
-        border: "border-gray-300",
-        icon: "⏳"
-      },
-      "No Equipment": {
-        color: "text-gray-500",
-        bg: "bg-gray-50",
-        border: "border-gray-200",
-        icon: "❌"
-      }
-    };
-
-    // Handle partial statuses (e.g., "Empty Pickup: 2/3")
-    let config = statusConfig[status];
-    if (!config) {
-      if (status.includes("Empty Pickup:")) {
-        config = {
-          color: "text-orange-800",
-          bg: "bg-orange-100",
-          border: "border-orange-300",
-          icon: "🚛"
-        };
-      } else if (status.includes("Stuffing:")) {
-        config = {
-          color: "text-purple-800",
-          bg: "bg-purple-100",
-          border: "border-purple-300",
-          icon: "📦"
-        };
-      } else if (status.includes("Gate In:")) {
-        config = {
-          color: "text-blue-800",
-          bg: "bg-blue-100",
-          border: "border-blue-300",
-          icon: "🚪"
-        };
-      } else if (status.includes("Loaded:")) {
-        config = {
-          color: "text-green-800",
-          bg: "bg-green-100",
-          border: "border-green-300",
-          icon: "🚢"
-        };
-      } else {
-        config = statusConfig["Pending"];
-      }
-    }
-
-    return (
-      <span
-        className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
-          config.bg
-        } ${config.color} border ${config.border}`}
-      >
-        <span className="mr-1">{config.icon}</span>
-        {status}
-      </span>
-    );
-  };
-
-  // Extract the tracking number a liner booking detail refers to
-  // (handles both the direct `trackingNumber` field and the legacy "equipmentType|trackingNumber" format)
-  const getDetailTrackingNumber = (detail: any): string | null => {
-    if (!detail) return null;
-    if (detail.trackingNumber) return detail.trackingNumber;
-    if (typeof detail.booking_for === "string" && detail.booking_for.includes("|")) {
-      return detail.booking_for.split("|")[1] || null;
-    }
-    return null;
-  };
-
-  // Find the Liner Booking Number allocated to a specific piece of equipment
-  const getEquipmentLinerBookingNumber = (plan: any, equipment: any): string | null => {
-    const trackingNumber = equipment?.trackingNumber;
-    if (!trackingNumber) return null;
-
-    const detailSources: any[] = [
-      ...(Array.isArray(plan?.linerBooking?.data?.liner_booking_details)
-        ? plan.linerBooking.data.liner_booking_details
-        : []),
-      ...(Array.isArray(plan?.shipmentAssignment?.data?.liner_booking_details)
-        ? plan.shipmentAssignment.data.liner_booking_details
-        : []),
-    ];
-
-    const match = detailSources.find(
-      (detail: any) => getDetailTrackingNumber(detail) === trackingNumber
-    );
-    return match?.liner_booking_number || null;
-  };
-
-  // Determine the milestone status for a single piece of equipment (not the plan-wide aggregate)
-  const getEquipmentStatusLabel = (equipment: any): string => {
-    if (equipment?.loadedStatus && equipment?.loadedDate) return "Loaded on Vessel";
-    if (equipment?.stuffingStatus && equipment?.stuffingDate) return "Container Stuffing Completed";
-    if (equipment?.gateInStatus && equipment?.gateInDate) return "Gate In Completed";
-    if (equipment?.emptyPickupStatus && equipment?.emptyPickupDate) return "Empty Container Picked Up";
-    return "Pending";
-  };
-
-  const equipmentStatusDotColor: Record<string, string> = {
-    "Loaded on Vessel": "bg-green-500",
-    "Container Stuffing Completed": "bg-purple-500",
-    "Gate In Completed": "bg-blue-500",
-    "Empty Container Picked Up": "bg-yellow-500",
-    Pending: "bg-gray-400",
   };
 
   const getStatusBadge = (status: string) => {
@@ -1487,20 +1313,6 @@ export default function ShipmentPlans() {
             </div>
           </TableCell>
         );
-      case "container_status":
-        return (
-          <TableCell key={columnId}>
-            <span
-              className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
-                plan.data.container_status === "Booked"
-                  ? "bg-green-100 text-green-800"
-                  : "bg-yellow-100 text-yellow-800"
-              } border border-gray-200`}
-            >
-              {plan.data.container_status || "N/A"}
-            </span>
-          </TableCell>
-        );
       case "created_date":
         return (
           <TableCell key={columnId} className="text-sm text-gray-500">
@@ -1510,49 +1322,10 @@ export default function ShipmentPlans() {
             </div>
           </TableCell>
         );
-      case "milestone_status": {
-        const equipmentDetails = Array.isArray(plan.data?.equipment_details)
-          ? plan.data.equipment_details
-          : [];
-        const isBooked = plan.data?.booking_status === "Booked";
-
-        if (isBooked && equipmentDetails.length > 0) {
-          return (
-            <TableCell key={columnId}>
-              <div className="flex flex-col gap-1 max-h-28 overflow-y-auto min-w-[220px] py-1">
-                {equipmentDetails.map((equipment: any, idx: number) => {
-                  const lbn =
-                    getEquipmentLinerBookingNumber(plan, equipment) ||
-                    equipment.trackingNumber ||
-                    `Container ${idx + 1}`;
-                  const label = getEquipmentStatusLabel(equipment);
-                  return (
-                    <div
-                      key={idx}
-                      className="flex items-center gap-1.5 text-xs whitespace-nowrap"
-                    >
-                      <span
-                        className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-                          equipmentStatusDotColor[label] || "bg-gray-400"
-                        }`}
-                      />
-                      <span className="font-semibold text-gray-800">{lbn}</span>
-                      <span className="text-gray-400">-</span>
-                      <span className="text-gray-600">{label}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </TableCell>
-          );
-        }
-
+      case "milestone_status":
         return (
-          <TableCell key={columnId}>
-            {getMilestoneStatusBadge(getMilestoneStatus(plan))}
-          </TableCell>
+          <TableCell key={columnId}>{renderContainerStatusCell(plan)}</TableCell>
         );
-      }
       case "created_by":
         return (
           <TableCell key={columnId} className="text-sm text-gray-600">
@@ -1617,38 +1390,12 @@ export default function ShipmentPlans() {
             {(plan.data as any).container_movement?.credit_period || "N/A"}
           </TableCell>
         );
-      case "shipper": {
-        const packageDetails = Array.isArray((plan.data as any)?.package_details)
-          ? (plan.data as any).package_details
-          : [];
-        const shippers = packageDetails
-          .map((pkg: any) => pkg?.shipper)
-          .filter((shipper: any) => typeof shipper === "string" && shipper.trim() !== "");
-
-        if (shippers.length > 1) {
-          return (
-            <TableCell key={columnId}>
-              <div className="flex flex-col gap-1 max-h-28 overflow-y-auto min-w-[160px] py-1">
-                {shippers.map((shipper: string, idx: number) => (
-                  <div
-                    key={idx}
-                    className="flex items-center gap-1.5 text-xs whitespace-nowrap"
-                  >
-                    <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-blue-500" />
-                    <span className="text-gray-700">{shipper}</span>
-                  </div>
-                ))}
-              </div>
-            </TableCell>
-          );
-        }
-
+      case "shipper":
         return (
           <TableCell key={columnId} className="text-sm text-gray-700">
-            {shippers[0] || "N/A"}
+            {renderShipperCell((plan.data as any)?.package_details)}
           </TableCell>
         );
-      }
       case "invoice_number":
         return (
           <TableCell key={columnId} className="text-sm text-gray-700">
