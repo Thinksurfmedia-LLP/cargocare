@@ -299,6 +299,27 @@ export async function loader({ request }: LoaderFunctionArgs) {
       }
     }
 
+    // Cancelled shipment plans are only visible to ADMIN and SHIPMENT_PLAN_TEAM, not MD
+    if (user.role.name === "MD") {
+      const notCancelledCondition = {
+        NOT: {
+          data: {
+            path: ["booking_status"],
+            equals: "Cancelled",
+          },
+        },
+      };
+
+      if (whereCondition.AND) {
+        whereCondition.AND.push(notCancelledCondition);
+      } else if (whereCondition.OR) {
+        whereCondition.AND = [{ OR: whereCondition.OR }, notCancelledCondition];
+        delete whereCondition.OR;
+      } else {
+        Object.assign(whereCondition, notCancelledCondition);
+      }
+    }
+
     const [
       shipmentPlans,
       totalCount,
@@ -880,6 +901,23 @@ export default function ShipmentPlans() {
       // Remove the query param from URL without refresh
       const newUrl = new URL(window.location.href);
       newUrl.searchParams.delete("cancelled");
+      window.history.replaceState({}, "", newUrl.toString());
+    }
+  }, [searchParams, addToast]);
+
+  // Show toast when shipment plan is soft-cancelled (marked Cancelled, not deleted)
+  useEffect(() => {
+    const planCancelled = searchParams.get("plan_cancelled");
+    if (planCancelled === "true") {
+      addToast({
+        type: "success",
+        title: "Shipment Plan Cancelled",
+        description: "The shipment plan has been marked as Cancelled and is now read-only. It remains visible to Admin and Shipment Planning team only.",
+        duration: 6000,
+      });
+      // Remove the query param from URL without refresh
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete("plan_cancelled");
       window.history.replaceState({}, "", newUrl.toString());
     }
   }, [searchParams, addToast]);

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { cn } from "~/lib/utils";
+import { FormReadOnlyContext } from "~/lib/form-readonly-context";
 
 const Accordion = React.forwardRef<
   HTMLDivElement,
@@ -161,24 +162,32 @@ const AccordionContent = React.forwardRef<
   React.HTMLAttributes<HTMLDivElement> & {
     isOpen?: boolean;
   }
->(({ className, children, isOpen = false, ...props }, ref) => (
-  <div
-    ref={ref}
-    className={cn(
-      "transition-all duration-300",
-      // Ensure overflow-visible when open, and hidden when closed for animation
-      isOpen
-        ? "animate-in slide-in-from-top-1 overflow-visible"
-        : "animate-out slide-out-to-top-1 hidden overflow-hidden",
-      className
-    )}
-    {...props}
-  >
-    <div className={cn("px-6 pb-6 pt-0 bg-gray-50/50", className)}>
-      {children}
+>(({ className, children, isOpen = false, ...props }, ref) => {
+  const isReadOnly = React.useContext(FormReadOnlyContext);
+
+  return (
+    <div
+      ref={ref}
+      className={cn(
+        "transition-all duration-300",
+        // Ensure overflow-visible when open, and hidden when closed for animation
+        isOpen
+          ? "animate-in slide-in-from-top-1 overflow-visible"
+          : "animate-out slide-out-to-top-1 hidden overflow-hidden",
+        className
+      )}
+      {...props}
+    >
+      {/* fieldset+disabled natively blocks every input/select/textarea/button/checkbox
+          inside without affecting layout (display: contents removes it from the box tree) */}
+      <fieldset disabled={isReadOnly} className="contents border-0 m-0 p-0 min-w-0">
+        <div className={cn("px-6 pb-6 pt-0 bg-gray-50/50", className)}>
+          {children}
+        </div>
+      </fieldset>
     </div>
-  </div>
-));
+  );
+});
 AccordionContent.displayName = "AccordionContent";
 
 export { Accordion, AccordionItem, AccordionTrigger, AccordionContent };

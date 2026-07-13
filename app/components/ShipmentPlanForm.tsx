@@ -19,6 +19,7 @@ import {
 import { SearchableSelect } from "~/components/ui/searchable-select";
 import { useToast } from "~/components/ui/toast";
 import { BulkEquipmentModal } from "~/components/ui/bulk-equipment-modal";
+import { FormReadOnlyContext } from "~/lib/form-readonly-context";
 
 interface ShipmentPlanFormProps {
   mode: "create" | "edit";
@@ -308,6 +309,13 @@ export function ShipmentPlanForm({
   // State for cancel shipment plan confirmation
   const [showCancelConfirmation, setShowCancelConfirmation] = useState<boolean>(false);
   const [isCancelling, setIsCancelling] = useState<boolean>(false);
+
+  // State for soft-cancel (mark as Cancelled, keep record) confirmation
+  const [showSoftCancelConfirmation, setShowSoftCancelConfirmation] = useState<boolean>(false);
+  const [isSoftCancelling, setIsSoftCancelling] = useState<boolean>(false);
+
+  // A cancelled plan is locked: no further edits, only visible to Admin and Shipment Planning team
+  const isCancelled = mode === "edit" && bookingStatus === "Cancelled";
 
   // State for business branch confirmation dialog (create mode only)
   const [showBranchConfirmDialog, setShowBranchConfirmDialog] = useState<boolean>(false);
@@ -1134,16 +1142,34 @@ export function ShipmentPlanForm({
                 className={`text-xs px-2 py-1 rounded-full ${
                   mode === "create"
                     ? "text-gray-500 bg-gray-100"
+                    : isCancelled
+                    ? "text-red-700 bg-red-100"
                     : "text-yellow-700 bg-yellow-100"
                 }`}
               >
-                {mode === "create" ? "Draft" : "Editing"}
+                {mode === "create" ? "Draft" : isCancelled ? "Cancelled" : "Editing"}
               </span>
             </div>
           </div>
         </div>
         <div className="bg-white rounded-b-xl shadow-lg border border-gray-200 overflow-hidden -mt-1">
           <div className="divide-y divide-gray-100">
+            {/* Cancelled Plan Notice */}
+            {isCancelled && (
+              <div className="px-6 py-4 bg-red-50 border-b border-red-200">
+                <div className="flex items-start space-x-3">
+                  <span className="text-lg">🚫</span>
+                  <div>
+                    <p className="text-sm font-semibold text-red-800">
+                      This shipment plan has been cancelled
+                    </p>
+                    <p className="text-xs text-red-600 mt-1">
+                      It is now read-only and visible only to Admin and Shipment Planning team.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
             {/* Linked Liner Booking Information - Only for edit mode */}
             {mode === "edit" && shipmentPlan?.linerBooking && (
               <div className="relative">
@@ -1627,7 +1653,8 @@ export function ShipmentPlanForm({
             )}
 
             {/* Accordion Sections */}
-            <Accordion className="space-y-0">
+            <FormReadOnlyContext.Provider value={isCancelled}>
+              <Accordion className="space-y-0">
               {/* MD Approval Status - Only visible when booking status is rejected and user is ADMIN */}
               {mode != "create" &&
                 planData?.md_approval_status === "rejected" &&
@@ -4089,6 +4116,7 @@ export function ShipmentPlanForm({
 
               
             </Accordion>
+            </FormReadOnlyContext.Provider>
           </div>
 
           {/* Enhanced Form Actions */}
@@ -4123,8 +4151,24 @@ export function ShipmentPlanForm({
                       </div>
                     </Button>
                   )}
-                  {/* Save as Draft Button - Hide for MD users */}
-                  {user?.role.name !== "MD" && (
+                  {/* Cancel Shipment Plan Button - ADMIN and SHIPMENT_PLAN_TEAM only, marks as Cancelled without deleting */}
+                  {mode === "edit" &&
+                    !isCancelled &&
+                    (user?.role.name === "ADMIN" || user?.role.name === "SHIPMENT_PLAN_TEAM") && (
+                      <Button
+                        type="button"
+                        onClick={() => setShowSoftCancelConfirmation(true)}
+                        disabled={isSubmitting || isFormSubmitting || isSoftCancelling}
+                        className="px-6 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium transition-all duration-200 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <div className="flex items-center space-x-2">
+                          <span>🚫</span>
+                          <span>Cancel Plan</span>
+                        </div>
+                      </Button>
+                    )}
+                  {/* Save as Draft Button - Hide for MD users and once cancelled */}
+                  {!isCancelled && user?.role.name !== "MD" && (
                     <div className="relative group">
                       <Button
                         type="submit"
@@ -4154,8 +4198,9 @@ export function ShipmentPlanForm({
                       )}
                     </div>
                   )}
-                  {/* Update Shipment Plan Button - Hide for MD when plan is awaiting approval (button is at top) */}
-                  {!(mode === "edit" && bookingStatus === "Awaiting MD Approval" && user?.role.name === "MD") && (
+                  {/* Update Shipment Plan Button - Hide for MD when plan is awaiting approval (button is at top), and once cancelled */}
+                  {!isCancelled &&
+                    !(mode === "edit" && bookingStatus === "Awaiting MD Approval" && user?.role.name === "MD") && (
                     <div className="relative group">
                       <Button
                         type="submit"
@@ -4301,6 +4346,86 @@ export function ShipmentPlanForm({
                   </div>
                 ) : (
                   <span>Yes, Delete Plan</span>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel Shipment Plan Confirmation Modal (soft-cancel, does not delete) */}
+      {showSoftCancelConfirmation && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
+            <div className="bg-gradient-to-r from-red-500 to-red-700 px-6 py-4">
+              <h3 className="text-xl font-bold text-white flex items-center">
+                <span className="mr-2">🚫</span>
+                Cancel Shipment Plan
+              </h3>
+            </div>
+            <div className="p-6">
+              <div className="mb-4">
+                <p className="text-gray-700 mb-3">
+                  Are you sure you want to cancel this shipment plan?
+                </p>
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm">
+                  <p className="font-semibold text-red-800 mb-2">This action will:</p>
+                  <ul className="list-disc list-inside text-red-700 space-y-1">
+                    <li>Mark this shipment plan as Cancelled (it will not be deleted)</li>
+                    <li>Make it read-only - no further edits will be possible</li>
+                    <li>Keep it visible only to Admin and Shipment Planning team</li>
+                    <li>Hide it from MD and the Liner Booking team</li>
+                  </ul>
+                </div>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-3 mb-4">
+                <p className="text-sm text-gray-600">
+                  <span className="font-medium">Reference:</span> {planData.reference_number || "N/A"}
+                </p>
+                <p className="text-sm text-gray-600">
+                  <span className="font-medium">Status:</span> {planData.booking_status || "N/A"}
+                </p>
+              </div>
+              <p className="text-red-600 text-sm font-medium">
+                ⚠️ This action cannot be undone.
+              </p>
+            </div>
+            <div className="bg-gray-50 px-6 py-4 flex justify-end space-x-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowSoftCancelConfirmation(false)}
+                disabled={isSoftCancelling}
+                className="px-4 py-2 border-gray-300 rounded-lg hover:bg-gray-100"
+              >
+                No, Keep Plan
+              </Button>
+              <Button
+                type="button"
+                onClick={() => {
+                  setIsSoftCancelling(true);
+                  // Create and submit a form programmatically
+                  const form = document.createElement('form');
+                  form.method = 'POST';
+                  form.style.display = 'none';
+                  const input = document.createElement('input');
+                  input.type = 'hidden';
+                  input.name = 'soft_cancel_plan';
+                  input.value = 'true';
+                  form.appendChild(input);
+                  document.body.appendChild(form);
+                  form.submit();
+                }}
+                disabled={isSoftCancelling}
+                className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium disabled:opacity-50"
+              >
+                {isSoftCancelling ? (
+                  <div className="flex items-center space-x-2">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>Cancelling...</span>
+                  </div>
+                ) : (
+                  <span>Yes, Cancel Plan</span>
                 )}
               </Button>
             </div>

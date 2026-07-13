@@ -67,6 +67,11 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       return redirect("/shipment-plans")
     }
 
+    // Cancelled shipment plans are only visible to ADMIN and SHIPMENT_PLAN_TEAM, not MD
+    if ((shipmentPlan.data as any)?.booking_status === "Cancelled" && user.role.name === "MD") {
+      return redirect("/shipment-plans")
+    }
+
     // Check permissions
     if (user.role.name !== "ADMIN" && user.role.name !== "MD") {
       // For SHIPMENT_PLAN_TEAM, check if user created the plan OR if it belongs to their business branch
@@ -438,6 +443,48 @@ export async function action({ request, params }: ActionFunctionArgs) {
       console.log("[CANCEL] Shipment plan deleted successfully")
 
       return redirect("/shipment-plans?cancelled=true")
+    }
+
+    // Check if a soft-cancel (mark as Cancelled without deleting) was requested
+    const softCancelPlan = formData.get("soft_cancel_plan") === "true"
+
+    if (softCancelPlan) {
+      console.log("[SOFT_CANCEL] Cancel shipment plan requested for planId:", planId)
+
+      // Only ADMIN and SHIPMENT_PLAN_TEAM can cancel a shipment plan this way
+      if (user.role.name !== "ADMIN" && user.role.name !== "SHIPMENT_PLAN_TEAM") {
+        return { error: "You don't have permission to cancel this shipment plan" }
+      }
+
+      const currentPlan = await prisma.shipmentPlan.findUnique({
+        where: { id: planId },
+      })
+
+      if (!currentPlan) {
+        return { error: "Shipment plan not found" }
+      }
+
+      const currentPlanData = currentPlan.data as any
+
+      if (currentPlanData?.booking_status === "Cancelled") {
+        return redirect(`/shipment-plans/${planId}/edit`)
+      }
+
+      await prisma.shipmentPlan.update({
+        where: { id: planId },
+        data: {
+          data: {
+            ...currentPlanData,
+            booking_status: "Cancelled",
+            cancelled_at: new Date().toISOString(),
+            cancelled_by: user.id,
+          },
+        },
+      })
+
+      console.log("[SOFT_CANCEL] Shipment plan marked as Cancelled:", planId)
+
+      return redirect("/shipment-plans?plan_cancelled=true")
     }
 
     // Check if unmapping approval or rejection was requested
@@ -1190,6 +1237,11 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
       console.log("[v0] Individual equipment unmapping rejected successfully")
       return redirect(`/shipment-plans/${planId}/edit`)
+    }
+
+    // A cancelled shipment plan is locked and cannot be edited further
+    if ((existingPlan.data as any)?.booking_status === "Cancelled") {
+      return { error: "This shipment plan has been cancelled and can no longer be edited." }
     }
 
     // Get form values and preserve existing values if form fields are empty

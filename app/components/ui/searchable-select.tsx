@@ -1,7 +1,8 @@
 "use client"
 
 import type React from "react"
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useContext } from "react"
+import { FormReadOnlyContext } from "~/lib/form-readonly-context"
 
 interface Option {
   value: string
@@ -40,6 +41,11 @@ export function SearchableSelect({
   const [highlightedIndex, setHighlightedIndex] = useState(-1)
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Fall back to the surrounding read-only context (e.g. a cancelled shipment plan)
+  // when no explicit `disabled` prop is passed.
+  const isReadOnlyContext = useContext(FormReadOnlyContext)
+  const isDisabled = disabled || isReadOnlyContext
 
   // Function to update dropdown position (placeholder, not strictly needed for this fix)
   const updateDropdownPosition = () => {
@@ -80,7 +86,7 @@ export function SearchableSelect({
   }, [onBlur])
 
   const handleInputClick = () => {
-    if (!disabled) {
+    if (!isDisabled) {
       setIsOpen(true)
       setSearchTerm("")
     }
@@ -103,7 +109,7 @@ export function SearchableSelect({
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (disabled) return
+    if (isDisabled) return
 
     switch (e.key) {
       case "Enter":
@@ -153,9 +159,9 @@ export function SearchableSelect({
           value={displayValue}
           placeholder={placeholder}
           className={`w-full px-2 py-1 h-8 text-xs border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 pr-10 ${
-            disabled ? "bg-gray-100 cursor-not-allowed" : "bg-white cursor-text"
+            isDisabled ? "bg-gray-100 cursor-not-allowed" : "bg-white cursor-text"
           } ${className}`}
-          disabled={disabled}
+          disabled={isDisabled}
           onClick={handleInputClick}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
