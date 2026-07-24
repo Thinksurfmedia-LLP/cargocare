@@ -487,7 +487,7 @@ export default function PendingApprovals() {
     { id: "vessel", label: "Vessel Preference", defaultVisible: false },
     { id: "remarks", label: "Remarks", defaultVisible: false },
     { id: "created_date", label: "Created", defaultVisible: false },
-    { id: "created_by", label: "Created By", defaultVisible: false },
+    { id: "created_by", label: "Sales Person", defaultVisible: false },
     { id: "actions", label: "Actions", defaultVisible: true, locked: true },
   ];
 

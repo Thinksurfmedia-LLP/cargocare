@@ -53,13 +53,15 @@ export function getMilestoneStatus(plan: PlanLike): string {
     if (equipment.loadedStatus && equipment.loadedDate) loadedCompleted++;
   });
 
+  // Chronological order is empty pickup -> stuffing -> gate in -> loaded, so a later
+  // stage always outranks an earlier one even if both are marked complete.
   if (loadedCompleted === totalEquipments) return "Loaded on Vessel";
-  if (stuffingCompleted === totalEquipments) return "Container Stuffing Completed";
   if (gateInCompleted === totalEquipments) return "Gate In Completed";
+  if (stuffingCompleted === totalEquipments) return "Container Stuffing Completed";
   if (emptyPickupCompleted === totalEquipments) return "Empty Container Picked Up";
   if (loadedCompleted > 0) return `Loaded: ${loadedCompleted}/${totalEquipments}`;
-  if (stuffingCompleted > 0) return `Stuffing: ${stuffingCompleted}/${totalEquipments}`;
   if (gateInCompleted > 0) return `Gate In: ${gateInCompleted}/${totalEquipments}`;
+  if (stuffingCompleted > 0) return `Stuffing: ${stuffingCompleted}/${totalEquipments}`;
   if (emptyPickupCompleted > 0) return `Empty Pickup: ${emptyPickupCompleted}/${totalEquipments}`;
   return "Pending";
 }
@@ -133,9 +135,11 @@ export function getEquipmentLinerBookingNumber(plan: PlanLike, equipment: Equipm
 
 // Determine the milestone status for a single piece of equipment (not the plan-wide aggregate)
 export function getEquipmentStatusLabel(equipment: EquipmentDetail): string {
+  // Chronological order is empty pickup -> stuffing -> gate in -> loaded, so a later
+  // stage always outranks an earlier one even if both are marked complete.
   if (equipment?.loadedStatus && equipment?.loadedDate) return "Loaded on Vessel";
-  if (equipment?.stuffingStatus && equipment?.stuffingDate) return "Container Stuffing Completed";
   if (equipment?.gateInStatus && equipment?.gateInDate) return "Gate In Completed";
+  if (equipment?.stuffingStatus && equipment?.stuffingDate) return "Container Stuffing Completed";
   if (equipment?.emptyPickupStatus && equipment?.emptyPickupDate) return "Empty Container Picked Up";
   return "Pending";
 }

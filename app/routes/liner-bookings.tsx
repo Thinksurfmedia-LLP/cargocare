@@ -1062,7 +1062,7 @@ export default function LinerBookings() {
     { id: "container_status", label: "Container Status", defaultVisible: true },
     { id: "assigned_liner_broker", label: "Assigned Liner Broker", defaultVisible: true },
     { id: "created_date", label: "Created", defaultVisible: true },
-    { id: "created_by", label: "Created By", defaultVisible: true },
+    { id: "created_by", label: "Sales Person", defaultVisible: true },
     { id: "updated_date", label: "Last Updated", defaultVisible: true },
     { id: "type", label: "Type", defaultVisible: true },
     // SP-derived fields (hidden by default)

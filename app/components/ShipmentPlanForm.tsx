@@ -870,6 +870,18 @@ export function ShipmentPlanForm({
     )?.value;
     // Buying price is optional for shipment planners
 
+    // Once an equipment is marked Loaded on Board, HBL and MBL numbers are mandatory
+    equipmentDetails.forEach((equipment: any, index: number) => {
+      if (!equipment.loadedStatus) return;
+      const label = equipment.trackingNumber || `Equipment ${index + 1}`;
+      if (!equipment.hblNumber?.trim()) {
+        errors.push(`HBL Number is required for ${label} (marked Loaded on Board)`);
+      }
+      if (!equipment.mblNumber?.trim()) {
+        errors.push(`MBL Number is required for ${label} (marked Loaded on Board)`);
+      }
+    });
+
     if (errors.length > 0) {
       console.log("Validation errors found:", errors);
       addToast({
@@ -3372,7 +3384,7 @@ export function ShipmentPlanForm({
                                                     htmlFor={`hbl_number_${index}`}
                                                     className="text-sm font-medium text-gray-700"
                                                   >
-                                                    HBL Number
+                                                    HBL Number <span className="text-red-500">*</span>
                                                   </Label>
                                                   <Input
                                                     id={`hbl_number_${index}`}
@@ -3388,6 +3400,7 @@ export function ShipmentPlanForm({
                                                     }
                                                     className="text-sm"
                                                     placeholder="Enter HBL Number"
+                                                    required
                                                   />
                                                 </div>
 
@@ -3397,7 +3410,7 @@ export function ShipmentPlanForm({
                                                     htmlFor={`mbl_number_${index}`}
                                                     className="text-sm font-medium text-gray-700"
                                                   >
-                                                    MBL Number
+                                                    MBL Number <span className="text-red-500">*</span>
                                                   </Label>
                                                   <Input
                                                     id={`mbl_number_${index}`}
@@ -3413,6 +3426,7 @@ export function ShipmentPlanForm({
                                                     }
                                                     className="text-sm"
                                                     placeholder="Enter MBL Number"
+                                                    required
                                                   />
                                                 </div>
 

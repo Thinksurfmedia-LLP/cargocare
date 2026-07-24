@@ -1109,7 +1109,7 @@ export default function ShipmentPlans() {
     { id: "carrier", label: "Carrier", defaultVisible: true },
     { id: "vessel", label: "Vessel", defaultVisible: true },
     { id: "created_date", label: "Created", defaultVisible: true },
-    { id: "created_by", label: "Created By", defaultVisible: true },
+    { id: "created_by", label: "Sales Person", defaultVisible: true },
     // Only show Last Updated column to ADMIN and SHIPMENT_PLAN_TEAM
     ...(user.role.name === "ADMIN" || user.role.name === "SHIPMENT_PLAN_TEAM"
       ? [{ id: "updated_date", label: "Last Updated", defaultVisible: true }]

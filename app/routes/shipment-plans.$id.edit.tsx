@@ -1365,6 +1365,18 @@ export async function action({ request, params }: ActionFunctionArgs) {
       equipmentIndex++
     }
 
+    // Once an equipment is marked Loaded on Board, HBL and MBL numbers are mandatory
+    const missingBlNumbers = equipmentDetails.filter(
+      (eq) => eq.loadedStatus && (!eq.hblNumber?.trim() || !eq.mblNumber?.trim())
+    )
+    if (missingBlNumbers.length > 0) {
+      return {
+        error:
+          "HBL Number and MBL Number are required for every equipment marked Loaded on Board: " +
+          missingBlNumbers.map((eq) => eq.trackingNumber || eq.equipment_type).join(", "),
+      }
+    }
+
     // Get container tracking fields
     const container_stuffing_completed_date = formData.get("container_stuffing_completed_date") as string
     const empty_container_picked_up_date = formData.get("empty_container_picked_up_date") as string
