@@ -1982,9 +1982,11 @@ export function LinerBookingForm({
                             {/* Buying Price Field - Required if missing from shipment plan */}
                             {(() => {
                               const currentBuyingPrice = (linerBooking.shipmentPlan?.data as any)?.container_movement?.buying_price;
+                              const draftBuyingPrice = (linerBooking.data as any)?.draft_buying_price;
 
                               if (!currentBuyingPrice) {
-                                // Show editable field if buying price is missing
+                                // Show editable field if buying price is missing, prefilled with
+                                // whatever was saved as a draft so it isn't lost on reload.
                                 return (
                                   <div className="space-y-2">
                                     <Label className="text-sm font-semibold text-gray-700">
@@ -1997,6 +1999,7 @@ export function LinerBookingForm({
                                       name="buying_price"
                                       placeholder="Enter buying price"
                                       className="text-sm"
+                                      defaultValue={draftBuyingPrice || ""}
                                       required
                                     />
                                   </div>

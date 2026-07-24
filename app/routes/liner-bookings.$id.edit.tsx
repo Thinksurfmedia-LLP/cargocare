@@ -489,6 +489,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const unmapping_request = formData.get("unmapping_request") === "true" || formData.get("unmapping_request") === "on"
     const unmapping_reason = formData.get("unmapping_reason") as string
     const booking_released_to = formData.get("booking_released_to") as string
+    const buyingPrice = formData.get("buying_price") as string
 
     // Save shipment assignment as draft: persist the exact in-progress state
     // (both already-allocated bookings and still-in-progress "Request Booking" cards)
@@ -559,6 +560,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
         ...(typeof unmapping_request === "boolean" ? { unmapping_request } : {}),
         ...(unmapping_reason ? { unmapping_reason } : {}),
         ...(booking_released_to ? { booking_released_to } : {}),
+        // Stash the liner team's in-progress buying price entry on the assignment itself
+        // (not the shipment plan) so the field stays editable instead of flipping to the
+        // read-only "Provided by planner" state on every draft save.
+        ...(buyingPrice && buyingPrice.trim() ? { draft_buying_price: buyingPrice.trim() } : {}),
         requested_booking_details: draftRequestedBookingDetails,
         draft_saved_at: new Date().toISOString(),
       }
@@ -572,9 +577,6 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
       return redirect(`/liner-bookings/${params.id}/edit?assignmentId=${assignmentId}&draft_saved=true`)
     }
-
-    // Handle buying price for shipment plan update
-    const buyingPrice = formData.get("buying_price") as string
 
     // Validate buying price is provided when required
     if (assignmentId) {
