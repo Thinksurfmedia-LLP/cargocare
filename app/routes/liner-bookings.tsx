@@ -14,7 +14,9 @@ import {
 } from "react-router"
 import { requireAuth } from "~/lib/auth.server"
 import { prisma } from "~/lib/prisma.server"
-import { renderContainerStatusCell, renderShipperCell } from "~/lib/container-status"
+import { renderContainerStatusCell, renderShipperCell, getMilestoneStatus, getShippers } from "~/lib/container-status"
+import { sortByColumn, toSortNumber, type SortOrder } from "~/lib/sort-utils"
+import { SortableHeader } from "~/components/ui/sortable-table-head"
 import { Button } from "~/components/ui/button"
 import { Input } from "~/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/ui/table"
@@ -36,6 +38,154 @@ export const meta: MetaFunction = () => {
   ]
 }
 
+// Raw (non-JSX) value per column for the "available liner bookings" tab, used for server-side sort.
+function getLinerBookingSortValue(booking: any, columnId: string): string | number | null {
+  const details = booking.data?.liner_booking_details?.[0] || {}
+  const toTime = (value: unknown) => (value ? toSortNumber(new Date(value as string).getTime()) : null)
+  switch (columnId) {
+    case "temp_booking_number":
+      return details.temporary_booking_number ?? null
+    case "carrier":
+      return details.carrier ?? null
+    case "vessel":
+      return details.original_planned_vessel ?? null
+    case "etd":
+      return toTime(details.e_t_d_of_original_planned_vessel)
+    case "released_to":
+      return booking.data?.booking_released_to ?? null
+    case "liner_booking_number":
+      return details.liner_booking_number ?? null
+    case "mbl_number":
+      return details.mbl_number ?? null
+    case "contract":
+      return details.contract ?? null
+    case "loading_port":
+      return details.loading_port ?? null
+    case "port_of_discharge":
+      return details.port_of_discharge ?? null
+    case "equipment_type":
+      return details.equipment_type ?? null
+    case "equipment_quantity":
+      return toSortNumber(details.equipment_quantity)
+    case "created_date":
+      return toSortNumber(new Date(booking.createdAt).getTime())
+    case "created_by":
+      return booking.user?.name ?? null
+    case "updated_date":
+      return toSortNumber(new Date(booking.updatedAt).getTime())
+    case "empty_pickup_from":
+      return toTime(details.empty_pickup_validity_from)
+    case "empty_pickup_till":
+      return toTime(details.empty_pickup_validity_till)
+    case "gate_opening_date":
+      return toTime(details.estimate_gate_opening_date)
+    case "gate_cutoff_date":
+      return toTime(details.estimated_gate_cutoff_date)
+    case "si_cutoff_date":
+      return toTime(details.s_i_cut_off_date)
+    case "booking_received_date":
+      return toTime(details.booking_received_from_carrier_on)
+    case "additional_remarks":
+      return details.additional_remarks ?? null
+    default:
+      return null
+  }
+}
+
+// Raw (non-JSX) value per column for the "shipment assignments" tab, used for server-side sort.
+function getAssignmentSortValue(assignment: any, columnId: string): string | number | null {
+  const isOrphaned = (assignment.data as any)?._orphaned === true
+  const spData = isOrphaned ? (assignment.data as any)?._originalShipmentPlan : assignment.shipmentPlan?.data
+  const cm = spData?.container_movement || {}
+  const pkg = spData?.package_details?.[0] || {}
+  const toTime = (value: unknown) => (value ? toSortNumber(new Date(value as string).getTime()) : null)
+
+  switch (columnId) {
+    case "reference_number":
+      return spData?.reference_number ?? null
+    case "customer":
+      return cm.customer ?? null
+    case "business_branch":
+      return spData?.bussiness_branch ?? null
+    case "loading_port":
+      return cm.loading_port ?? null
+    case "destination":
+      return cm.destination_country ?? null
+    case "status":
+      return spData?.booking_status || assignment.data?.carrier_booking_status || null
+    case "port_of_discharge":
+      return cm.port_of_discharge ?? null
+    case "final_place_of_delivery":
+      return cm.delivery_till?.toLowerCase() === "port" ? null : (cm.final_place_of_delivery ?? null)
+    case "consignee":
+      return cm.consignee ?? null
+    case "selling_price":
+      return toSortNumber(cm.selling_price)
+    case "buying_price":
+      return toSortNumber(cm.buying_price)
+    case "carrier":
+      return cm.carrier_and_vessel_preference?.carrier ?? null
+    case "vessel":
+      return cm.carrier_and_vessel_preference?.vessel ?? null
+    case "container_status":
+      return getMilestoneStatus({ data: spData, shipmentAssignment: { data: assignment.data } })
+    case "assigned_liner_broker":
+      return assignment.assignedLinerBroker?.name ?? null
+    case "created_date":
+      return toSortNumber(new Date(assignment.shipmentPlan?.createdAt ?? assignment.createdAt).getTime())
+    case "created_by":
+      return assignment.shipmentPlan?.user?.name ?? assignment.user?.name ?? null
+    case "updated_date":
+      return toSortNumber(new Date(assignment.updatedAt).getTime())
+    case "type":
+      return spData?.shipment_type ?? null
+    case "incoterm":
+      return cm.incoterm ?? null
+    case "freight_terms":
+      return cm.freight_terms ?? null
+    case "free_time":
+      return toSortNumber(cm.free_time_in_days)
+    case "delivery_till":
+      return cm.delivery_till ?? null
+    case "preferred_etd":
+      return cm.carrier_and_vessel_preference?.preferred_etd ?? null
+    case "rebate":
+      return toSortNumber(cm.rebate)
+    case "credit_period":
+      return toSortNumber(cm.credit_period)
+    case "shipper":
+      return getShippers(spData?.package_details)[0] ?? null
+    case "invoice_number":
+      return pkg.invoice_number ?? null
+    case "commodity":
+      return pkg.commodity ?? null
+    case "volume":
+      return toSortNumber(pkg.volume)
+    case "gross_weight":
+      return toSortNumber(pkg.gross_weight)
+    case "num_packages":
+      return toSortNumber(pkg.number_of_packages)
+    case "cargo_ready_date":
+      return toTime(pkg.projected_cargo_ready_date)
+    case "hs_code":
+      return pkg.hs_code ?? null
+    case "po_number":
+      return pkg.p_o_number ?? null
+    case "equipment_details":
+      return (spData?.equipment_details || []).length
+    case "stuffing_point":
+      return spData?.equipment_details?.[0]?.stuffing_point ?? null
+    case "sp_remarks":
+      return spData?.remarks ?? null
+    case "container_no": {
+      const containers = (spData?.equipment_details || []).map((eq: any) => eq.container_number).filter(Boolean)
+      return containers[0] ?? null
+    }
+    default:
+      return null
+  }
+}
+
 export async function loader({ request }: LoaderFunctionArgs) {
   try {
     const user = await requireAuth(request)
@@ -51,6 +201,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
     const limit = Number.parseInt(url.searchParams.get("limit") || "10")
     const offset = (page - 1) * limit
     const tab = url.searchParams.get("tab") || "bookings"
+    const sortBy = url.searchParams.get("sortBy") || "created_date"
+    const sortOrder: SortOrder = url.searchParams.get("sortOrder") === "asc" ? "asc" : "desc"
 
     const whereCondition: any = {}
 
@@ -621,44 +773,43 @@ export async function loader({ request }: LoaderFunctionArgs) {
 
     // Assignments branch: query prisma.shipmentAssignment and return same payload shape
     if (tab === "assignments") {
-      const [rows, totalCount] = await Promise.all([
-        prisma.shipmentAssignment.findMany({
-          where: whereCondition,
-          include: {
-            user: { select: { id: true, name: true, email: true } },
-            shipmentPlan: { 
-              select: { 
-                id: true, 
-                data: true, 
-                createdAt: true,
-                shipmentAssignmentId: true,
-                user: { select: { id: true, name: true, email: true } }
-              } 
-            },
+      const allRows = await prisma.shipmentAssignment.findMany({
+        where: whereCondition,
+        include: {
+          user: { select: { id: true, name: true, email: true } },
+          shipmentPlan: {
+            select: {
+              id: true,
+              data: true,
+              createdAt: true,
+              shipmentAssignmentId: true,
+              user: { select: { id: true, name: true, email: true } }
+            }
           },
-          orderBy: { createdAt: "desc" },
-          skip: offset,
-          take: limit,
-        }),
-        prisma.shipmentAssignment.count({ where: whereCondition }),
-      ])
+        },
+        orderBy: { createdAt: "desc" },
+      })
 
-      // Fetch assigned liner broker details for each assignment
-      const assignmentsWithBroker = await Promise.all(
-        rows.map(async (assignment: any) => {
-          let assignedLinerBroker = null
-          if (assignment.assignBookingId) {
-            assignedLinerBroker = await prisma.user.findUnique({
-              where: { id: assignment.assignBookingId },
-              select: { id: true, name: true, email: true }
-            })
-          }
-          return {
-            ...assignment,
-            assignedLinerBroker
-          }
-        })
-      )
+      // Fetch assigned liner broker details in one batch instead of N+1 per assignment
+      const brokerIds = [...new Set(allRows.map((a: any) => a.assignBookingId).filter(Boolean))]
+      const brokers = brokerIds.length > 0
+        ? await prisma.user.findMany({
+            where: { id: { in: brokerIds as string[] } },
+            select: { id: true, name: true, email: true },
+          })
+        : []
+      const brokersById = new Map(brokers.map((b) => [b.id, b]))
+      const allRowsWithBroker = allRows.map((assignment: any) => ({
+        ...assignment,
+        assignedLinerBroker: assignment.assignBookingId ? (brokersById.get(assignment.assignBookingId) ?? null) : null,
+      }))
+
+      const sortedAssignments =
+        sortBy === "created_date" && sortOrder === "desc"
+          ? allRowsWithBroker
+          : sortByColumn(allRowsWithBroker, (row) => getAssignmentSortValue(row, sortBy), sortOrder)
+      const totalCount = sortedAssignments.length
+      const assignmentsWithBroker = sortedAssignments.slice(offset, offset + limit)
 
       return json({
         linerBookings: assignmentsWithBroker, // keep same key consumed by UI
@@ -668,6 +819,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
         user,
         search,
         tab,
+        sortBy,
+        sortOrder,
       })
     }
 
@@ -690,32 +843,34 @@ export async function loader({ request }: LoaderFunctionArgs) {
       carrier_booking_status: (b.data as any)?.carrier_booking_status,
     })))
 
-    const [linerBookings, totalCount] = await Promise.all([
-      prisma.linerBooking.findMany({
-        where: whereCondition,
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-            },
-          },
-          shipmentPlan: {
-            select: {
-              id: true,
-              data: true,
-              createdAt: true,
-              linerBookingId: true,
-            },
+    const allLinerBookings = await prisma.linerBooking.findMany({
+      where: whereCondition,
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
           },
         },
-        orderBy: { createdAt: "desc" },
-        skip: offset,
-        take: limit,
-      }),
-      prisma.linerBooking.count({ where: whereCondition }),
-    ])
+        shipmentPlan: {
+          select: {
+            id: true,
+            data: true,
+            createdAt: true,
+            linerBookingId: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    })
+
+    const sortedLinerBookings =
+      sortBy === "created_date" && sortOrder === "desc"
+        ? allLinerBookings
+        : sortByColumn(allLinerBookings, (booking) => getLinerBookingSortValue(booking, sortBy), sortOrder)
+    const totalCount = sortedLinerBookings.length
+    const linerBookings = sortedLinerBookings.slice(offset, offset + limit)
 
     console.log("Liner Bookings - Retrieved count:", totalCount)
     console.log("Liner Bookings - First 5 records (if any):", JSON.stringify(linerBookings.slice(0, 5), null, 2))
@@ -730,6 +885,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
       user,
       search,
       tab,
+      sortBy,
+      sortOrder,
     })
   } catch (error) {
     console.error("Error in loader:", error)
@@ -830,7 +987,7 @@ export async function action({ request }: ActionFunctionArgs) {
 }
 
 export default function LinerBookings() {
-  const { linerBookings, currentPage, totalPages, totalCount, user, search, tab } = useLoaderData<typeof loader>()
+  const { linerBookings, currentPage, totalPages, totalCount, user, search, tab, sortBy, sortOrder } = useLoaderData<typeof loader>()
   const navigate = useNavigate()
   const navigation = useNavigation()
   const actionData = useActionData<typeof action>()
@@ -2040,7 +2197,7 @@ export default function LinerBookings() {
             </div>
           ) : (
               <Table wrapperClassName="overflow-x-scroll overflow-y-auto flex-1 min-h-0 pb-2">
-                <TableHeader className="bg-gradient-to-r from-slate-50 to-white sticky top-0 z-10">
+                <TableHeader className="bg-gradient-to-r from-slate-50 to-white sticky top-0 z-40">
                   <TableRow className="border-gray-200">
                     {visibleColumns.map((columnId) => {
                       const column = availableColumns.find((col) => col.id === columnId)
@@ -2134,16 +2291,28 @@ export default function LinerBookings() {
 
                       if (columnId === "reference_number" || (!isAssignments && columnId === "temp_booking_number")) {
                         return (
-                          <TableHead key={columnId} className={`font-semibold text-gray-900 text-sm sticky left-12 z-30 bg-slate-50 shadow-[2px_0_5px_-1px_rgba(0,0,0,0.1)] ${getColumnWidth(columnId)}`}>
-                            {column.label}
-                          </TableHead>
+                          <SortableHeader
+                            key={columnId}
+                            columnId={columnId}
+                            label={column.label}
+                            sortBy={sortBy}
+                            sortOrder={sortOrder}
+                            searchParams={searchParams}
+                            className={`font-semibold text-gray-900 text-sm sticky left-12 z-30 bg-slate-50 shadow-[2px_0_5px_-1px_rgba(0,0,0,0.1)] ${getColumnWidth(columnId)}`}
+                          />
                         )
                       }
 
                       return (
-                        <TableHead key={columnId} className={`font-semibold text-gray-900 text-sm ${getColumnWidth(columnId)}`}>
-                          {column.label}
-                        </TableHead>
+                        <SortableHeader
+                          key={columnId}
+                          columnId={columnId}
+                          label={column.label}
+                          sortBy={sortBy}
+                          sortOrder={sortOrder}
+                          searchParams={searchParams}
+                          className={`font-semibold text-gray-900 text-sm ${getColumnWidth(columnId)}`}
+                        />
                       )
                     })}
                   </TableRow>

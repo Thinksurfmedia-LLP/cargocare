@@ -18,7 +18,11 @@ import { prisma } from "~/lib/prisma.server";
 import {
   renderContainerStatusCell,
   renderShipperCell,
+  getMilestoneStatus,
+  getShippers,
 } from "~/lib/container-status";
+import { sortByColumn, toSortNumber, type SortOrder } from "~/lib/sort-utils";
+import { SortableHeader } from "~/components/ui/sortable-table-head";
 import { Card, CardContent } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
@@ -47,6 +51,98 @@ export const meta: MetaFunction = () => {
   ];
 };
 
+// Raw (non-JSX) value per column, used to sort the full result set server-side.
+function getShipmentPlanSortValue(plan: any, columnId: string): string | number | null {
+  const cm = plan.data?.container_movement || {};
+  const pkg = plan.data?.package_details?.[0] || {};
+  switch (columnId) {
+    case "reference_number":
+      return plan.data?.reference_number ?? null;
+    case "business_branch":
+      return plan.data?.bussiness_branch ?? null;
+    case "shipment_type":
+      return plan.data?.shipment_type ?? null;
+    case "customer":
+      return cm.customer ?? null;
+    case "loading_port":
+      return cm.loading_port ?? null;
+    case "destination_country":
+      return cm.destination_country ?? null;
+    case "booking_status":
+      return plan.data?.booking_status ?? null;
+    case "milestone_status":
+      return getMilestoneStatus(plan);
+    case "port_of_discharge":
+      return cm.port_of_discharge ?? null;
+    case "final_place_of_delivery":
+      return cm.delivery_till?.toLowerCase() === "port" ? null : (cm.final_place_of_delivery ?? null);
+    case "consignee":
+      return cm.consignee ?? null;
+    case "selling_price":
+      return toSortNumber(cm.selling_price);
+    case "buying_price":
+      return toSortNumber(cm.buying_price);
+    case "carrier":
+      return cm.carrier_and_vessel_preference?.carrier ?? null;
+    case "vessel":
+      return cm.carrier_and_vessel_preference?.vessel ?? null;
+    case "created_date":
+      return toSortNumber(new Date(plan.createdAt).getTime());
+    case "created_by":
+      return plan.user?.name ?? null;
+    case "updated_date":
+      return toSortNumber(new Date(plan.updatedAt).getTime());
+    case "incoterm":
+      return cm.incoterm ?? null;
+    case "freight_terms":
+      return cm.freight_terms ?? null;
+    case "free_time":
+      return toSortNumber(cm.free_time_in_days);
+    case "delivery_till":
+      return cm.delivery_till ?? null;
+    case "preferred_etd":
+      return cm.carrier_and_vessel_preference?.preferred_etd ?? null;
+    case "rebate":
+      return toSortNumber(cm.rebate);
+    case "credit_period":
+      return toSortNumber(cm.credit_period);
+    case "shipper":
+      return getShippers(plan.data?.package_details)[0] ?? null;
+    case "invoice_number":
+      return pkg.invoice_number ?? null;
+    case "commodity":
+      return pkg.commodity ?? null;
+    case "volume":
+      return toSortNumber(pkg.volume);
+    case "gross_weight":
+      return toSortNumber(pkg.gross_weight);
+    case "num_packages":
+      return toSortNumber(pkg.number_of_packages);
+    case "cargo_ready_date":
+      return pkg.projected_cargo_ready_date
+        ? toSortNumber(new Date(pkg.projected_cargo_ready_date).getTime())
+        : null;
+    case "hs_code":
+      return pkg.hs_code ?? null;
+    case "po_number":
+      return pkg.p_o_number ?? null;
+    case "container_no": {
+      const containers = (plan.data?.equipment_details || [])
+        .map((eq: any) => eq.container_number)
+        .filter(Boolean);
+      return containers[0] ?? null;
+    }
+    case "equipment_details":
+      return (plan.data?.equipment_details || []).length;
+    case "stuffing_point":
+      return plan.data?.equipment_details?.[0]?.stuffing_point ?? null;
+    case "remarks":
+      return plan.data?.remarks ?? null;
+    default:
+      return null;
+  }
+}
+
 export async function loader({ request }: LoaderFunctionArgs) {
   try {
     const user = await requireAuth(request);
@@ -65,6 +161,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
     const page = parseInt(url.searchParams.get("page") || "1");
     const limit = parseInt(url.searchParams.get("limit") || "10");
     const offset = (page - 1) * limit;
+    const sortBy = url.searchParams.get("sortBy") || "created_date";
+    const sortOrder: SortOrder = url.searchParams.get("sortOrder") === "asc" ? "asc" : "desc";
 
     let whereCondition: any = {};
 
@@ -325,8 +423,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     }
 
     const [
-      shipmentPlans,
-      totalCount,
+      allShipmentPlans,
       businessBranches,
       loadingPorts,
       portsOfDischarge,
@@ -355,11 +452,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
         orderBy: {
           createdAt: "desc",
         },
-        skip: offset,
-        take: limit,
-      }),
-      prisma.shipmentPlan.count({
-        where: whereCondition,
       }),
       prisma.businessBranch.findMany({ orderBy: { name: "asc" } }),
       prisma.loadingPort.findMany({ orderBy: { name: "asc" } }),
@@ -369,6 +461,15 @@ export async function loader({ request }: LoaderFunctionArgs) {
       prisma.vessel.findMany({ orderBy: { name: "asc" } }),
       prisma.organization.findMany({ orderBy: { name: "asc" } }),
     ]);
+
+    // Sort the full matching set by the requested column, then paginate.
+    const sortedShipmentPlans =
+      sortBy === "created_date" && sortOrder === "desc"
+        ? allShipmentPlans
+        : sortByColumn(allShipmentPlans, (plan) => getShipmentPlanSortValue(plan, sortBy), sortOrder);
+    const totalCount = sortedShipmentPlans.length;
+    const shipmentPlans = sortedShipmentPlans.slice(offset, offset + limit);
+
     console.log("Shipment Plans - Retrieved count:", totalCount);
     console.log(
       "Shipment Plans - First 5 records (if any):",
@@ -385,6 +486,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
         totalPages: Math.ceil(totalCount / limit),
       },
       search,
+      sortBy,
+      sortOrder,
       dataPoints: {
         businessBranches,
         loadingPorts,
@@ -877,7 +980,7 @@ export async function action({ request }: ActionFunctionArgs) {
 }
 
 export default function ShipmentPlans() {
-  const { user, shipmentPlans, pagination, search, dataPoints } =
+  const { user, shipmentPlans, pagination, search, sortBy, sortOrder, dataPoints } =
     useLoaderData<typeof loader>();
   const navigate = useNavigate();
   const actionData = useActionData<typeof action>();
@@ -1662,7 +1765,7 @@ export default function ShipmentPlans() {
             </div>
           </div>
           <Table wrapperClassName="overflow-x-scroll overflow-y-auto flex-1 min-h-0 pb-2">
-              <TableHeader className="bg-gradient-to-r from-slate-50 to-gray-50 sticky top-0 z-10">
+              <TableHeader className="bg-gradient-to-r from-slate-50 to-gray-50 sticky top-0 z-40">
                 <TableRow className="border-gray-200">
                   {visibleColumns.map((columnId) => {
                     const column = availableColumns.find(
@@ -1686,22 +1789,28 @@ export default function ShipmentPlans() {
 
                     if (columnId === "reference_number") {
                       return (
-                        <TableHead
+                        <SortableHeader
                           key={columnId}
+                          columnId={columnId}
+                          label={column.label}
+                          sortBy={sortBy}
+                          sortOrder={sortOrder}
+                          searchParams={searchParams}
                           className="font-semibold text-gray-900 text-sm sticky left-12 z-30 bg-slate-50 shadow-[2px_0_5px_-1px_rgba(0,0,0,0.1)]"
-                        >
-                          {column.label}
-                        </TableHead>
+                        />
                       );
                     }
 
                     return (
-                      <TableHead
+                      <SortableHeader
                         key={columnId}
+                        columnId={columnId}
+                        label={column.label}
+                        sortBy={sortBy}
+                        sortOrder={sortOrder}
+                        searchParams={searchParams}
                         className="font-semibold text-gray-900 text-sm"
-                      >
-                        {column.label}
-                      </TableHead>
+                      />
                     );
                   })}
                 </TableRow>

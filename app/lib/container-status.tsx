@@ -157,12 +157,16 @@ export function renderContainerStatusCell(plan: PlanLike) {
     return (
       <div className="flex flex-col gap-1 max-h-28 overflow-y-auto min-w-[220px] py-1">
         {equipmentDetails.map((equipment, idx) => {
-          const lbn = getEquipmentLinerBookingNumber(plan, equipment) || equipment.trackingNumber || `Container ${idx + 1}`;
+          const containerNumber =
+            (equipment.container_number as string | undefined) ||
+            getEquipmentLinerBookingNumber(plan, equipment) ||
+            equipment.trackingNumber ||
+            `Container ${idx + 1}`;
           const label = getEquipmentStatusLabel(equipment);
           return (
             <div key={idx} className="flex items-center gap-1.5 text-xs whitespace-nowrap">
               <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${equipmentStatusDotColor[label] || "bg-gray-400"}`} />
-              <span className="font-semibold text-gray-800">{lbn}</span>
+              <span className="font-semibold text-gray-800">{containerNumber}</span>
               <span className="text-gray-400">-</span>
               <span className="text-gray-600">{label}</span>
             </div>
