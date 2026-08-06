@@ -2,7 +2,7 @@
 
 import type React from "react";
 
-import { Form, Link, useSubmit } from "react-router";
+import { Form, Link, useSubmit, useFetcher } from "react-router";
 import { useState, useEffect, useRef } from "react";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
@@ -294,6 +294,50 @@ export function ShipmentPlanForm({
       }
       return newSet;
     });
+  };
+
+  // Vessel/ETD inline-edit on the Allocated Liner Booking Details card —
+  // Shipment Planning team and Admin only. Fixing a wrong vessel/ETD after
+  // booking previously required going back to the Liner Booking team; this
+  // lets the planner fix it directly on this page for just those two fields.
+  const canEditLinerVesselFields =
+    user?.role.name === "ADMIN" || user?.role.name === "SHIPMENT_PLAN_TEAM";
+  const linerFieldEditFetcher = useFetcher();
+  const [editingLinerField, setEditingLinerField] = useState<{
+    equipmentIndex: number;
+    field: "original_planned_vessel" | "e_t_d_of_original_planned_vessel";
+  } | null>(null);
+  const [editingLinerFieldValue, setEditingLinerFieldValue] = useState("");
+
+  const startEditingLinerField = (
+    equipmentIndex: number,
+    field: "original_planned_vessel" | "e_t_d_of_original_planned_vessel",
+    currentValue: string
+  ) => {
+    setEditingLinerField({ equipmentIndex, field });
+    setEditingLinerFieldValue(
+      field === "e_t_d_of_original_planned_vessel"
+        ? (currentValue ? new Date(currentValue).toISOString().split("T")[0] : "")
+        : (currentValue || "")
+    );
+  };
+
+  const saveEditingLinerField = (
+    detailIndex: number,
+    isLinerBooking: boolean
+  ) => {
+    if (!editingLinerField) return;
+    linerFieldEditFetcher.submit(
+      {
+        _action: "update_liner_detail_field",
+        detail_index: String(detailIndex),
+        record_type: isLinerBooking ? "linerBooking" : "shipmentAssignment",
+        field: editingLinerField.field,
+        value: editingLinerFieldValue,
+      },
+      { method: "post" }
+    );
+    setEditingLinerField(null);
   };
 
   // New state for MD Approval tabs
@@ -3470,64 +3514,67 @@ export function ShipmentPlanForm({
                                       {/* Liner Booking Details Button - Only show when there are linked liner booking details */}
                                       {(() => {
                                         // Get liner booking detail for this equipment
+                                        const linkedBookingIsLinerBooking = !!shipmentPlan?.linerBooking;
                                         const linkedBookingData = shipmentPlan?.linerBooking?.data || shipmentPlan?.shipmentAssignment?.data;
 
-                                        const matchingDetail = linkedBookingData && (linkedBookingData as any).liner_booking_details ?
+                                        const { detail: matchingDetail, index: matchingDetailIndex } =
+                                          linkedBookingData && (linkedBookingData as any).liner_booking_details ?
                                           (() => {
                                             const details = (linkedBookingData as any).liner_booking_details;
-                                            console.log(`[DEBUG] ============ MATCHING FOR EQUIPMENT ${index} ============`);
-                                            console.log(`[DEBUG] Equipment trackingNumber:`, equipment.trackingNumber);
-                                            console.log(`[DEBUG] Equipment type:`, equipment.equipment_type);
-                                            console.log(`[DEBUG] Total available liner booking details:`, details.length);
-                                            details.forEach((d: any, i: number) => {
-                                              console.log(`[DEBUG] Detail ${i}:`, {
-                                                trackingNumber: d.trackingNumber,
-                                                equipment_type: d.equipment_type,
-                                                booking_for: d.booking_for,
-                                                liner_booking_number: d.liner_booking_number
-                                              });
-                                            });
 
-                                            // First try to match by trackingNumber
-                                            let match = details.find((detail: any) => detail.trackingNumber === equipment.trackingNumber);
-                                            console.log(`[DEBUG] Match by trackingNumber:`, match);
+                                            // First try to match by trackingNumber — but only trust it if it's
+                                            // actually unique. When multiple containers share the same
+                                            // trackingNumber/liner_booking_number (e.g. 2 containers booked
+                                            // together under one booking number, both tagged "XYZ1"), this and
+                                            // the liner_booking_number/equipment_type fallbacks below always
+                                            // resolve to the SAME first-matching detail for every one of those
+                                            // containers — editing one would silently edit all of them.
+                                            const isTrackingNumberUnique =
+                                              equipment.trackingNumber &&
+                                              details.filter((detail: any) => detail.trackingNumber === equipment.trackingNumber).length === 1;
+                                            let matchIndex = isTrackingNumberUnique
+                                              ? details.findIndex((detail: any) => detail.trackingNumber === equipment.trackingNumber)
+                                              : -1;
 
-                                            // If no match by trackingNumber, try to match by liner_booking_number (most reliable for allocated equipment)
-                                            if (!match) {
-                                              match = details.find((detail: any) => detail.liner_booking_number === equipment.trackingNumber);
-                                              console.log(`[DEBUG] Match by liner_booking_number:`, match);
+                                            // 1:1 cardinality (same count of equipment and booking details) means
+                                            // position is a reliable, unambiguous way to pair them up — prefer it
+                                            // over the content-based heuristics below, which can't tell two
+                                            // same-type/same-booking-number containers apart.
+                                            if (matchIndex === -1 && details.length === equipmentDetails.length && index >= 0 && index < details.length) {
+                                              matchIndex = index;
+                                            }
+
+                                            // If no match by liner_booking_number (most reliable for allocated equipment)
+                                            if (matchIndex === -1) {
+                                              matchIndex = details.findIndex((detail: any) => detail.liner_booking_number === equipment.trackingNumber);
                                             }
 
                                             // If no match by liner_booking_number, try to match by equipment type and booking_for fields that contain the tracking number
-                                            if (!match) {
-                                              match = details.find((detail: any) => {
+                                            if (matchIndex === -1) {
+                                              matchIndex = details.findIndex((detail: any) => {
                                                 // Check if equipment_type or booking_for fields contain the tracking number
                                                 const equipmentTypeMatches = detail.equipment_type && detail.equipment_type.includes(equipment.trackingNumber);
                                                 const bookingForMatches = detail.booking_for && detail.booking_for.includes(equipment.trackingNumber);
                                                 return equipmentTypeMatches || bookingForMatches;
                                               });
-                                              console.log(`[DEBUG] Match by equipment_type/booking_for containing trackingNumber:`, match);
                                             }
 
                                             // If still no match, try by equipment type only
-                                            if (!match) {
-                                              match = details.find((detail: any) =>
+                                            if (matchIndex === -1) {
+                                              matchIndex = details.findIndex((detail: any) =>
                                                 detail.equipment_type === equipment.equipment_type ||
                                                 detail.booking_for === equipment.equipment_type
                                               );
-                                              console.log(`[DEBUG] Match by equipment type only:`, match);
                                             }
 
                                             // If still no match, try matching by position index (for existing mismatched data)
                                             // This ensures equipment[0] gets detail[0], equipment[1] gets detail[1], etc.
-                                            if (!match && details.length > index && index >= 0) {
-                                              match = details[index];
-                                              console.log(`[DEBUG] Match by position index ${index}:`, match);
+                                            if (matchIndex === -1 && details.length > index && index >= 0) {
+                                              matchIndex = index;
                                             }
 
-                                            console.log(`[DEBUG] Final match for equipment ${equipment.trackingNumber}:`, match);
-                                            return match;
-                                          })() : null;
+                                            return { detail: matchIndex >= 0 ? details[matchIndex] : null, index: matchIndex };
+                                          })() : { detail: null, index: -1 };
 
                                         return matchingDetail ? (
                                           <div className="mt-4 pt-4 border-t border-gray-200">
@@ -3638,27 +3685,122 @@ export function ShipmentPlanForm({
                                                     </div>
                                                   )}
 
-                                                  {matchingDetail.original_planned_vessel && (
-                                                    <div className="space-y-1">
-                                                      <div className="text-xs font-medium text-gray-600">
-                                                        Original Planned Vessel
-                                                      </div>
-                                                      <div className="p-2 bg-white border border-gray-200 rounded text-xs text-gray-800">
-                                                        {matchingDetail.original_planned_vessel}
-                                                      </div>
+                                                  {/* Vessel Name — editable inline by Shipment Planning/Admin only,
+                                                      via the pencil icon. Always shown (not gated on having a
+                                                      value already) so a blank vessel can be filled in too. */}
+                                                  <div className="space-y-1">
+                                                    <div className="text-xs font-medium text-gray-600">
+                                                      Original Planned Vessel
                                                     </div>
-                                                  )}
+                                                    {editingLinerField?.equipmentIndex === index &&
+                                                    editingLinerField?.field === "original_planned_vessel" ? (
+                                                      <div className="flex items-center gap-1">
+                                                        <div className="flex-1">
+                                                          <SearchableSelect
+                                                            value={editingLinerFieldValue}
+                                                            onChange={(value: string) => setEditingLinerFieldValue(value)}
+                                                            options={(dataPoints?.vessels || []).map((vessel: any) => ({
+                                                              value: vessel.name,
+                                                              label: `🚢 ${vessel.name}`,
+                                                            }))}
+                                                            placeholder="Search vessels..."
+                                                            className="text-xs"
+                                                          />
+                                                        </div>
+                                                        <button
+                                                          type="button"
+                                                          title="Save"
+                                                          onClick={() => saveEditingLinerField(matchingDetailIndex, linkedBookingIsLinerBooking)}
+                                                          className="text-green-600 hover:text-green-800 px-1"
+                                                        >
+                                                          ✓
+                                                        </button>
+                                                        <button
+                                                          type="button"
+                                                          title="Cancel"
+                                                          onClick={() => setEditingLinerField(null)}
+                                                          className="text-gray-400 hover:text-gray-600 px-1"
+                                                        >
+                                                          ✕
+                                                        </button>
+                                                      </div>
+                                                    ) : (
+                                                      <div className="p-2 bg-white border border-gray-200 rounded text-xs text-gray-800 flex items-center justify-between gap-2">
+                                                        <span>{matchingDetail.original_planned_vessel || "N/A"}</span>
+                                                        {canEditLinerVesselFields && !isCancelled && matchingDetailIndex >= 0 && (
+                                                          <button
+                                                            type="button"
+                                                            title="Edit vessel name"
+                                                            onClick={() =>
+                                                              startEditingLinerField(
+                                                                index,
+                                                                "original_planned_vessel",
+                                                                matchingDetail.original_planned_vessel
+                                                              )
+                                                            }
+                                                            className="text-gray-400 hover:text-blue-600 shrink-0"
+                                                          >
+                                                            ✏️
+                                                          </button>
+                                                        )}
+                                                      </div>
+                                                    )}
+                                                  </div>
 
-                                                  {matchingDetail.e_t_d_of_original_planned_vessel && (
-                                                    <div className="space-y-1">
-                                                      <div className="text-xs font-medium text-gray-600">
-                                                        ETD of Original Planned Vessel
-                                                      </div>
-                                                      <div className="p-2 bg-white border border-gray-200 rounded text-xs text-gray-800">
-                                                        {formatDateForDisplay(matchingDetail.e_t_d_of_original_planned_vessel)}
-                                                      </div>
+                                                  {/* ETD of Original Planned Vessel — same inline-edit pattern */}
+                                                  <div className="space-y-1">
+                                                    <div className="text-xs font-medium text-gray-600">
+                                                      ETD of Original Planned Vessel
                                                     </div>
-                                                  )}
+                                                    {editingLinerField?.equipmentIndex === index &&
+                                                    editingLinerField?.field === "e_t_d_of_original_planned_vessel" ? (
+                                                      <div className="flex items-center gap-1">
+                                                        <input
+                                                          type="date"
+                                                          value={editingLinerFieldValue}
+                                                          onChange={(e) => setEditingLinerFieldValue(e.target.value)}
+                                                          autoFocus
+                                                          className="p-2 border border-blue-300 rounded text-xs text-gray-800 flex-1"
+                                                        />
+                                                        <button
+                                                          type="button"
+                                                          title="Save"
+                                                          onClick={() => saveEditingLinerField(matchingDetailIndex, linkedBookingIsLinerBooking)}
+                                                          className="text-green-600 hover:text-green-800 px-1"
+                                                        >
+                                                          ✓
+                                                        </button>
+                                                        <button
+                                                          type="button"
+                                                          title="Cancel"
+                                                          onClick={() => setEditingLinerField(null)}
+                                                          className="text-gray-400 hover:text-gray-600 px-1"
+                                                        >
+                                                          ✕
+                                                        </button>
+                                                      </div>
+                                                    ) : (
+                                                      <div className="p-2 bg-white border border-gray-200 rounded text-xs text-gray-800 flex items-center justify-between gap-2">
+                                                        <span>{formatDateForDisplay(matchingDetail.e_t_d_of_original_planned_vessel) || "N/A"}</span>
+                                                        {canEditLinerVesselFields && !isCancelled && matchingDetailIndex >= 0 && (
+                                                          <button
+                                                            type="button"
+                                                            title="Edit ETD"
+                                                            onClick={() =>
+                                                              startEditingLinerField(
+                                                                index,
+                                                                "e_t_d_of_original_planned_vessel",
+                                                                matchingDetail.e_t_d_of_original_planned_vessel
+                                                              )
+                                                            }
+                                                            className="text-gray-400 hover:text-blue-600 shrink-0"
+                                                          >
+                                                            ✏️
+                                                          </button>
+                                                        )}
+                                                      </div>
+                                                    )}
+                                                  </div>
 
                                                   {matchingDetail.change_in_original_vessel && (
                                                     <div className="space-y-1">

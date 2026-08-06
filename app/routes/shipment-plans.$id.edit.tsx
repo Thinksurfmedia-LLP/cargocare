@@ -286,6 +286,77 @@ export async function action({ request, params }: ActionFunctionArgs) {
     }
     const formData = await request.formData()
 
+    // Inline edit of vessel name / ETD on the Allocated Liner Booking Details
+    // card (fired via its own fetcher, not the main save button). Shipment
+    // Planning team and Admin only — client-side gating is UI convenience,
+    // this is the real enforcement.
+    if (formData.get("_action") === "update_liner_detail_field") {
+      if (user.role.name !== "ADMIN" && user.role.name !== "SHIPMENT_PLAN_TEAM") {
+        return { error: "You don't have permission to edit liner booking details" }
+      }
+
+      const existingPlanData = existingPlan.data as any
+      if (existingPlanData?.booking_status === "Cancelled") {
+        return { error: "This shipment plan is cancelled and can no longer be edited." }
+      }
+
+      const detailIndex = Number.parseInt(formData.get("detail_index") as string, 10)
+      const recordType = formData.get("record_type") as string
+      const field = formData.get("field") as string
+      const value = formData.get("value") as string
+
+      if (!Number.isInteger(detailIndex) || detailIndex < 0) {
+        return { error: "Invalid liner booking detail index" }
+      }
+      if (field !== "original_planned_vessel" && field !== "e_t_d_of_original_planned_vessel") {
+        return { error: "Invalid field" }
+      }
+      if (recordType !== "linerBooking" && recordType !== "shipmentAssignment") {
+        return { error: "Invalid record type" }
+      }
+
+      const currentPlan = await prisma.shipmentPlan.findUnique({
+        where: { id: planId },
+        include: { linerBooking: true, shipmentAssignment: true },
+      })
+      if (!currentPlan) {
+        return { error: "Shipment plan not found" }
+      }
+
+      const targetRecord = recordType === "linerBooking" ? currentPlan.linerBooking : currentPlan.shipmentAssignment
+      if (!targetRecord) {
+        return { error: "This plan is no longer linked to that booking/assignment. Refresh and try again." }
+      }
+
+      const recordData = targetRecord.data as any
+      const details = Array.isArray(recordData?.liner_booking_details) ? recordData.liner_booking_details : []
+      if (detailIndex >= details.length) {
+        return { error: "Booking detail not found. Refresh and try again." }
+      }
+
+      const updatedValue = field === "e_t_d_of_original_planned_vessel"
+        ? (value ? new Date(value).toISOString() : null)
+        : value
+
+      const updatedDetails = details.map((detail: any, i: number) =>
+        i === detailIndex ? { ...detail, [field]: updatedValue } : detail
+      )
+
+      if (recordType === "linerBooking") {
+        await prisma.linerBooking.update({
+          where: { id: targetRecord.id },
+          data: { data: { ...recordData, liner_booking_details: updatedDetails } },
+        })
+      } else {
+        await prisma.shipmentAssignment.update({
+          where: { id: targetRecord.id },
+          data: { data: { ...recordData, liner_booking_details: updatedDetails } },
+        })
+      }
+
+      return { success: "Liner booking detail updated" }
+    }
+
     // Check if cancel shipment plan was requested
     const cancelShipmentPlan = formData.get("cancel_shipment_plan") === "true"
 
