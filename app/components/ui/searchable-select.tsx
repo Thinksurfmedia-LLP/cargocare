@@ -191,7 +191,14 @@ export function SearchableSelect({
           ) : (
             filteredOptions.map((option, index) => (
               <div
-                key={option.value}
+                // `option.value` alone isn't guaranteed unique — the underlying
+                // data can have two different records sharing the same display
+                // value (e.g. two "UNIPACK ENGINEERING PRIVATE LIMITED" orgs).
+                // A duplicate key corrupts React's reconciliation for that slot,
+                // so once the full unfiltered list renders it once, a ghost copy
+                // of that row can keep surviving re-renders even after later
+                // searches no longer match it. Index makes the key unique.
+                key={`${index}-${option.value}`}
                 className={`px-2 py-1.5 cursor-pointer flex items-center space-x-2 text-xs ${
                   index === highlightedIndex
                     ? "bg-blue-100 text-blue-900"

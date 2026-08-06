@@ -7,7 +7,6 @@ import {
   Form,
   useLoaderData,
   useNavigate,
-  useNavigation,
   redirect,
   useActionData,
   useSearchParams,
@@ -34,12 +33,9 @@ import {
   TableHeader,
   TableRow,
 } from "~/components/ui/table";
-import { Checkbox } from "~/components/ui/checkbox";
 import { Badge } from "~/components/ui/badge";
 import { AdminLayout } from "~/components/AdminLayout";
 import { ColumnSelectorModal } from "~/components/ui/column-selector-modal";
-import { BulkEditModal } from "~/components/ui/bulk-edit-modal";
-import { ShipmentDeletionConfirmationModal } from "~/components/ui/shipment-deletion-confirmation-modal";
 import { useColumnPreferences } from "~/hooks/useColumnPreferences";
 import { useToast } from "~/components/ui/toast";
 import { useState, useEffect } from "react";
@@ -422,16 +418,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
       }
     }
 
-    const [
-      allShipmentPlans,
-      businessBranches,
-      loadingPorts,
-      portsOfDischarge,
-      destinationCountries,
-      carriers,
-      vessels,
-      organizations,
-    ] = await Promise.all([
+    const [allShipmentPlans] = await Promise.all([
       prisma.shipmentPlan.findMany({
         where: whereCondition,
         include: {
@@ -488,15 +475,6 @@ export async function loader({ request }: LoaderFunctionArgs) {
       search,
       sortBy,
       sortOrder,
-      dataPoints: {
-        businessBranches,
-        loadingPorts,
-        portsOfDischarge,
-        destinationCountries,
-        carriers,
-        vessels,
-        organizations,
-      },
     };
   } catch (error) {
     return redirect("/login");
@@ -514,155 +492,11 @@ export async function action({ request }: ActionFunctionArgs) {
 
     const formData = await request.formData();
     const action = formData.get("action") as string;
-    if (action === "delete") {
-      // Only ADMIN can delete shipment plans
-      if (user.role.name !== "ADMIN") {
-        return { error: "You don't have permission to delete shipment plans" };
-      }
-
-      const ids = formData.getAll("selectedIds") as string[];
-      const deleteChoice = formData.get("deleteChoice") as string; // 'delete_both' or 'orphan_assignments'
-      const deletionReason = formData.get("deletionReason") as string;
-
-      // First check for linked assignments
-      const plansWithAssignments = await prisma.shipmentPlan.findMany({
-        where: { 
-          id: { in: ids },
-          shipmentAssignmentId: { not: null }
-        },
-        include: { 
-          shipmentAssignment: true 
-        }
-      });
-
-      // If assignments found and no choice made yet, ask for confirmation
-      if (plansWithAssignments.length > 0 && !deleteChoice) {
-        return { 
-          needsConfirmation: true,
-          linkedAssignments: plansWithAssignments.map(plan => ({
-            planId: plan.id,
-            referenceNumber: (plan.data as any).reference_number || "Unknown",
-            assignmentId: plan.shipmentAssignmentId!
-          }))
-        };
-      }
-
-      // Process deletion based on user choice
-      let deletedCount = 0;
-      let orphanedCount = 0;
-
-      await prisma.$transaction(async (tx) => {
-        for (const id of ids) {
-          const existingPlan = await tx.shipmentPlan.findUnique({
-            where: { id },
-            include: { shipmentAssignment: true }
-          });
-
-          if (
-            existingPlan &&
-            (user.role.name === "ADMIN" || existingPlan.userId === user.id)
-          ) {
-            // Handle linked shipment assignment if exists
-            if (existingPlan.shipmentAssignmentId) {
-              if (deleteChoice === 'delete_both') {
-                // Delete both plan and assignment
-                await tx.shipmentAssignment.delete({
-                  where: { id: existingPlan.shipmentAssignmentId }
-                });
-              } else if (deleteChoice === 'orphan_assignments') {
-                // Mark assignment as orphaned and view-only
-                const planData = existingPlan.data as any;
-                console.log("Attempting to update shipment assignment with orphaned fields:", {
-                  assignmentId: existingPlan.shipmentAssignmentId,
-                  planReference: planData.reference_number
-                });
-                
-                try {
-                  // Get current assignment data to preserve it
-                  const currentAssignment = await tx.shipmentAssignment.findUnique({
-                    where: { id: existingPlan.shipmentAssignmentId }
-                  });
-                  
-                  // Merge shipment plan data into assignment data for preservation
-                  const preservedData = {
-                    ...(currentAssignment?.data as any),
-                    // Preserve original shipment plan data
-                    _originalShipmentPlan: planData,
-                    // Mark as orphaned
-                    _orphaned: true,
-                    _orphanedAt: new Date().toISOString(),
-                    _orphanedReason: `Shipment plan "${planData.reference_number || 'Unknown'}" was deleted by ${user.name}. Reason: ${deletionReason || 'No reason provided'}`,
-                    _viewOnly: true
-                  };
-
-                  // First try with all fields
-                  await tx.shipmentAssignment.update({
-                    where: { id: existingPlan.shipmentAssignmentId },
-                    data: {
-                      data: preservedData, // Always update data with preserved info
-                      isOrphaned: true,
-                      orphanedAt: new Date(),
-                      orphanedReason: `Shipment plan "${planData.reference_number || 'Unknown'}" was deleted by ${user.name}. Reason: ${deletionReason || 'No reason provided'}`,
-                      isViewOnly: true
-                    }
-                  });
-                  console.log("Successfully updated shipment assignment with orphaned fields");
-                  orphanedCount++;
-                } catch (updateError) {
-                  console.error("Failed to update shipment assignment:", updateError);
-                  console.error("Attempting fallback approach...");
-                  
-                  // Fallback: Try updating just the data field with orphaned info
-                  try {
-                    const currentAssignment = await tx.shipmentAssignment.findUnique({
-                      where: { id: existingPlan.shipmentAssignmentId }
-                    });
-                    
-                    if (currentAssignment) {
-                      const updatedData = {
-                        ...(currentAssignment.data as any),
-                        // Preserve original shipment plan data
-                        _originalShipmentPlan: planData,
-                        _orphaned: true,
-                        _orphanedAt: new Date().toISOString(),
-                        _orphanedReason: `Shipment plan "${planData.reference_number || 'Unknown'}" was deleted by ${user.name}. Reason: ${deletionReason || 'No reason provided'}`,
-                        _viewOnly: true
-                      };
-                      
-                      await tx.shipmentAssignment.update({
-                        where: { id: existingPlan.shipmentAssignmentId },
-                        data: {
-                          data: updatedData
-                        }
-                      });
-                      console.log("Successfully updated using fallback approach");
-                      orphanedCount++;
-                    }
-                  } catch (fallbackError) {
-                    console.error("Fallback approach also failed:", fallbackError);
-                    throw new Error(`Failed to mark assignment as orphaned: ${updateError instanceof Error ? updateError.message : String(updateError)}`);
-                  }
-                }
-              }
-            }
-
-            // Delete the shipment plan
-            await tx.shipmentPlan.delete({
-              where: { id },
-            });
-            deletedCount++;
-          }
-        }
-      });
-
-      // Return appropriate success message
-      let successMessage = `${deletedCount} shipment plan(s) deleted successfully`;
-      if (orphanedCount > 0) {
-        successMessage += `. ${orphanedCount} shipment assignment(s) kept as view-only`;
-      }
-
-      return { success: successMessage };
-    }
+    // Bulk "delete selected" / "bulk edit" from the list page were removed —
+    // they let anyone select an unreviewed plan straight off the list and
+    // delete/edit it without ever opening it. Per-plan actions (cancel,
+    // approve, etc.) still go through shipment-plans.$id.edit.tsx, which
+    // requires actually opening the plan first.
     if (action === "approve") {
       const id = formData.get("id") as string;
 
@@ -841,131 +675,6 @@ export async function action({ request }: ActionFunctionArgs) {
       };
     }
 
-    if (action === "bulkEdit") {
-      const ids = formData.getAll("selectedIds") as string[];
-      const fieldsToUpdate: any = {};
-
-      // Get all the fields to update from form data
-      const businessBranch = formData.get("bulk_business_branch") as string;
-      const shipmentType = formData.get("bulk_shipment_type") as string;
-      const bookingStatus = formData.get("bulk_booking_status") as string;
-      const loadingPort = formData.get("bulk_loading_port") as string;
-      const destinationCountry = formData.get(
-        "bulk_destination_country"
-      ) as string;
-      const portOfDischarge = formData.get("bulk_port_of_discharge") as string;
-      const deliveryTill = formData.get("bulk_delivery_till") as string;
-      const customer = formData.get("bulk_customer") as string;
-      const consignee = formData.get("bulk_consignee") as string;
-      const sellingPrice = formData.get("bulk_selling_price") as string;
-      const buyingPrice = formData.get("bulk_buying_price") as string;
-      const commodity = formData.get("bulk_commodity") as string;
-      const equipmentType = formData.get("bulk_equipment_type") as string;
-      const carrier = formData.get("bulk_carrier") as string;
-      const vessel = formData.get("bulk_vessel") as string;
-
-      // Only update fields that have values
-      if (businessBranch) fieldsToUpdate.bussiness_branch = businessBranch;
-      if (shipmentType) fieldsToUpdate.shipment_type = shipmentType;
-      if (bookingStatus) fieldsToUpdate.booking_status = bookingStatus;
-      if (sellingPrice)
-        fieldsToUpdate.selling_price = parseFloat(sellingPrice) || 0;
-      if (buyingPrice)
-        fieldsToUpdate.buying_price = parseFloat(buyingPrice) || 0;
-
-      // Container movement fields
-      const containerFields: any = {};
-      if (loadingPort) containerFields.loading_port = loadingPort;
-      if (destinationCountry)
-        containerFields.destination_country = destinationCountry;
-      if (portOfDischarge) containerFields.port_of_discharge = portOfDischarge;
-      if (deliveryTill) containerFields.delivery_till = deliveryTill;
-      if (customer) containerFields.customer = customer;
-      if (consignee) containerFields.consignee = consignee;
-      if (carrier) containerFields.carrier = carrier;
-      if (vessel) containerFields.vessel = vessel;
-
-      // Package details fields
-      const packageFields: any = {};
-      if (commodity) packageFields.commodity = commodity;
-
-      // Equipment details fields
-      const equipmentFields: any = {};
-      if (equipmentType) equipmentFields.equipment_type = equipmentType;
-
-      if (
-        Object.keys(fieldsToUpdate).length === 0 &&
-        Object.keys(containerFields).length === 0 &&
-        Object.keys(packageFields).length === 0 &&
-        Object.keys(equipmentFields).length === 0
-      ) {
-        return { error: "No fields selected for bulk update" };
-      }
-
-      let updatedCount = 0;
-
-      for (const id of ids) {
-        const existingPlan = await prisma.shipmentPlan.findUnique({
-          where: { id },
-        });
-
-        if (
-          existingPlan &&
-          (user.role.name === "ADMIN" || existingPlan.userId === user.id)
-        ) {
-          const currentData = existingPlan.data as any;
-          const updatedData = { ...currentData };
-
-          // Update root level fields
-          Object.keys(fieldsToUpdate).forEach((key) => {
-            updatedData[key] = fieldsToUpdate[key];
-          });
-
-          // Update container movement fields
-          if (Object.keys(containerFields).length > 0) {
-            if (!updatedData.container_movement)
-              updatedData.container_movement = {};
-            Object.keys(containerFields).forEach((key) => {
-              updatedData.container_movement[key] = containerFields[key];
-            });
-          }
-
-          // Update package details fields
-          if (Object.keys(packageFields).length > 0) {
-            if (!updatedData.package_details)
-              updatedData.package_details = [{}];
-            if (!updatedData.package_details[0])
-              updatedData.package_details[0] = {};
-            Object.keys(packageFields).forEach((key) => {
-              updatedData.package_details[0][key] = packageFields[key];
-            });
-          }
-
-          // Update equipment details fields
-          if (Object.keys(equipmentFields).length > 0) {
-            if (!updatedData.equipment_details)
-              updatedData.equipment_details = [{}];
-            if (!updatedData.equipment_details[0])
-              updatedData.equipment_details[0] = {};
-            Object.keys(equipmentFields).forEach((key) => {
-              updatedData.equipment_details[0][key] = equipmentFields[key];
-            });
-          }
-
-          await prisma.shipmentPlan.update({
-            where: { id },
-            data: { data: updatedData },
-          });
-
-          updatedCount++;
-        }
-      }
-
-      return {
-        success: `${updatedCount} shipment plan(s) updated successfully`,
-      };
-    }
-
     return { error: "Invalid action" };
   } catch (error) {
     console.error("Shipment plans action error:", error);
@@ -980,26 +689,12 @@ export async function action({ request }: ActionFunctionArgs) {
 }
 
 export default function ShipmentPlans() {
-  const { user, shipmentPlans, pagination, search, sortBy, sortOrder, dataPoints } =
+  const { user, shipmentPlans, pagination, search, sortBy, sortOrder } =
     useLoaderData<typeof loader>();
   const navigate = useNavigate();
   const actionData = useActionData<typeof action>();
-  const navigation = useNavigation();
   const [searchParams] = useSearchParams();
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [isBulkEditModalOpen, setIsBulkEditModalOpen] = useState(false);
-  const [isConfirmationModalOpen, setIsConfirmationModalOpen] = useState(false);
-  const [pendingDeletionIds, setPendingDeletionIds] = useState<string[]>([]);
-  const isSubmitting = navigation.state === "submitting";
   const { addToast } = useToast();
-
-  // Handle confirmation modal opening when action returns needsConfirmation
-  useEffect(() => {
-    if (actionData?.needsConfirmation) {
-      setIsConfirmationModalOpen(true);
-      setPendingDeletionIds(selectedIds);
-    }
-  }, [actionData, selectedIds]);
 
   // Show toast when shipment plan is cancelled
   useEffect(() => {
@@ -1035,45 +730,9 @@ export default function ShipmentPlans() {
     }
   }, [searchParams, addToast]);
 
-  // Handle confirmation choice
-  const handleDeletionConfirmation = (choice: 'delete_both' | 'orphan_assignments', reason?: string) => {
-    const form = document.createElement('form');
-    form.method = 'post';
-    form.style.display = 'none';
-    
-    // Add action and choice
-    form.appendChild(createHiddenInput('action', 'delete'));
-    form.appendChild(createHiddenInput('deleteChoice', choice));
-    if (reason) {
-      form.appendChild(createHiddenInput('deletionReason', reason));
-    }
-    
-    // Add selected IDs
-    pendingDeletionIds.forEach(id => {
-      form.appendChild(createHiddenInput('selectedIds', id));
-    });
-    
-    document.body.appendChild(form);
-    form.submit();
-    document.body.removeChild(form);
-    
-    setIsConfirmationModalOpen(false);
-    setPendingDeletionIds([]);
-  };
-
-  // Helper function to create hidden inputs
-  const createHiddenInput = (name: string, value: string) => {
-    const input = document.createElement('input');
-    input.type = 'hidden';
-    input.name = name;
-    input.value = value;
-    return input;
-  };
-
   // Column definitions for the table
   // Define base columns available to all users
   const baseColumns = [
-    { id: "checkbox", label: "Select", defaultVisible: true, locked: true },
     { id: "reference_number", label: "Reference No.", defaultVisible: true, locked: true },
     { id: "business_branch", label: "Business Branch", defaultVisible: true },
     { id: "shipment_type", label: "Type", defaultVisible: true },
@@ -1162,24 +821,6 @@ export default function ShipmentPlans() {
     }
   };
 
-  // Handle select all checkbox
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelectedIds(shipmentPlans.map((plan: any) => plan.id));
-    } else {
-      setSelectedIds([]);
-    }
-  };
-
-  // Handle individual checkbox
-  const handleSelectPlan = (planId: string, checked: boolean) => {
-    if (checked) {
-      setSelectedIds([...selectedIds, planId]);
-    } else {
-      setSelectedIds(selectedIds.filter((id) => id !== planId));
-    }
-  };
-
   const getStatusBadge = (status: string) => {
     const statusConfig: Record<
       string,
@@ -1254,20 +895,9 @@ export default function ShipmentPlans() {
   // Function to get data for a specific column
   const getColumnData = (plan: any, columnId: string) => {
     switch (columnId) {
-      case "checkbox":
-        return (
-          <TableCell key={columnId} className="pl-6 sticky left-0 z-20 bg-white">
-            <div onClick={(event) => event.stopPropagation()}>
-              <Checkbox
-                checked={selectedIds.includes(plan.id)}
-                onChange={(e) => handleSelectPlan(plan.id, e.target.checked)}
-              />
-            </div>
-          </TableCell>
-        );
       case "reference_number":
         return (
-          <TableCell key={columnId} className="font-semibold text-gray-900 sticky left-12 z-20 bg-white shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)]">
+          <TableCell key={columnId} className="font-semibold text-gray-900 pl-6 sticky left-0 z-20 bg-white shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)]">
             <div className="flex items-center space-x-2">
               <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
               <Link
@@ -1725,42 +1355,6 @@ export default function ShipmentPlans() {
                   <span className="text-sm">⚙️</span>
                   <span>Customize Columns</span>
                 </Button>
-                {selectedIds.length > 0 && (
-                  <div className="flex items-center space-x-2">
-                    <span className="text-sm text-gray-600">
-                      {selectedIds.length} selected
-                    </span>
-                    <Button
-                      size="sm"
-                      onClick={() => setIsBulkEditModalOpen(true)}
-                      className="bg-blue-500 hover:bg-blue-600 text-white"
-                      disabled={isSubmitting}
-                    >
-                      ✏️ Bulk Edit
-                    </Button>
-                    {user.role.name === "ADMIN" && (
-                      <Form method="post">
-                        <input type="hidden" name="action" value="delete" />
-                        {selectedIds.map((id) => (
-                          <input
-                            key={id}
-                            type="hidden"
-                            name="selectedIds"
-                            value={id}
-                          />
-                        ))}
-                        <Button
-                          type="submit"
-                          size="sm"
-                          className="bg-red-500 hover:bg-red-600 text-white"
-                          disabled={isSubmitting}
-                        >
-                          {isSubmitting ? "Deleting..." : "Delete Selected"}
-                        </Button>
-                      </Form>
-                    )}
-                  </div>
-                )}
               </div>
             </div>
           </div>
@@ -1773,20 +1367,6 @@ export default function ShipmentPlans() {
                     );
                     if (!column) return null;
 
-                    if (columnId === "checkbox") {
-                      return (
-                        <TableHead key={columnId} className="w-12 pl-6 sticky left-0 z-30 bg-slate-50">
-                          <Checkbox
-                            checked={
-                              selectedIds.length === shipmentPlans.length &&
-                              shipmentPlans.length > 0
-                            }
-                            onChange={(e) => handleSelectAll(e.target.checked)}
-                          />
-                        </TableHead>
-                      );
-                    }
-
                     if (columnId === "reference_number") {
                       return (
                         <SortableHeader
@@ -1796,7 +1376,7 @@ export default function ShipmentPlans() {
                           sortBy={sortBy}
                           sortOrder={sortOrder}
                           searchParams={searchParams}
-                          className="font-semibold text-gray-900 text-sm sticky left-12 z-30 bg-slate-50 shadow-[2px_0_5px_-1px_rgba(0,0,0,0.1)]"
+                          className="font-semibold text-gray-900 text-sm pl-6 sticky left-0 z-30 bg-slate-50 shadow-[2px_0_5px_-1px_rgba(0,0,0,0.1)]"
                         />
                       );
                     }
@@ -1988,27 +1568,6 @@ export default function ShipmentPlans() {
         onColumnChange={updateColumnPreferences}
         onReset={resetColumnPreferences}
         title="Customize Shipment Plans Columns"
-      />
-
-      {/* Bulk Edit Modal */}
-      <BulkEditModal
-        isOpen={isBulkEditModalOpen}
-        onClose={() => setIsBulkEditModalOpen(false)}
-        selectedIds={selectedIds}
-        isSubmitting={isSubmitting}
-        dataPoints={dataPoints}
-      />
-
-      {/* Shipment Deletion Confirmation Modal */}
-      <ShipmentDeletionConfirmationModal
-        isOpen={isConfirmationModalOpen}
-        onClose={() => {
-          setIsConfirmationModalOpen(false);
-          setPendingDeletionIds([]);
-        }}
-        linkedAssignments={actionData?.linkedAssignments || []}
-        onConfirm={handleDeletionConfirmation}
-        isSubmitting={isSubmitting}
       />
     </AdminLayout>
   );

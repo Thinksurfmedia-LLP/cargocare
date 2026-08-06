@@ -1030,6 +1030,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
             }
           } else {
             // If no available equipment left, mark shipment as awaiting booking
+            // and sever the actual FK links (linerBookingId / shipmentAssignmentId
+            // live on ShipmentPlan — the `shipmentPlanId` field on the child
+            // records is a separate, non-relational field and nulling it alone
+            // does NOT unlink the plan; without this the loader's `include`
+            // keeps resolving the stale linerBooking/shipmentAssignment and its
+            // old liner_booking_details, so "View Liner Booking Details" kept
+            // showing even while Awaiting Booking).
             await prisma.shipmentPlan.update({
               where: { id: planId },
               data: {
@@ -1038,7 +1045,9 @@ export async function action({ request, params }: ActionFunctionArgs) {
                   equipment_details: updatedEquipmentDetails, // Keep the equipment with unmapped flags
                   booking_status: "Awaiting Booking"
                 },
-                linkedStatus: 0
+                linkedStatus: 0,
+                linerBookingId: null,
+                shipmentAssignmentId: null
               }
             })
 
@@ -1050,7 +1059,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
                 data: {
                   data: {
                     ...bookingData,
-                    carrier_booking_status: "Awaiting Booking"
+                    carrier_booking_status: "Awaiting Booking",
+                    liner_booking_details: []
                   },
                   shipmentPlanId: null
                 }
@@ -1064,7 +1074,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
                 data: {
                   data: {
                     ...assignmentData,
-                    carrier_booking_status: "Awaiting Booking"
+                    carrier_booking_status: "Awaiting Booking",
+                    liner_booking_details: []
                   },
                   shipmentPlanId: null
                 }
@@ -1396,6 +1407,15 @@ export async function action({ request, params }: ActionFunctionArgs) {
     // If already approved by MD (Awaiting Booking), keep it as approved unless MD is taking action
     else if (existingPlan?.data?.booking_status === "Awaiting Booking" && md_approval_status !== "approved" && md_approval_status !== "rejected") {
       bookingStatus = "Awaiting Booking"
+
+      // Plan is Awaiting Booking but carries no linerBookingId/shipmentAssignmentId
+      // (e.g. its assignment was unmapped/unlinked and never recreated) — with no
+      // ShipmentAssignment it can never show up in the assignment pool for booking.
+      // Recreate one on save so the plan becomes assignable again.
+      if (!existingPlan.linerBookingId && !existingPlan.shipmentAssignmentId) {
+        shouldCreateShipmentAssignment = true
+        linerBrokerId = (formData.get("liner_broker_approval") as string) || null
+      }
     }
     // If awaiting MD approval (or null = legacy plans with no status set), lock the status
     // until the MD explicitly approves or rejects — edits by anyone else must not change it

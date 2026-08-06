@@ -813,6 +813,22 @@ export function LinerBookingForm({
       console.log("[DEBUG] Inheriting route data from shipment plan:", routeData);
     }
 
+    // In new-mode (single or bulk booking creation), prefill from whatever
+    // the "Add Booking Details" template panel above already has filled in —
+    // otherwise every "Add Booking Detail" click threw the template away and
+    // handed back a fully blank card to fill in by hand.
+    if (mode === "new" && !isAssignment && bulkEquipmentType) {
+      const code = generateEquipmentCodeForBooking(bulkEquipmentType);
+      const existingCount = (linerBookingDetails || []).filter(
+        (d: any) =>
+          typeof d?.temporary_booking_number === "string" &&
+          d.temporary_booking_number.startsWith(`${code}-`)
+      ).length;
+      const seq = String(existingCount + 1).padStart(3, "0");
+      setLinerBookingDetails([...linerBookingDetails, buildTemplateDetail(code, seq)]);
+      return;
+    }
+
     const newDetail = {
       original_planned_vessel: "",
       e_t_d_of_original_planned_vessel: "",
@@ -1177,9 +1193,58 @@ export function LinerBookingForm({
     return missingFields;
   };
 
-  const bulkAddLinerBookingDetails = () => {
+  // Builds one booking-detail row from the "Add Booking Details" template
+  // panel's current field values (new-mode, non-assignment only). Shared by
+  // bulkAddLinerBookingDetails (N rows) and addLinerBookingDetail (1 row) so
+  // a single "Add Booking Detail" click no longer throws away everything the
+  // user already typed into the template.
+  const buildTemplateDetail = (code: string, seq: string) => ({
+    temporary_booking_number: `${code}-${seq}`,
+    liner_booking_number: bulkLinerBookingNumber || "",
+    suffix_for_anticipatory_temporary_booking_number: bulkSuffixForAnticipatoryTempBookingNumber || "",
+    mbl_number: bulkMblNumber || "",
+    carrier: bulkCarrier || "",
+    contract: bulkContract || "",
+    original_planned_vessel: bulkOriginalPlannedVessel || "",
+    e_t_d_of_original_planned_vessel: bulkEtdOfOriginalPlannedVessel || "",
+    change_in_original_vessel: false,
+    revised_vessel: "",
+    etd_of_revised_vessel: "",
+    empty_pickup_validity_from: bulkEmptyPickupValidityFrom || "",
+    empty_pickup_validity_till: bulkEmptyPickupValidityFrom ? addDays(bulkEmptyPickupValidityFrom, 3) : "",
+    estimate_gate_opening_date: bulkEtdOfOriginalPlannedVessel ? addDays(bulkEtdOfOriginalPlannedVessel, -3) : "",
+    estimated_gate_cutoff_date: bulkEtdOfOriginalPlannedVessel ? addDays(bulkEtdOfOriginalPlannedVessel, -2) : "",
+    s_i_cut_off_date: "",
+    booking_received_from_carrier_on: "",
+    additional_remarks: "",
+    line_booking_copy: "",
+    equipment_type: bulkEquipmentType,
+    booking_for: bulkEquipmentType,
+    loading_port: bulkLoadingPort || "",
+    destination_country: bulkDestinationCountry || "",
+    port_of_discharge: bulkPortOfDischarge || "",
+  });
+
+  // Required fields for a template row to be create-ready (mirrors the
+  // server-side check in liner-bookings.new.tsx's action). Used to decide
+  // whether "Create Booking(s)" can add + submit in one click, or should
+  // just add to the list so the user can see what's still missing.
+  const isTemplateDetailComplete = (detail: any): boolean =>
+    Boolean(
+      detail?.liner_booking_number?.trim() &&
+      detail?.carrier?.trim() &&
+      detail?.e_t_d_of_original_planned_vessel &&
+      detail?.empty_pickup_validity_from &&
+      detail?.loading_port?.trim() &&
+      detail?.destination_country?.trim() &&
+      detail?.port_of_discharge?.trim()
+    );
+
+  const bulkAddLinerBookingDetails = (opts?: { autoSubmit?: boolean }) => {
     if (mode !== "new" && !isAssignment) return;
-    const qty = Number.parseInt((bulkQuantity || "").trim(), 10);
+    // Quantity defaults to 1 so a single booking doesn't force the user to
+    // type "1" into a field that only matters once you want more than one.
+    const qty = Number.parseInt((bulkQuantity || "1").trim(), 10);
     if (!bulkEquipmentType || !Number.isFinite(qty) || qty < 1) return;
 
     const code = generateEquipmentCodeForBooking(bulkEquipmentType);
@@ -1268,33 +1333,7 @@ export function LinerBookingForm({
         // No need to check unallocated equipment since user can book any quantity
         newItems = Array.from({ length: qty }, (_, i) => {
           const seq = String(existingCount + i + 1).padStart(3, "0");
-
-          return {
-            temporary_booking_number: `${code}-${seq}`,
-            liner_booking_number: bulkLinerBookingNumber || "",
-            suffix_for_anticipatory_temporary_booking_number: bulkSuffixForAnticipatoryTempBookingNumber || "",
-            mbl_number: bulkMblNumber || "",
-            carrier: bulkCarrier || "",
-            contract: bulkContract || "",
-            original_planned_vessel: bulkOriginalPlannedVessel || "",
-            e_t_d_of_original_planned_vessel: bulkEtdOfOriginalPlannedVessel || "",
-            change_in_original_vessel: false,
-            revised_vessel: "",
-            etd_of_revised_vessel: "",
-            empty_pickup_validity_from: bulkEmptyPickupValidityFrom || "",
-            empty_pickup_validity_till: bulkEmptyPickupValidityFrom ? addDays(bulkEmptyPickupValidityFrom, 3) : "",
-            estimate_gate_opening_date: bulkEtdOfOriginalPlannedVessel ? addDays(bulkEtdOfOriginalPlannedVessel, -3) : "",
-            estimated_gate_cutoff_date: bulkEtdOfOriginalPlannedVessel ? addDays(bulkEtdOfOriginalPlannedVessel, -2) : "",
-            s_i_cut_off_date: "",
-            booking_received_from_carrier_on: "",
-            additional_remarks: "",
-            line_booking_copy: "",
-            equipment_type: bulkEquipmentType, // Just the equipment type name
-            booking_for: bulkEquipmentType, // Mirror with equipment type
-            loading_port: bulkLoadingPort || "",
-            destination_country: bulkDestinationCountry || "",
-            port_of_discharge: bulkPortOfDischarge || "",
-          };
+          return buildTemplateDetail(code, seq);
         });
       } else {
         // For edit mode without shipment plan, use unallocated equipment
@@ -1352,6 +1391,15 @@ export function LinerBookingForm({
     } else {
       setLinerBookingDetails((prev: any[]) => [...prev, ...newItems]);
     }
+
+    // "Create Booking(s)" was clicked, not just "Add to List" — submit
+    // immediately if every row we just built already has its required
+    // fields, so filling the template once is enough for the common case.
+    // If something's missing, fall through to the normal add-then-review
+    // flow (the "Required fields missing" banner below still applies).
+    if (opts?.autoSubmit && !isAssignment && newItems.every(isTemplateDetailComplete)) {
+      setPendingAutoSubmit(true);
+    }
   };
 
   const removeLinerBookingDetail = (index: number) => {
@@ -1362,11 +1410,13 @@ export function LinerBookingForm({
         );
       }
     } else {
-      if (linerBookingDetails.length > 1) {
-        setLinerBookingDetails(
-          linerBookingDetails.filter((_: any, i: number) => i !== index)
-        );
-      }
+      // Empty list is a valid state here (new-mode starts at 0 and the
+      // "+ Add to List" / "Create" buttons build it back up), so the last
+      // row can be removed too — unlike assignment mode above, which keeps
+      // requiring at least one.
+      setLinerBookingDetails(
+        linerBookingDetails.filter((_: any, i: number) => i !== index)
+      );
     }
   };
 
@@ -1579,6 +1629,17 @@ export function LinerBookingForm({
 
   const formRef = useRef<HTMLFormElement | null>(null);
   const errorRef = useRef<HTMLDivElement | null>(null);
+
+  // Set by "Create Booking(s)" right after adding template row(s) to state.
+  // Submitting happens in the effect below, one render later, so the <Form>
+  // has already re-rendered with the new rows' inputs before we submit them.
+  const [pendingAutoSubmit, setPendingAutoSubmit] = useState(false);
+  useEffect(() => {
+    if (pendingAutoSubmit) {
+      setPendingAutoSubmit(false);
+      formRef.current?.requestSubmit();
+    }
+  }, [pendingAutoSubmit]);
 
   const referenceNumber =
     mode === "edit"
@@ -3667,64 +3728,59 @@ export function LinerBookingForm({
                                 </div>
 
                                 {/* Auto-generation preview */}
-                                {bulkEquipmentType &&
-                                  (Number.parseInt(
-                                    (bulkQuantity || "").trim(),
-                                    10
-                                  ) || 0) > 0 && (
+                                {bulkEquipmentType && (() => {
+                                  const previewQty = Number.parseInt((bulkQuantity || "1").trim(), 10) || 1;
+                                  const code = generateEquipmentCodeForBooking(bulkEquipmentType);
+                                  return (
                                     <div className="bg-blue-100 rounded-lg p-3 border border-blue-300 mb-4">
                                       <p className="text-xs text-blue-700">
-                                        Temporary Booking Numbers will be
+                                        Temporary Booking Number{previewQty > 1 ? "s" : ""} will be
                                         generated automatically:{" "}
-                                        <strong>
-                                          {generateEquipmentCodeForBooking(
-                                            bulkEquipmentType
-                                          )}
-                                          -001
-                                        </strong>{" "}
-                                        to{" "}
-                                        <strong>
-                                          {generateEquipmentCodeForBooking(
-                                            bulkEquipmentType
-                                          )}
-                                          -
-                                          {String(
-                                            Number.parseInt(
-                                              (bulkQuantity || "").trim(),
-                                              10
-                                            )
-                                          ).padStart(3, "0")}
-                                        </strong>
+                                        <strong>{code}-001</strong>
+                                        {previewQty > 1 && (
+                                          <>
+                                            {" "}to{" "}
+                                            <strong>{code}-{String(previewQty).padStart(3, "0")}</strong>
+                                          </>
+                                        )}
                                       </p>
                                     </div>
-                                  )}
+                                  );
+                                })()}
 
-                                <div className="flex justify-end">
+                                {/* Two ways to proceed: keep building a multi-row list, or
+                                    finish now — quantity left blank/1 means a single booking,
+                                    set it higher to create that many at once. */}
+                                <div className="flex justify-end gap-3">
                                   <Button
                                     type="button"
-                                    onClick={bulkAddLinerBookingDetails}
-                                    disabled={!bulkEquipmentType || !bulkQuantity || Number.parseInt(bulkQuantity || "0", 10) < 1}
+                                    onClick={() => bulkAddLinerBookingDetails()}
+                                    disabled={!bulkEquipmentType}
+                                    variant="outline"
+                                    className="px-4 py-2 rounded text-sm font-medium transition-all duration-200"
+                                    title="Add these details to the list below without submitting, so you can add another equipment type/booking before creating."
+                                  >
+                                    + Add to List
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    onClick={() => bulkAddLinerBookingDetails({ autoSubmit: true })}
+                                    disabled={!bulkEquipmentType}
                                     className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-6 py-2 rounded text-sm font-medium transition-all duration-200"
                                   >
-                                    Bulk Add ({bulkQuantity || 0} booking details)
+                                    {isSubmitting
+                                      ? "Creating..."
+                                      : (() => {
+                                          const qty = Number.parseInt((bulkQuantity || "1").trim(), 10) || 1;
+                                          return qty > 1 ? `Create ${qty} Bookings` : "Create Booking";
+                                        })()}
                                   </Button>
                                 </div>
-                              </div>
-                            )}
-
-                            {/* Add Booking Detail button for new mode */}
-                            {mode === "new" && currentStatus !== "Booked" && (
-                              <div className="flex justify-between items-center mb-4">
-                                <h4 className="text-md font-semibold text-gray-800">
-                                  Liner Booking Details
-                                </h4>
-                                <Button
-                                  type="button"
-                                  onClick={addLinerBookingDetail}
-                                  className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-lg text-sm font-medium transition-all duration-200"
-                                >
-                                  Add Booking Detail
-                                </Button>
+                                {linerBookingDetails.length > 0 && (
+                                  <p className="text-xs text-gray-500 mt-2 text-right">
+                                    {linerBookingDetails.length} booking detail{linerBookingDetails.length > 1 ? "s" : ""} added so far — "Create" will submit all of them together.
+                                  </p>
+                                )}
                               </div>
                             )}
 

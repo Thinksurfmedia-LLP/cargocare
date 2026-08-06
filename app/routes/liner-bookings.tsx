@@ -20,7 +20,6 @@ import { SortableHeader } from "~/components/ui/sortable-table-head"
 import { Button } from "~/components/ui/button"
 import { Input } from "~/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "~/components/ui/table"
-import { Checkbox } from "~/components/ui/checkbox"
 import { Badge } from "~/components/ui/badge"
 import { AdminLayout } from "~/components/AdminLayout"
 import { ColumnSelectorModal } from "~/components/ui/column-selector-modal"
@@ -929,55 +928,10 @@ export async function action({ request }: ActionFunctionArgs) {
       return { success: "Liner booking deleted successfully" }
     }
 
-    if (action === "bulkDelete") {
-      const selectedIds = formData.getAll("selectedIds") as string[]
-
-      if (selectedIds.length === 0) {
-        return { error: "No bookings selected" }
-      }
-
-      const whereCondition: any = {
-        id: { in: selectedIds },
-      }
-
-      // Non-admin users can only delete their own bookings
-      if (user.role.name !== "ADMIN") {
-        whereCondition.userId = user.id
-      }
-
-      const deletedCount = await prisma.linerBooking.deleteMany({
-        where: whereCondition,
-      })
-
-      return {
-        success: `${deletedCount.count} liner booking(s) deleted successfully`,
-      }
-    }
-
-    // New: support bulk delete for shipment assignments tab
-    if (action === "bulkDeleteAssignments") {
-      const selectedIds = formData.getAll("selectedIds") as string[]
-      if (selectedIds.length === 0) {
-        return { error: "No assignments selected" }
-      }
-
-      // Non-admin users cannot delete others' assignments if you enforce ownership (optional).
-      // Since assignments don't store userId in this file's context, we only gate by role at top.
-
-      const result = await prisma.$transaction(async (tx) => {
-        // Unlink assignments from shipment plans before deletion (avoid FK issues)
-        await tx.shipmentPlan.updateMany({
-          where: { shipmentAssignmentId: { in: selectedIds } },
-          data: { shipmentAssignmentId: null },
-        })
-        const deleted = await tx.shipmentAssignment.deleteMany({
-          where: { id: { in: selectedIds } },
-        })
-        return deleted.count
-      })
-
-      return { success: `${result} shipment assignment(s) deleted successfully` }
-    }
+    // Bulk "Delete Selected" for bookings/assignments removed from the list
+    // UI (checkboxes let anyone bulk-delete straight off the list, no review
+    // first) — this closes the server-side path too, since the buttons were
+    // the only callers.
 
     return { error: "Invalid action" }
   } catch (error) {
@@ -992,7 +946,6 @@ export default function LinerBookings() {
   const navigation = useNavigation()
   const actionData = useActionData<typeof action>()
   const [searchParams] = useSearchParams()
-  const [selectedBookings, setSelectedBookings] = useState<string[]>([])
   const [isTabSwitching, setIsTabSwitching] = useState(false)
 
   const isAssignments = tab === "assignments"
@@ -1020,12 +973,7 @@ export default function LinerBookings() {
       setIsTabSwitching(false)
     }
   }, [searchParams])
-  
-  // Clear selected bookings when switching tabs to avoid state conflicts
-  React.useEffect(() => {
-    setSelectedBookings([])
-  }, [tab, isAssignments])
-  
+
   // Debug logging for data consistency issues
   console.log("[DEBUG] Liner bookings component render:", {
     tab,
@@ -1038,7 +986,6 @@ export default function LinerBookings() {
 
   // Column definitions for the table - different for assignments vs bookings
   const baseAssignmentColumns = [
-    { id: "checkbox", label: "Select", defaultVisible: true, locked: true },
     { id: "reference_number", label: "Reference No.", defaultVisible: true, locked: true },
     { id: "customer", label: "Customer", defaultVisible: true },
     { id: "business_branch", label: "Business Branch", defaultVisible: true },
@@ -1109,7 +1056,6 @@ export default function LinerBookings() {
   ];
 
   const availableColumns = isAssignments ? assignmentColumns : [
-    { id: "checkbox", label: "Select", defaultVisible: true, locked: true },
     {
       id: "temp_booking_number",
       label: "Temp. Booking #",
@@ -1233,21 +1179,6 @@ export default function LinerBookings() {
     }
   }
 
-  const handleSelectBooking = (bookingId: string, checked: boolean) => {
-    if (checked) {
-      setSelectedBookings([...selectedBookings, bookingId])
-    } else {
-      setSelectedBookings(selectedBookings.filter((id) => id !== bookingId))
-    }
-  }
-
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelectedBookings(rows.map((booking: any) => booking.id))
-    } else {
-      setSelectedBookings([])
-    }
-  }
   const formatCarrierBookingStatus = (status: string) => {
     return status?.replace(/_/g, " ").toUpperCase() || "N/A"
   }
@@ -1356,17 +1287,6 @@ export default function LinerBookings() {
     }
 
     switch (columnId) {
-      case "checkbox":
-        return (
-          <TableCell key={columnId} className="pl-6 sticky left-0 z-20 bg-white">
-            <div onClick={(event) => event.stopPropagation()}>
-              <Checkbox
-                checked={selectedBookings.includes(booking.id)}
-                onChange={(e) => handleSelectBooking(booking.id, e.target.checked)}
-              />
-            </div>
-          </TableCell>
-        )
       case "reference_number":
         const referenceNumber = isAssignments 
           ? (isOrphaned 
@@ -1386,7 +1306,7 @@ export default function LinerBookings() {
           navigate(dest);
         };
         return (
-          <TableCell key={columnId} className={`font-semibold sticky left-12 z-20 bg-white shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)] ${isOrphaned ? 'text-gray-600' : 'text-gray-900'}`}>
+          <TableCell key={columnId} className={`font-semibold pl-6 sticky left-0 z-20 bg-white shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)] ${isOrphaned ? 'text-gray-600' : 'text-gray-900'}`}>
             <div className="flex items-center space-x-2">
               <span className={`w-2 h-2 rounded-full ${isOrphaned ? 'bg-gray-400' : 'bg-green-500'}`}></span>
               {!isOrphaned && !isViewOnly ? (
@@ -1439,7 +1359,7 @@ export default function LinerBookings() {
           )
         }
         return (
-          <TableCell key={columnId} className="font-semibold text-gray-900 sticky left-12 z-20 bg-white shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)]">
+          <TableCell key={columnId} className="font-semibold text-gray-900 pl-6 sticky left-0 z-20 bg-white shadow-[2px_0_5px_-1px_rgba(0,0,0,0.08)]">
             <div className="flex items-center space-x-2">
               <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
               <span>{details.temporaryBookingNumber}</span>
@@ -2001,10 +1921,6 @@ export default function LinerBookings() {
     }
   }
 
-  const isSubmitting = navigation.state === "submitting"
-  const idsForDelete = Array.from(
-    new Set(selectedBookings.map((id) => (typeof id === "string" && id.includes("#") ? id.split("#")[0] : id))),
-  )
 
   return (
     <AdminLayout user={user}>
@@ -2148,22 +2064,6 @@ export default function LinerBookings() {
                 <div className="text-sm text-gray-600 bg-gray-50 px-3 py-2 rounded-lg">
                   <span className="font-medium">{totalCount}</span> {isAssignments ? "assignments" : "available"}
                 </div>
-                {idsForDelete.length > 0 && (
-                  <Form method="post">
-                    <input type="hidden" name="action" value={isAssignments ? "bulkDeleteAssignments" : "bulkDelete"} />
-                    {idsForDelete.map((id) => (
-                      <input key={id} type="hidden" name="selectedIds" value={id} />
-                    ))}
-                    <Button
-                      type="submit"
-                      className="bg-red-500 hover:bg-red-600 text-white"
-                      disabled={isSubmitting}
-                      size="sm"
-                    >
-                      {isSubmitting ? "Deleting..." : "Delete Selected"}
-                    </Button>
-                  </Form>
-                )}
               </div>
             </div>
           </div>
@@ -2202,19 +2102,6 @@ export default function LinerBookings() {
                     {visibleColumns.map((columnId) => {
                       const column = availableColumns.find((col) => col.id === columnId)
                       if (!column) return null
-
-                      if (columnId === "checkbox") {
-                        return (
-                          <TableHead key={columnId} className="w-12 pl-6 sticky left-0 z-30 bg-slate-50">
-                            <div onClick={(event) => event.stopPropagation()}>
-                              <Checkbox
-                                checked={selectedBookings.length === rows.length && rows.length > 0}
-                                onChange={(e) => handleSelectAll(e.target.checked)}
-                              />
-                            </div>
-                          </TableHead>
-                        )
-                      }
 
                       // Set specific widths for each column to fit without horizontal scroll
                       const getColumnWidth = (colId: string) => {
@@ -2298,7 +2185,7 @@ export default function LinerBookings() {
                             sortBy={sortBy}
                             sortOrder={sortOrder}
                             searchParams={searchParams}
-                            className={`font-semibold text-gray-900 text-sm sticky left-12 z-30 bg-slate-50 shadow-[2px_0_5px_-1px_rgba(0,0,0,0.1)] ${getColumnWidth(columnId)}`}
+                            className={`font-semibold text-gray-900 text-sm pl-6 sticky left-0 z-30 bg-slate-50 shadow-[2px_0_5px_-1px_rgba(0,0,0,0.1)] ${getColumnWidth(columnId)}`}
                           />
                         )
                       }
