@@ -314,6 +314,13 @@ export function ShipmentPlanForm({
   const [showSoftCancelConfirmation, setShowSoftCancelConfirmation] = useState<boolean>(false);
   const [isSoftCancelling, setIsSoftCancelling] = useState<boolean>(false);
 
+  // Shown instead of the normal cancel confirmation when the plan is still
+  // linked to a liner booking / shipment assignment — per client requirement,
+  // a booked plan must be unmapped first; cancelling can't silently leave the
+  // linked LinerBooking/ShipmentAssignment orphaned pointing at a dead plan.
+  const [showCancelBlockedWarning, setShowCancelBlockedWarning] = useState<boolean>(false);
+  const isLinkedToBooking = Boolean(shipmentPlan?.linerBooking || shipmentPlan?.shipmentAssignment);
+
   // A cancelled plan is locked: no further edits, only visible to Admin and Shipment Planning team
   const isCancelled = mode === "edit" && bookingStatus === "Cancelled";
 
@@ -4171,7 +4178,11 @@ export function ShipmentPlanForm({
                     (user?.role.name === "ADMIN" || user?.role.name === "SHIPMENT_PLAN_TEAM") && (
                       <Button
                         type="button"
-                        onClick={() => setShowSoftCancelConfirmation(true)}
+                        onClick={() =>
+                          isLinkedToBooking
+                            ? setShowCancelBlockedWarning(true)
+                            : setShowSoftCancelConfirmation(true)
+                        }
                         disabled={isSubmitting || isFormSubmitting || isSoftCancelling}
                         className="px-6 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium transition-all duration-200 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                       >
@@ -4361,6 +4372,54 @@ export function ShipmentPlanForm({
                 ) : (
                   <span>Yes, Delete Plan</span>
                 )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Blocking warning: plan is still linked to a liner booking / shipment
+          assignment. Client requirement — must be unmapped first, no
+          override here. Shown instead of the normal cancel confirmation. */}
+      {showCancelBlockedWarning && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
+            <div className="bg-gradient-to-r from-amber-500 to-amber-600 px-6 py-4">
+              <h3 className="text-xl font-bold text-white flex items-center">
+                <span className="mr-2">⚠️</span>
+                Can't Cancel — Still Booked
+              </h3>
+            </div>
+            <div className="p-6">
+              <p className="text-gray-700 mb-3">
+                This shipment plan is still linked to a{" "}
+                {shipmentPlan?.linerBooking ? "liner booking" : "shipment assignment"}.
+                It must be unmapped before it can be cancelled.
+              </p>
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
+                <p className="font-semibold mb-2">To cancel this plan:</p>
+                <ol className="list-decimal list-inside space-y-1">
+                  <li>Request unmapping for each container on this plan (in the Liner Booking Details section below)</li>
+                  <li>Have the request approved</li>
+                  <li>Once the plan shows "Awaiting Booking" with nothing linked, come back and Cancel Plan</li>
+                </ol>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-3 mt-4">
+                <p className="text-sm text-gray-600">
+                  <span className="font-medium">Reference:</span> {planData.reference_number || "N/A"}
+                </p>
+                <p className="text-sm text-gray-600">
+                  <span className="font-medium">Status:</span> {planData.booking_status || "N/A"}
+                </p>
+              </div>
+            </div>
+            <div className="bg-gray-50 px-6 py-4 flex justify-end">
+              <Button
+                type="button"
+                onClick={() => setShowCancelBlockedWarning(false)}
+                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-medium"
+              >
+                Got it
               </Button>
             </div>
           </div>

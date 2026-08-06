@@ -470,6 +470,18 @@ export async function action({ request, params }: ActionFunctionArgs) {
         return redirect(`/shipment-plans/${planId}/edit`)
       }
 
+      // Client requirement: a booked plan must be unmapped before it can be
+      // cancelled — soft-cancel only flips the status, it doesn't touch the
+      // linked LinerBooking/ShipmentAssignment, so cancelling while still
+      // linked would leave that booking permanently stuck pointing at a dead
+      // plan. Reject here too (not just the UI) so a direct POST can't skip it.
+      if (currentPlan.linerBookingId || currentPlan.shipmentAssignmentId) {
+        return {
+          error:
+            "This shipment plan is still linked to a liner booking/shipment assignment. Unmap it first (approve unmapping for every container) before cancelling.",
+        }
+      }
+
       await prisma.shipmentPlan.update({
         where: { id: planId },
         data: {
