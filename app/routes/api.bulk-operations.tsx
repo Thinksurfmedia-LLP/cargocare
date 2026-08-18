@@ -1,6 +1,7 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { requireAuth } from "~/lib/auth.server";
 import { prisma } from "~/lib/prisma.server";
+import { objectsToCsv } from "~/lib/csv-export.server";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   try {
@@ -94,7 +95,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     }
 
     // Convert data to CSV
-    const csv = convertToCSV(data, type);
+    const csv = objectsToCsv(data);
     
     return new Response(csv, {
       headers: {
@@ -183,218 +184,7 @@ export async function action({ request }: ActionFunctionArgs) {
   }
 }
 
-function convertToCSV(data: any[], type: string): string {
-  if (data.length === 0) return "";
-  const formatValue = (value: any): string => {
-    if (value === null || value === undefined) return "";
-    if (typeof value === "boolean") return value ? "Yes" : "No";
-    if (typeof value === "number") return String(value);
-    if (typeof value === "string") return value;
-    if (value instanceof Date) return value.toISOString();
-    
-    // If we still have objects here, it means they weren't properly flattened
-    // This should be rare after proper expansion, but handle gracefully
-    if (typeof value === "object") {
-      if (Array.isArray(value)) {
-        // For arrays, join with semicolon
-        return value.map(item => {
-          if (typeof item === "object" && item !== null) {
-            return JSON.stringify(item);
-          }
-          return String(item);
-        }).join(";");      } else {
-        // For remaining objects, try to extract a meaningful string
-        const objValue = value as any;
-        if (objValue.name) return String(objValue.name);
-        if (objValue.id) return String(objValue.id);
-        if (objValue.email) return String(objValue.email);
-        
-        // Last resort: JSON string
-        try {
-          const jsonString = JSON.stringify(value);
-          if (jsonString === "{}") return "";
-          if (jsonString === "null") return "";
-          return jsonString;
-        } catch (e) {
-          return String(value);
-        }
-      }
-    }
-    
-    return String(value);
-  };
-
-  const escapeCSV = (value: string): string => {
-    return `"${value.replace(/"/g, '""')}"`;
-  };
-  // Multi-row CSV generation for array handling
-  const generateExpandedCSV = (records: any[]): { headers: string[], rows: string[][] } => {
-    const allHeaders = new Set<string>();
-    const expandedRows: any[] = [];
-
-    // First pass: collect all possible headers and expand records
-    records.forEach(record => {
-      const expanded = expandRecord(record);
-      expanded.forEach(expandedRecord => {
-        Object.keys(expandedRecord).forEach(key => allHeaders.add(key));
-        expandedRows.push(expandedRecord);
-      });
-    });
-
-    const headers = Array.from(allHeaders).sort();
-    const rows = expandedRows.map(row => 
-      headers.map(header => escapeCSV(formatValue(row[header] || "")))
-    );
-
-    return { headers, rows };
-  };
-  const flattenObject = (obj: any, prefix: string = ""): Record<string, any> => {
-    const flattened: Record<string, any> = {};
-    
-    if (!obj || typeof obj !== "object") {
-      return flattened;
-    }
-    
-    for (const [key, value] of Object.entries(obj)) {
-      const newKey = prefix ? `${prefix}.${key}` : key;
-      
-      if (value && typeof value === "object" && !Array.isArray(value) && !(value instanceof Date)) {
-        // Check if it's a plain object that should be flattened
-        if (value.constructor === Object || value.constructor === undefined) {
-          // Recursively flatten nested objects
-          Object.assign(flattened, flattenObject(value, newKey));
-        } else {
-          // For complex objects (like Prisma relations), keep as is
-          flattened[newKey] = value;
-        }
-      } else {
-        flattened[newKey] = value;
-      }
-    }
-    
-    return flattened;
-  };
-
-  const getAllPossibleKeys = (dataArray: any[]): string[] => {
-    const keySet = new Set<string>();
-    
-    dataArray.forEach(item => {
-      const flattened = flattenObject(item);
-      Object.keys(flattened).forEach(key => keySet.add(key));
-    });
-    
-    return Array.from(keySet).sort();
-  };  // Expand a single record into multiple rows for array handling
-  const expandRecord = (record: any, prefix: string = ""): any[] => {
-    const baseRecord: any = {};
-    const arrayFields: { key: string, items: any[] }[] = [];
-    
-    // Separate base fields from arrays and objects
-    Object.entries(record).forEach(([key, value]) => {
-      const fullKey = prefix ? `${prefix}.${key}` : key;
-      
-      if (Array.isArray(value) && value.length > 0) {
-        // Handle arrays - each item becomes a separate row
-        arrayFields.push({ key: fullKey, items: value });      } else if (value && typeof value === "object" && !(value instanceof Date)) {
-        // Special handling for JSON fields (like LinerBooking.data or ShipmentPlan.data)
-        if (key === 'data' && value && typeof value === 'object') {
-          // Flatten JSON data fields directly into the base record with data. prefix
-          Object.entries(value).forEach(([subKey, subValue]) => {
-            if (Array.isArray(subValue) && subValue.length > 0) {
-              // Handle arrays within JSON data
-              arrayFields.push({ key: `${fullKey}.${subKey}`, items: subValue });
-            } else if (subValue && typeof subValue === "object" && !(subValue instanceof Date)) {
-              // Recursively flatten nested objects within JSON data
-              const flattened = flattenObject(subValue, `${fullKey}.${subKey}`);
-              Object.assign(baseRecord, flattened);
-            } else {
-              baseRecord[`${fullKey}.${subKey}`] = subValue;
-            }
-          });
-        } else if (isSimpleObject(value)) {
-          // Flatten simple objects into the base record
-          Object.entries(value).forEach(([subKey, subValue]) => {
-            baseRecord[`${fullKey}.${subKey}`] = subValue;
-          });        } else {
-          // For complex objects, extract key fields and flatten them
-          const objValue = value as any;
-          if (objValue.name || objValue.id || objValue.email) {
-            // Extract common fields
-            if (objValue.name) baseRecord[`${fullKey}.name`] = objValue.name;
-            if (objValue.id) baseRecord[`${fullKey}.id`] = objValue.id;
-            if (objValue.email) baseRecord[`${fullKey}.email`] = objValue.email;
-            
-            // Flatten any other simple fields
-            Object.entries(objValue).forEach(([subKey, subValue]) => {
-              if (!['name', 'id', 'email'].includes(subKey) && 
-                  (typeof subValue === 'string' || typeof subValue === 'number' || typeof subValue === 'boolean')) {
-                baseRecord[`${fullKey}.${subKey}`] = subValue;
-              }
-            });
-          } else {
-            // Treat as single-item array for complex objects without common fields
-            arrayFields.push({ key: fullKey, items: [objValue] });
-          }
-        }
-      } else {
-        // Regular field
-        baseRecord[fullKey] = value;
-      }
-    });
-
-    // If no arrays, return single record
-    if (arrayFields.length === 0) {
-      return [baseRecord];
-    }
-
-    // Generate combinations for all array fields
-    const result: any[] = [];
-    const maxArrayLength = Math.max(...arrayFields.map(field => field.items.length));
-
-    for (let i = 0; i < maxArrayLength; i++) {
-      const rowRecord = { ...baseRecord };
-      
-      arrayFields.forEach(({ key, items }) => {
-        const item = items[i % items.length]; // Cycle through if array is shorter
-        
-        if (item && typeof item === "object" && !Array.isArray(item)) {
-          // Flatten object items
-          Object.entries(item).forEach(([subKey, subValue]) => {
-            rowRecord[`${key}.${subKey}`] = subValue;
-          });
-        } else {
-          // Simple array item
-          rowRecord[key] = item;
-        }
-      });
-      
-      result.push(rowRecord);
-    }
-
-    return result;
-  };
-
-  // Check if an object is "simple" (should be flattened) vs "complex" (should be treated as array item)
-  const isSimpleObject = (obj: any): boolean => {
-    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return false;
-    
-    // Simple objects have primitive values or simple nested objects
-    return Object.values(obj).every(value => {
-      if (value === null || value === undefined) return true;
-      if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return true;
-      if (value instanceof Date) return true;
-      if (Array.isArray(value)) return false; // Arrays make it complex
-      if (typeof value === "object") {
-        // Nested objects with more than 3 fields are considered complex
-        return Object.keys(value).length <= 3;
-      }
-      return false;    });
-  };
-  // Generate the CSV using multi-row format for arrays
-  const { headers, rows } = generateExpandedCSV(data);
-  
-  return [headers.join(","), ...rows.map((row: string[]) => row.join(","))].join("\n");
-}
+// CSV flattening (nested objects, JSON `data` blobs, arrays) lives in ~/lib/csv-export.server (objectsToCsv).
 
 function parseCSV(csvText: string): any[] {
   const lines = csvText.split("\n").filter(line => line.trim());

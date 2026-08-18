@@ -2,6 +2,8 @@
 
 import { Link, Form, useLocation } from "react-router"
 import { Button } from "~/components/ui/button"
+import { ExportCsvModal, type ExportCsvType } from "~/components/ExportCsvModal"
+import type { ExportFilters } from "~/lib/export-filters"
 import type React from "react"
 import { useState } from "react"
 
@@ -20,6 +22,8 @@ interface AdminLayoutProps {
 export function AdminLayout({ user, children }: AdminLayoutProps) {
   const location = useLocation()
   const [dataPointsOpen, setDataPointsOpen] = useState(false)
+  const [exportModalOpen, setExportModalOpen] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
 
   const roleName = (user?.role?.name ?? "GUEST") as string
 
@@ -102,6 +106,45 @@ export function AdminLayout({ user, children }: AdminLayoutProps) {
     { name: "Vessels", path: "/data-points/vessels", icon: "🛳️" },
     { name: "Carriers", path: "/data-points/carriers", icon: "🚛" },
   ]
+  const handleExportCsv = async (
+    type: ExportCsvType,
+    fromDate: string,
+    toDate: string,
+    columns: string[],
+    filters: ExportFilters
+  ) => {
+    setIsExporting(true)
+    try {
+      const response = await fetch('/api/export-csv', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ type, fromDate, toDate, columns, filters }),
+      })
+
+      if (response.ok) {
+        const blob = await response.blob()
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `${type}-export-${new Date().toISOString().slice(0, 10)}.csv`
+        document.body.appendChild(a)
+        a.click()
+        window.URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+        setExportModalOpen(false)
+      } else {
+        alert('Failed to export CSV. Please try again.')
+      }
+    } catch (error) {
+      console.error('Export error:', error)
+      alert('Failed to export CSV. Please try again.')
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   const getRoleColor = (roleName: string) => {
     switch (roleName) {
       case "ADMIN":
@@ -167,33 +210,7 @@ export function AdminLayout({ user, children }: AdminLayoutProps) {
               {/* CSV Export Section */}
               <div className="space-y-2 pt-2 border-t border-slate-700">
                 <button
-                  onClick={async () => {
-                    try {
-                      const response = await fetch('/api/export-csv', {
-                        method: 'POST',
-                        headers: {
-                          'Content-Type': 'application/json',
-                        },
-                      });
-
-                      if (response.ok) {
-                        const blob = await response.blob();
-                        const url = window.URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = `shipment-plans-export-${new Date().toISOString().slice(0, 10)}.csv`;
-                        document.body.appendChild(a);
-                        a.click();
-                        window.URL.revokeObjectURL(url);
-                        document.body.removeChild(a);
-                      } else {
-                        alert('Failed to export CSV. Please try again.');
-                      }
-                    } catch (error) {
-                      console.error('Export error:', error);
-                      alert('Failed to export CSV. Please try again.');
-                    }
-                  }}
+                  onClick={() => setExportModalOpen(true)}
                   className="group w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-left transition-all duration-200 text-slate-300 hover:bg-green-600 hover:text-white"
                 >
                   <span className="text-lg transition-transform duration-200 group-hover:scale-105">📊</span>
@@ -287,6 +304,13 @@ export function AdminLayout({ user, children }: AdminLayoutProps) {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden bg-gradient-to-b from-[#fffdf3] via-[#fff7d6] to-[#ffeeb8]">{children}</div>
+
+      <ExportCsvModal
+        isOpen={exportModalOpen}
+        onClose={() => setExportModalOpen(false)}
+        onExport={handleExportCsv}
+        isExporting={isExporting}
+      />
     </div>
   )
 }
