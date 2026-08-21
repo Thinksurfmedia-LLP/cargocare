@@ -10,6 +10,8 @@ export interface ExportFilters {
   shippers?: string[]
   salesPersonIds?: string[]
   shipmentTypes?: string[]
+  /** The LINER_BOOKING_TEAM member a booking/plan's work is assigned to (`assignBookingId`). */
+  assignedToIds?: string[]
 }
 
 export interface ExportFilterOptions {
@@ -18,6 +20,7 @@ export interface ExportFilterOptions {
   customers: string[]
   shippers: string[]
   salesPersons: { id: string; name: string }[]
+  assignedToUsers: { id: string; name: string }[]
   shipmentTypes: string[]
   statuses: string[]
 }

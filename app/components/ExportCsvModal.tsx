@@ -38,9 +38,19 @@ interface ExportCsvModalProps {
     filters: ExportFilters
   ) => Promise<void> | void
   isExporting: boolean
+  /** Downloads the original, unfiltered, every-field shipment-plans report - bypasses the form above entirely. */
+  onDownloadFullReport: () => Promise<void> | void
+  isDownloadingFullReport: boolean
 }
 
-export function ExportCsvModal({ isOpen, onClose, onExport, isExporting }: ExportCsvModalProps) {
+export function ExportCsvModal({
+  isOpen,
+  onClose,
+  onExport,
+  isExporting,
+  onDownloadFullReport,
+  isDownloadingFullReport,
+}: ExportCsvModalProps) {
   const [type, setType] = useState<ExportCsvType>("shipment-plans")
   const [selectedColumns, setSelectedColumns] = useState<string[]>(() => getExportColumnIds("shipment-plans"))
   const [fromDate, setFromDate] = useState("")
@@ -81,6 +91,8 @@ export function ExportCsvModal({ isOpen, onClose, onExport, isExporting }: Expor
   const toOptions = (values: string[]): MultiSelectOption[] => values.map((v) => ({ value: v, label: v }))
   const salesPersonOptions: MultiSelectOption[] =
     filterOptions?.salesPersons.map((sp) => ({ value: sp.id, label: sp.name })) ?? []
+  const assignedToOptions: MultiSelectOption[] =
+    filterOptions?.assignedToUsers.map((u) => ({ value: u.id, label: u.name })) ?? []
 
   const activeFilterCount = Object.values(filters).filter((v) => Array.isArray(v) && v.length > 0).length
 
@@ -125,9 +137,20 @@ export function ExportCsvModal({ isOpen, onClose, onExport, isExporting }: Expor
               <h3 className="text-lg font-semibold text-gray-900">Export CSV Report</h3>
               <p className="text-sm text-gray-500 mt-1">Choose a dataset, filters, and columns</p>
             </div>
-            <button onClick={handleClose} className="text-gray-400 hover:text-gray-600 transition-colors" disabled={isExporting}>
-              <span className="text-xl">×</span>
-            </button>
+            <div className="flex items-center space-x-3 flex-shrink-0">
+              <button
+                type="button"
+                onClick={onDownloadFullReport}
+                disabled={isDownloadingFullReport || isExporting}
+                title="Download the complete shipment plans report - every field, every record, no filters"
+                className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+              >
+                {isDownloadingFullReport ? "Downloading..." : "⬇ Download Full Report"}
+              </button>
+              <button onClick={handleClose} className="text-gray-400 hover:text-gray-600 transition-colors" disabled={isExporting}>
+                <span className="text-xl">×</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -271,6 +294,17 @@ export function ExportCsvModal({ isOpen, onClose, onExport, isExporting }: Expor
                       selected={filters.salesPersonIds ?? []}
                       onChange={(v) => updateFilter("salesPersonIds", v)}
                       placeholder="All sales persons"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs text-gray-500">Assigned To</Label>
+                  <div className="mt-1">
+                    <MultiSelect
+                      options={assignedToOptions}
+                      selected={filters.assignedToIds ?? []}
+                      onChange={(v) => updateFilter("assignedToIds", v)}
+                      placeholder="Anyone"
                     />
                   </div>
                 </div>

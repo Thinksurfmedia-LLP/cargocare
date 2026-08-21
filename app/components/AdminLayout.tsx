@@ -24,6 +24,7 @@ export function AdminLayout({ user, children }: AdminLayoutProps) {
   const [dataPointsOpen, setDataPointsOpen] = useState(false)
   const [exportModalOpen, setExportModalOpen] = useState(false)
   const [isExporting, setIsExporting] = useState(false)
+  const [isDownloadingFullReport, setIsDownloadingFullReport] = useState(false)
 
   const roleName = (user?.role?.name ?? "GUEST") as string
 
@@ -106,6 +107,17 @@ export function AdminLayout({ user, children }: AdminLayoutProps) {
     { name: "Vessels", path: "/data-points/vessels", icon: "🛳️" },
     { name: "Carriers", path: "/data-points/carriers", icon: "🚛" },
   ]
+  const downloadCsvBlob = (blob: Blob, filename: string) => {
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    window.URL.revokeObjectURL(url)
+    document.body.removeChild(a)
+  }
+
   const handleExportCsv = async (
     type: ExportCsvType,
     fromDate: string,
@@ -125,14 +137,7 @@ export function AdminLayout({ user, children }: AdminLayoutProps) {
 
       if (response.ok) {
         const blob = await response.blob()
-        const url = window.URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = `${type}-export-${new Date().toISOString().slice(0, 10)}.csv`
-        document.body.appendChild(a)
-        a.click()
-        window.URL.revokeObjectURL(url)
-        document.body.removeChild(a)
+        downloadCsvBlob(blob, `${type}-export-${new Date().toISOString().slice(0, 10)}.csv`)
         setExportModalOpen(false)
       } else {
         alert('Failed to export CSV. Please try again.')
@@ -142,6 +147,31 @@ export function AdminLayout({ user, children }: AdminLayoutProps) {
       alert('Failed to export CSV. Please try again.')
     } finally {
       setIsExporting(false)
+    }
+  }
+
+  const handleDownloadFullReport = async () => {
+    setIsDownloadingFullReport(true)
+    try {
+      const response = await fetch('/api/export-csv', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ full: true }),
+      })
+
+      if (response.ok) {
+        const blob = await response.blob()
+        downloadCsvBlob(blob, `shipment-plans-full-export-${new Date().toISOString().slice(0, 10)}.csv`)
+      } else {
+        alert('Failed to download the full report. Please try again.')
+      }
+    } catch (error) {
+      console.error('Full report download error:', error)
+      alert('Failed to download the full report. Please try again.')
+    } finally {
+      setIsDownloadingFullReport(false)
     }
   }
 
@@ -310,6 +340,8 @@ export function AdminLayout({ user, children }: AdminLayoutProps) {
         onClose={() => setExportModalOpen(false)}
         onExport={handleExportCsv}
         isExporting={isExporting}
+        onDownloadFullReport={handleDownloadFullReport}
+        isDownloadingFullReport={isDownloadingFullReport}
       />
     </div>
   )

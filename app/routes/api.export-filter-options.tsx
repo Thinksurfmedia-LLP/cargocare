@@ -39,11 +39,16 @@ export async function loader({ request }: LoaderFunctionArgs) {
       return json({ error: "Unauthorized. Admin access required." }, { status: 403 });
     }
 
-    const [businessBranches, destinationCountries, organizations, users] = await Promise.all([
+    const [businessBranches, destinationCountries, organizations, users, linerBookingTeamUsers] = await Promise.all([
       prisma.businessBranch.findMany({ select: { name: true }, orderBy: { name: "asc" } }),
       prisma.destinationCountry.findMany({ select: { name: true }, orderBy: { name: "asc" } }),
       prisma.organization.findMany({ select: { name: true, orgTypes: true }, orderBy: { name: "asc" } }),
       prisma.user.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+      prisma.user.findMany({
+        where: { role: { name: "LINER_BOOKING_TEAM" } },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      }),
     ]);
 
     const customers = organizations.filter((org) => org.orgTypes.includes("Customer")).map((org) => org.name);
@@ -55,6 +60,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
       customers,
       shippers,
       salesPersons: users.map((u) => ({ id: u.id, name: u.name })),
+      // "Assigned To" = the LINER_BOOKING_TEAM member a booking/plan's work is assigned to (assignBookingId).
+      assignedToUsers: linerBookingTeamUsers.map((u) => ({ id: u.id, name: u.name })),
       shipmentTypes: SHIPMENT_TYPES,
       statuses: STATUSES,
     };

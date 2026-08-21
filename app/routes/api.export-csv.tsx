@@ -139,6 +139,8 @@ function shipmentPlanMatchesFilters(plan: any, filters: ExportFilters): boolean 
   if (!matchesFacet(data?.shipment_type, filters.shipmentTypes)) return false;
   // "Sales Person" mirrors the list page's "Sales Person" column, which shows the creator.
   if (filters.salesPersonIds?.length && !filters.salesPersonIds.includes(plan.userId)) return false;
+  const assignedToId = plan.linerBooking?.assignBookingId || plan.shipmentAssignment?.assignBookingId;
+  if (filters.assignedToIds?.length && !filters.assignedToIds.includes(assignedToId)) return false;
   return true;
 }
 
@@ -152,6 +154,7 @@ function linerBookingMatchesFilters(booking: any, filters: ExportFilters): boole
   if (!matchesAnyFacet(getShippers(spData?.package_details), filters.shippers)) return false;
   if (!matchesFacet(spData?.shipment_type, filters.shipmentTypes)) return false;
   if (filters.salesPersonIds?.length && !filters.salesPersonIds.includes(booking.userId)) return false;
+  if (filters.assignedToIds?.length && !filters.assignedToIds.includes(booking.assignBookingId)) return false;
   return true;
 }
 
@@ -167,6 +170,7 @@ function shipmentAssignmentMatchesFilters(assignment: any, filters: ExportFilter
   if (!matchesFacet(spData?.shipment_type, filters.shipmentTypes)) return false;
   const salesPersonId = assignment.shipmentPlan?.userId || assignment.userId;
   if (filters.salesPersonIds?.length && !filters.salesPersonIds.includes(salesPersonId)) return false;
+  if (filters.assignedToIds?.length && !filters.assignedToIds.includes(assignment.assignBookingId)) return false;
   return true;
 }
 
@@ -198,6 +202,7 @@ function shipmentPlanColumnValue(plan: any, columnId: string): any {
     case "vessel": return cvp.vessel;
     case "created_date": return formatDate(plan.createdAt);
     case "created_by": return plan.user?.name;
+    case "assigned_to": return plan.assignedTo?.name;
     case "updated_date": return formatDate(plan.updatedAt);
     case "incoterm": return cm.incoterm;
     case "freight_terms": return cm.freight_terms;
@@ -242,6 +247,7 @@ function linerBookingColumnValue(booking: any, columnId: string): any {
     case "equipment_type": return d0.equipment_type;
     case "created_date": return formatDate(booking.createdAt);
     case "created_by": return booking.user?.name;
+    case "assigned_to": return booking.assignedTo?.name;
     case "updated_date": return formatDate(booking.updatedAt);
     case "empty_pickup_from": return formatDate(d0.empty_pickup_validity_from);
     case "empty_pickup_till": return formatDate(d0.empty_pickup_validity_till);
@@ -281,7 +287,7 @@ function shipmentAssignmentColumnValue(assignment: any, columnId: string): any {
     case "carrier": return cvp.carrier || d0.carrier;
     case "vessel": return cvp.vessel || d0.original_planned_vessel;
     case "container_status": return getMilestoneStatus({ data: spData });
-    case "assigned_liner_broker": return assignment.assignedLinerBroker?.name;
+    case "assigned_to": return assignment.assignedLinerBroker?.name;
     case "created_date": return formatDate(assignment.shipmentPlan?.createdAt || assignment.createdAt);
     case "created_by": return assignment.shipmentPlan?.user?.name || assignment.user?.name;
     case "updated_date": return formatDate(assignment.updatedAt);
@@ -320,6 +326,233 @@ function shipmentAssignmentColumnValue(assignment: any, columnId: string): any {
     case "additional_remarks": return d0.additional_remarks;
     default: return "";
   }
+}
+
+// ---- Full report (legacy detailed export) ----------------------------------
+// The original "Export CSV Report" button produced one CSV with every field,
+// one row per CONTAINER x SHIPPER combination, ignoring type/columns/filters.
+// Kept available as a "Download Full Report" shortcut in the export modal.
+
+function buildFullShipmentPlanReportCsv(shipmentPlans: any[]): string {
+  const headers = [
+    "Group ID (for merged cells in Excel)",
+    "Reference Number",
+    "Shipment Type",
+    "Booking Status",
+    "Business Branch",
+    "Created Date",
+    "Created By",
+    "Created By Email",
+    "Customer",
+    "Consignee",
+    "Loading Port",
+    "Port of Discharge",
+    "Destination Country",
+    "Delivery Till",
+    "Buying Price",
+    "Selling Price",
+    "Rebate",
+    "Credit Period",
+    "Final Place of Delivery",
+    "Carrier",
+    "Vessel",
+    "Preferred ETD",
+    "Specific Instructions",
+    "Stuffing Instructions",
+    "Required Free Time at Destination",
+    "MD Approval Status",
+    "Liner Broker Approval",
+    "Rejection Comment",
+    "Container Number",
+    "Equipment Type",
+    "Tracking Number",
+    "Shipper",
+    "Commodity",
+    "Number of Packages",
+    "Gross Weight",
+    "Volume",
+    "Invoice Number",
+    "PO Number",
+    "Projected Cargo Ready Date",
+    "Is Hazardous",
+    "C_H_A",
+    "Gated In Status",
+    "Gated In Date",
+    "Empty Container Picked Up Status",
+    "Empty Container Picked Up Date",
+    "Container Stuffing Completed",
+    "Container Stuffing Completed Date",
+    "Loaded On Board Status",
+    "Loaded On Board Date",
+    "MBL Number",
+    "Liner Booking Number",
+    "Booking Carrier",
+    "Booking Contract",
+    "Remarks",
+    "Unmapping Request",
+    "Carrier Booking Status",
+  ];
+
+  const findMatchingBooking = (linerBookingDetails: any[], equipment: any) => {
+    let match = linerBookingDetails.find((detail: any) => detail.trackingNumber === equipment.trackingNumber);
+    if (!match) {
+      match = linerBookingDetails.find((detail: any) => detail.liner_booking_number === equipment.trackingNumber);
+    }
+    if (!match) {
+      match = linerBookingDetails.find((detail: any) => {
+        const equipmentTypeMatches = detail.equipment_type && detail.equipment_type.includes(equipment.trackingNumber);
+        const bookingForMatches = detail.booking_for && detail.booking_for.includes(equipment.trackingNumber);
+        return equipmentTypeMatches || bookingForMatches;
+      });
+    }
+    if (!match) {
+      match = linerBookingDetails.find(
+        (detail: any) => detail.equipment_type === equipment.equipment_type || detail.booking_for === equipment.equipment_type
+      );
+    }
+    return match;
+  };
+
+  const rows: string[][] = [];
+
+  shipmentPlans.forEach((plan, planIndex) => {
+    const data = plan.data as any;
+    const containerMovement = data.container_movement || {};
+    const carrierPreference = containerMovement.carrier_and_vessel_preference || {};
+    const containerTracking = data.container_tracking || {};
+    const equipmentDetails = data.equipment_details || [];
+
+    const linkedBookingData = plan.linerBooking?.data || plan.shipmentAssignment?.data;
+    const linerBookingDetails = (linkedBookingData as any)?.liner_booking_details || data.liner_booking_details || [];
+
+    const packageDetails = data.package_details || [];
+    const groupId = `${data.reference_number}-${planIndex}`;
+    const isConsolidated = data.shipment_type?.toLowerCase() === "consolidation";
+
+    const sharedFields = [
+      groupId,
+      data.reference_number,
+      data.shipment_type,
+      data.booking_status,
+      data.bussiness_branch,
+      formatDate(plan.createdAt),
+      plan.user.name,
+      plan.user.email,
+      containerMovement.customer,
+      containerMovement.consignee,
+      containerMovement.loading_port,
+      containerMovement.port_of_discharge,
+      containerMovement.destination_country,
+      containerMovement.delivery_till,
+      containerMovement.buying_price,
+      containerMovement.selling_price,
+      containerMovement.rebate,
+      containerMovement.credit_period,
+      containerMovement.final_place_of_delivery,
+      carrierPreference.carrier,
+      carrierPreference.vessel,
+      formatDate(carrierPreference.preferred_etd),
+      containerMovement.specific_instructions,
+      containerMovement.stuffing_instructions,
+      containerMovement.required_free_time_at_destination,
+      data.md_approval_status,
+      data.liner_broker_approval,
+      data.rejection_comment,
+    ];
+    const tailFields = (booking: any) => [
+      booking?.mbl_number || "",
+      booking?.liner_booking_number || "",
+      booking?.carrier || "",
+      booking?.contract || "",
+      data.remarks,
+      data.unmapping_request ? "Yes" : "No",
+      data.carrier_booking_status,
+    ];
+
+    if (equipmentDetails.length === 0 && packageDetails.length === 0) {
+      // No containers, no shippers - one summary row
+      const pkg = packageDetails[0] || {};
+      const booking = linerBookingDetails[0];
+      rows.push([
+        ...sharedFields,
+        "", "", "",
+        pkg.shipper || "", pkg.commodity || "", pkg.number_of_packages || "", pkg.gross_weight || "", pkg.volume || "",
+        pkg.invoice_number || "", pkg.p_o_number || "", formatDate(pkg.projected_cargo_ready_date),
+        pkg.is_haz ? "Yes" : "No", pkg.C_H_A ? "Yes" : "No",
+        containerTracking.gated_in_status ? "Yes" : "No", formatDate(containerTracking.gated_in_date),
+        containerTracking.empty_container_picked_up_status ? "Yes" : "No", formatDate(containerTracking.empty_container_picked_up_date),
+        containerTracking.container_stuffing_completed ? "Yes" : "No", formatDate(containerTracking.container_stuffing_completed_date),
+        containerTracking.loaded_on_board_status ? "Yes" : "No", formatDate(containerTracking.loaded_on_board_date),
+        ...tailFields(booking),
+      ].map(escapeCSV));
+    } else if (equipmentDetails.length === 0) {
+      // No containers but have shippers - one row per shipper
+      packageDetails.forEach((pkg: any) => {
+        const booking = linerBookingDetails.find((lb: any) => lb.shipper === pkg.shipper) || linerBookingDetails[0];
+        rows.push([
+          ...sharedFields,
+          "", "", "",
+          pkg.shipper || "", pkg.commodity || "", pkg.number_of_packages || "", pkg.gross_weight || "", pkg.volume || "",
+          pkg.invoice_number || "", pkg.p_o_number || "", formatDate(pkg.projected_cargo_ready_date),
+          pkg.is_haz ? "Yes" : "No", pkg.C_H_A ? "Yes" : "No",
+          containerTracking.gated_in_status ? "Yes" : "No", formatDate(containerTracking.gated_in_date),
+          containerTracking.empty_container_picked_up_status ? "Yes" : "No", formatDate(containerTracking.empty_container_picked_up_date),
+          containerTracking.container_stuffing_completed ? "Yes" : "No", formatDate(containerTracking.container_stuffing_completed_date),
+          containerTracking.loaded_on_board_status ? "Yes" : "No", formatDate(containerTracking.loaded_on_board_date),
+          ...tailFields(booking),
+        ].map(escapeCSV));
+      });
+    } else if (isConsolidated && packageDetails.length > 0) {
+      // CONSOLIDATED: one row per CONTAINER x SHIPPER combination
+      equipmentDetails.forEach((equipment: any) => {
+        packageDetails.forEach((pkg: any) => {
+          const matchingBooking = findMatchingBooking(linerBookingDetails, equipment);
+          rows.push([
+            ...sharedFields,
+            equipment.container_number || "", equipment.equipment_type || "", equipment.trackingNumber || "",
+            pkg.shipper || "", pkg.commodity || "", pkg.number_of_packages || "", pkg.gross_weight || "", pkg.volume || "",
+            pkg.invoice_number || "", pkg.p_o_number || "", formatDate(pkg.projected_cargo_ready_date),
+            pkg.is_haz ? "Yes" : "No", pkg.C_H_A ? "Yes" : "No",
+            equipment.gateInStatus ? "Yes" : "No", formatDate(equipment.gateInDate),
+            equipment.emptyPickupStatus ? "Yes" : "No", formatDate(equipment.emptyPickupDate),
+            equipment.stuffingStatus ? "Yes" : "No", formatDate(equipment.stuffingDate),
+            equipment.loadedStatus ? "Yes" : "No", formatDate(equipment.loadedDate),
+            ...tailFields(matchingBooking),
+          ].map(escapeCSV));
+        });
+      });
+    } else {
+      // DIRECT (non-consolidated): one row per container
+      const singlePackage = packageDetails[0] || {};
+      equipmentDetails.forEach((equipment: any) => {
+        const matchingBooking = findMatchingBooking(linerBookingDetails, equipment);
+        rows.push([
+          ...sharedFields,
+          equipment.container_number || "", equipment.equipment_type || "", equipment.trackingNumber || "",
+          singlePackage.shipper || "", singlePackage.commodity || "", singlePackage.number_of_packages || "",
+          singlePackage.gross_weight || "", singlePackage.volume || "", singlePackage.invoice_number || "",
+          singlePackage.p_o_number || "", formatDate(singlePackage.projected_cargo_ready_date),
+          singlePackage.is_haz ? "Yes" : "No", singlePackage.C_H_A ? "Yes" : "No",
+          equipment.gateInStatus ? "Yes" : "No", formatDate(equipment.gateInDate),
+          equipment.emptyPickupStatus ? "Yes" : "No", formatDate(equipment.emptyPickupDate),
+          equipment.stuffingStatus ? "Yes" : "No", formatDate(equipment.stuffingDate),
+          equipment.loadedStatus ? "Yes" : "No", formatDate(equipment.loadedDate),
+          ...tailFields(matchingBooking),
+        ].map(escapeCSV));
+      });
+    }
+  });
+
+  const currentDate = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  const companyHeader = [
+    `CARGOCARE LOGISTICS - SHIPMENT EXPORT REPORT (FULL)`,
+    `Generated on: ${currentDate}`,
+    `Total Records: ${shipmentPlans.length}`,
+    ``,
+    ``,
+  ];
+
+  return [...companyHeader, headers.map(escapeCSV).join(","), ...rows.map((row) => row.join(","))].join("\n");
 }
 
 // ---- CSV assembly -----------------------------------------------------------
@@ -361,11 +594,27 @@ export async function action({ request }: ActionFunctionArgs) {
 
     // Export options sent as a JSON body from the export modal:
     // which dataset, which columns, an optional created-date range, and facet filters.
-    let body: { type?: string; fromDate?: string; toDate?: string; columns?: unknown; filters?: unknown } = {};
+    let body: { type?: string; fromDate?: string; toDate?: string; columns?: unknown; filters?: unknown; full?: unknown } = {};
     try {
       body = await request.json();
     } catch {
       // No/invalid JSON body - use defaults
+    }
+
+    // "Download Full Report" shortcut: the original, unfiltered, every-field detailed
+    // shipment-plans report. Bypasses type/columns/date-range/filters entirely.
+    if (body.full === true) {
+      const timestamp = new Date().toISOString().slice(0, 10);
+      const shipmentPlans = await prisma.shipmentPlan.findMany({
+        include: {
+          user: { select: { name: true, email: true } },
+          linerBooking: true,
+          shipmentAssignment: true,
+        },
+        orderBy: { createdAt: "desc" },
+      });
+      const csv = buildFullShipmentPlanReportCsv(shipmentPlans);
+      return csvResponse(csv, `shipment-plans-full-export-${timestamp}.csv`);
     }
 
     const exportType: ExportReportType = isExportType(body.type) ? body.type : "shipment-plans";
@@ -386,7 +635,18 @@ export async function action({ request }: ActionFunctionArgs) {
         orderBy: { createdAt: "desc" },
       });
 
-      const filtered = linerBookings.filter((booking) => linerBookingMatchesFilters(booking, filters));
+      // Batch-fetch the assigned LINER_BOOKING_TEAM member instead of N+1 lookups per booking
+      const assignedIds = [...new Set(linerBookings.map((b) => b.assignBookingId).filter(Boolean))] as string[];
+      const assignedUsers = assignedIds.length > 0
+        ? await prisma.user.findMany({ where: { id: { in: assignedIds } }, select: { id: true, name: true } })
+        : [];
+      const assignedById = new Map(assignedUsers.map((u) => [u.id, u]));
+      const linerBookingsWithAssignee = linerBookings.map((b) => ({
+        ...b,
+        assignedTo: b.assignBookingId ? assignedById.get(b.assignBookingId) ?? null : null,
+      }));
+
+      const filtered = linerBookingsWithAssignee.filter((booking) => linerBookingMatchesFilters(booking, filters));
       const rows = filtered.map((booking) => columnDefs.map((col) => linerBookingColumnValue(booking, col.id)));
       return csvResponse(buildCsv("LINER BOOKINGS EXPORT REPORT", headers, rows), `liner-bookings-export-${timestamp}.csv`);
     }
@@ -420,11 +680,28 @@ export async function action({ request }: ActionFunctionArgs) {
     // Default: shipment-plans
     const shipmentPlans = await prisma.shipmentPlan.findMany({
       where: createdAt ? { createdAt } : undefined,
-      include: { user: { select: { name: true, email: true } } },
+      include: {
+        user: { select: { name: true, email: true } },
+        linerBooking: { select: { assignBookingId: true } },
+        shipmentAssignment: { select: { assignBookingId: true } },
+      },
       orderBy: { createdAt: "desc" },
     });
 
-    const filtered = shipmentPlans.filter((plan) => shipmentPlanMatchesFilters(plan, filters));
+    // Batch-fetch the assigned LINER_BOOKING_TEAM member instead of N+1 lookups per plan
+    const planAssignedIds = [...new Set(
+      shipmentPlans.map((p) => p.linerBooking?.assignBookingId || p.shipmentAssignment?.assignBookingId).filter(Boolean)
+    )] as string[];
+    const planAssignedUsers = planAssignedIds.length > 0
+      ? await prisma.user.findMany({ where: { id: { in: planAssignedIds } }, select: { id: true, name: true } })
+      : [];
+    const planAssignedById = new Map(planAssignedUsers.map((u) => [u.id, u]));
+    const shipmentPlansWithAssignee = shipmentPlans.map((p) => {
+      const assignedToId = p.linerBooking?.assignBookingId || p.shipmentAssignment?.assignBookingId;
+      return { ...p, assignedTo: assignedToId ? planAssignedById.get(assignedToId) ?? null : null };
+    });
+
+    const filtered = shipmentPlansWithAssignee.filter((plan) => shipmentPlanMatchesFilters(plan, filters));
     const rows = filtered.map((plan) => columnDefs.map((col) => shipmentPlanColumnValue(plan, col.id)));
     return csvResponse(buildCsv("SHIPMENT PLANS EXPORT REPORT", headers, rows), `shipment-plans-export-${timestamp}.csv`);
   } catch (error) {
