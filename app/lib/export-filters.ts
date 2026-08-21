@@ -19,8 +19,10 @@ export interface ExportFilterOptions {
   destinationCountries: string[]
   customers: string[]
   shippers: string[]
-  salesPersons: { id: string; name: string }[]
-  assignedToUsers: { id: string; name: string }[]
+  // businessBranch is the user's own assigned branch - lets the modal narrow
+  // Sales Person / Assigned To down to the branch(es) picked in Business Branch.
+  salesPersons: { id: string; name: string; businessBranch: string | null }[]
+  assignedToUsers: { id: string; name: string; businessBranch: string | null }[]
   shipmentTypes: string[]
   statuses: string[]
 }

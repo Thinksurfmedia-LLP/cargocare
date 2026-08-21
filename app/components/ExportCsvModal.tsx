@@ -82,6 +82,39 @@ export function ExportCsvModal({
     }
   }, [isOpen, filterOptions, filterOptionsError])
 
+  // Once a Business Branch is picked, Sales Person / Assigned To narrow to people
+  // who actually belong to that branch - prune any now-invalid prior selections.
+  useEffect(() => {
+    if (!filterOptions) return
+    const selectedBranches = filters.businessBranches ?? []
+    if (selectedBranches.length === 0) return
+
+    const validSalesPersonIds = new Set(
+      filterOptions.salesPersons
+        .filter((sp) => sp.businessBranch && selectedBranches.includes(sp.businessBranch))
+        .map((sp) => sp.id)
+    )
+    const validAssignedToIds = new Set(
+      filterOptions.assignedToUsers
+        .filter((u) => u.businessBranch && selectedBranches.includes(u.businessBranch))
+        .map((u) => u.id)
+    )
+
+    setFilters((prev) => {
+      const prunedSalesPersonIds = (prev.salesPersonIds ?? []).filter((id) => validSalesPersonIds.has(id))
+      const prunedAssignedToIds = (prev.assignedToIds ?? []).filter((id) => validAssignedToIds.has(id))
+      if (
+        prunedSalesPersonIds.length === (prev.salesPersonIds ?? []).length &&
+        prunedAssignedToIds.length === (prev.assignedToIds ?? []).length
+      ) {
+        return prev
+      }
+      return { ...prev, salesPersonIds: prunedSalesPersonIds, assignedToIds: prunedAssignedToIds }
+    })
+    // Only re-run when the branch selection itself changes, not on every filters update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterOptions, filters.businessBranches])
+
   if (!isOpen) return null
 
   const columns = getExportColumnsForType(type)
@@ -89,10 +122,12 @@ export function ExportCsvModal({
   const selectedToggleableCount = selectedColumns.filter((id) => !lockedIds.includes(id)).length
 
   const toOptions = (values: string[]): MultiSelectOption[] => values.map((v) => ({ value: v, label: v }))
+  const selectedBranches = filters.businessBranches ?? []
+  const isBranchInScope = (branch: string | null) => selectedBranches.length === 0 || (branch !== null && selectedBranches.includes(branch))
   const salesPersonOptions: MultiSelectOption[] =
-    filterOptions?.salesPersons.map((sp) => ({ value: sp.id, label: sp.name })) ?? []
+    filterOptions?.salesPersons.filter((sp) => isBranchInScope(sp.businessBranch)).map((sp) => ({ value: sp.id, label: sp.name })) ?? []
   const assignedToOptions: MultiSelectOption[] =
-    filterOptions?.assignedToUsers.map((u) => ({ value: u.id, label: u.name })) ?? []
+    filterOptions?.assignedToUsers.filter((u) => isBranchInScope(u.businessBranch)).map((u) => ({ value: u.id, label: u.name })) ?? []
 
   const activeFilterCount = Object.values(filters).filter((v) => Array.isArray(v) && v.length > 0).length
 
@@ -296,6 +331,9 @@ export function ExportCsvModal({
                       placeholder="All sales persons"
                     />
                   </div>
+                  {selectedBranches.length > 0 && (
+                    <p className="text-xs text-gray-400 mt-1">Narrowed to {selectedBranches.join(", ")}</p>
+                  )}
                 </div>
                 <div>
                   <Label className="text-xs text-gray-500">Assigned To</Label>
@@ -307,6 +345,9 @@ export function ExportCsvModal({
                       placeholder="Anyone"
                     />
                   </div>
+                  {selectedBranches.length > 0 && (
+                    <p className="text-xs text-gray-400 mt-1">Narrowed to {selectedBranches.join(", ")}</p>
+                  )}
                 </div>
                 <div>
                   <Label className="text-xs text-gray-500">Shipment Type</Label>

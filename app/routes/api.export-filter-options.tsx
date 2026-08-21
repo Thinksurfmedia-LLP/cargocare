@@ -43,10 +43,13 @@ export async function loader({ request }: LoaderFunctionArgs) {
       prisma.businessBranch.findMany({ select: { name: true }, orderBy: { name: "asc" } }),
       prisma.destinationCountry.findMany({ select: { name: true }, orderBy: { name: "asc" } }),
       prisma.organization.findMany({ select: { name: true, orgTypes: true }, orderBy: { name: "asc" } }),
-      prisma.user.findMany({ select: { id: true, name: true }, orderBy: { name: "asc" } }),
+      prisma.user.findMany({
+        select: { id: true, name: true, businessBranch: { select: { name: true } } },
+        orderBy: { name: "asc" },
+      }),
       prisma.user.findMany({
         where: { role: { name: "LINER_BOOKING_TEAM" } },
-        select: { id: true, name: true },
+        select: { id: true, name: true, businessBranch: { select: { name: true } } },
         orderBy: { name: "asc" },
       }),
     ]);
@@ -59,9 +62,13 @@ export async function loader({ request }: LoaderFunctionArgs) {
       destinationCountries: destinationCountries.map((c) => c.name),
       customers,
       shippers,
-      salesPersons: users.map((u) => ({ id: u.id, name: u.name })),
+      salesPersons: users.map((u) => ({ id: u.id, name: u.name, businessBranch: u.businessBranch?.name ?? null })),
       // "Assigned To" = the LINER_BOOKING_TEAM member a booking/plan's work is assigned to (assignBookingId).
-      assignedToUsers: linerBookingTeamUsers.map((u) => ({ id: u.id, name: u.name })),
+      assignedToUsers: linerBookingTeamUsers.map((u) => ({
+        id: u.id,
+        name: u.name,
+        businessBranch: u.businessBranch?.name ?? null,
+      })),
       shipmentTypes: SHIPMENT_TYPES,
       statuses: STATUSES,
     };
