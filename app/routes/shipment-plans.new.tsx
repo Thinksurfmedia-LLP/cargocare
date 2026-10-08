@@ -2,6 +2,7 @@ import type { LoaderFunctionArgs, ActionFunctionArgs, MetaFunction } from "react
 import { useLoaderData, useNavigation, redirect, useActionData, Link } from "react-router"
 import { requireAuth } from "~/lib/auth.server"
 import { prisma } from "~/lib/prisma.server"
+import { getReferenceSequenceFloor } from "~/lib/reference-number"
 import { AdminLayout } from "~/components/AdminLayout"
 import { ShipmentPlanForm } from "~/components/ShipmentPlanForm"
 
@@ -209,7 +210,7 @@ export async function action({ request }: ActionFunctionArgs) {
         orderBy: { createdAt: "desc" },
       })
 
-      let nextSequence = 1
+      let nextSequence = getReferenceSequenceFloor(branchCode, currentYear)
       if (existingPlans.length > 0) {
         // Extract sequence numbers from existing reference numbers
         const sequences = existingPlans
@@ -225,7 +226,7 @@ export async function action({ request }: ActionFunctionArgs) {
           .filter((num) => num > 0)
 
         if (sequences.length > 0) {
-          nextSequence = Math.max(...sequences) + 1
+          nextSequence = Math.max(nextSequence, Math.max(...sequences) + 1)
         }
       }
 

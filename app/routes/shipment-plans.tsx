@@ -14,6 +14,7 @@ import {
 } from "react-router";
 import { requireAuth } from "~/lib/auth.server";
 import { prisma } from "~/lib/prisma.server";
+import { getReferenceNumberFloor } from "~/lib/reference-number";
 import {
   renderContainerStatusCell,
   renderShipperCell,
@@ -620,7 +621,10 @@ export async function action({ request }: ActionFunctionArgs) {
       }
 
       // Find the next available number
-      let nextNumber = currentNumber + 1;
+      let nextNumber = Math.max(
+        currentNumber + 1,
+        getReferenceNumberFloor(prefix, numberPart)
+      );
       while (existingNumbers.has(nextNumber)) {
         nextNumber++;
       }
