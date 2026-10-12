@@ -13,6 +13,7 @@ import {
 import { useState } from "react";
 import { requireAuth } from "~/lib/auth.server";
 import { prisma } from "~/lib/prisma.server";
+import { LINER_BROKER_REQUIRED_ERROR } from "~/lib/liner-broker.server";
 import { Card, CardContent } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
@@ -198,6 +199,9 @@ export async function action({ request }: ActionFunctionArgs) {
       };
 
       const linerBrokerId = planData.liner_broker_approval;
+      if (!linerBrokerId) {
+        return { error: LINER_BROKER_REQUIRED_ERROR };
+      }
 
       // Update shipment plan and create liner booking in a transaction
       await prisma.$transaction(async (tx) => {
@@ -211,6 +215,7 @@ export async function action({ request }: ActionFunctionArgs) {
           data: {
             data: linerBookingData,
             userId: linerBrokerId ? linerBrokerId : user.id,
+            assignBookingId: linerBrokerId,
           },
         });
 

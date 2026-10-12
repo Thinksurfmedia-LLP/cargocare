@@ -14,6 +14,7 @@ import {
 } from "react-router";
 import { requireAuth } from "~/lib/auth.server";
 import { prisma } from "~/lib/prisma.server";
+import { LINER_BROKER_REQUIRED_ERROR } from "~/lib/liner-broker.server";
 import { getReferenceNumberFloor } from "~/lib/reference-number";
 import {
   renderContainerStatusCell,
@@ -530,6 +531,10 @@ export async function action({ request }: ActionFunctionArgs) {
         ...planData,
         booking_status: "Awaiting Booking",
       }; // Update shipment plan and create liner booking in a transaction
+      const linerBrokerId = planData.liner_broker_approval;
+      if (!linerBrokerId) {
+        return { error: LINER_BROKER_REQUIRED_ERROR };
+      }
       await prisma.$transaction(async (tx) => {
         // Create a new liner booking with only the carrier booking status
         // Reference number will be pulled dynamically from linked shipment plan
@@ -541,6 +546,7 @@ export async function action({ request }: ActionFunctionArgs) {
           data: {
             data: linerBookingData,
             userId: user.id,
+            assignBookingId: linerBrokerId,
           },
         });
 

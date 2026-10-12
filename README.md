@@ -78,6 +78,20 @@ Make sure to deploy the output of `npm run build`
 │   └── server/    # Server-side code
 ```
 
+## Maintenance mode
+
+Shows a sitewide "down for maintenance" screen (503) for every page, form post and `/api/*` call. Static assets still load; the screen itself is self-contained.
+
+| Action | How |
+|---|---|
+| Turn ON (instant, no restart) | create an empty file named `MAINTENANCE_ON` in the app's working directory (the folder `npm start` runs from) |
+| Turn OFF | delete that file |
+| Alternative (needs restart) | set env `MAINTENANCE_MODE=true`, remove it and restart to turn off |
+| Show a return time | set env `MAINTENANCE_ETA`, e.g. `6:00 PM IST` (needs restart) |
+
+Docker: `docker exec <container> touch /app/MAINTENANCE_ON` / `docker exec <container> rm /app/MAINTENANCE_ON`. The file lives inside the container, so recreating the container turns maintenance off.
+Optional: `MAINTENANCE_FLAG_FILE` changes the file path.
+
 ## Styling
 
 This template comes with [Tailwind CSS](https://tailwindcss.com/) already configured for a simple default starting experience. You can use whatever CSS framework you prefer.

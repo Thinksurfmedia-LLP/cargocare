@@ -11,6 +11,16 @@ import type { Route } from "./+types/root";
 import { ToastProvider } from "./components/ui/toast";
 import "./app.css";
 
+// Root middleware runs for every request (pages, form posts, API routes). While maintenance
+// mode is on it throws a 503 before any loader/action touches the database.
+export const unstable_middleware: Route.unstable_MiddlewareFunction[] = [
+  async ({ request }, next) => {
+    const { isMaintenanceMode, throwMaintenance } = await import("~/lib/maintenance.server");
+    if (isMaintenanceMode()) throwMaintenance(request);
+    return next();
+  },
+];
+
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },
   {

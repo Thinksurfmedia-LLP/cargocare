@@ -15,3 +15,4 @@ nul
 .env
 .env.local
 .env.*.local
+MAINTENANCE_ON

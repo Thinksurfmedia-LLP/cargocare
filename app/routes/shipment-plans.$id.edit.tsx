@@ -2,6 +2,7 @@ import type { LoaderFunctionArgs, ActionFunctionArgs, MetaFunction } from "react
 import { useLoaderData, useNavigation, redirect, useActionData, Link } from "react-router"
 import { requireAuth } from "~/lib/auth.server"
 import { prisma } from "~/lib/prisma.server"
+import { LINER_BROKER_REQUIRED_ERROR, findPreviousAssigneeId } from "~/lib/liner-broker.server"
 import { AdminLayout } from "~/components/AdminLayout"
 import { ShipmentPlanForm } from "~/components/ShipmentPlanForm"
 import { Button } from "~/components/ui/button"
@@ -1497,7 +1498,14 @@ export async function action({ request, params }: ActionFunctionArgs) {
       // Recreate one on save so the plan becomes assignable again.
       if (!existingPlan.linerBookingId && !existingPlan.shipmentAssignmentId) {
         shouldCreateShipmentAssignment = true
-        linerBrokerId = (formData.get("liner_broker_approval") as string) || null
+        // The broker field is not part of this save, so fall back to whoever the shipment
+        // was assigned to before it was unmapped instead of creating an unassigned record.
+        linerBrokerId =
+          ((formData.get("liner_broker_approval") as string) || "").trim() ||
+          (await findPreviousAssigneeId((existingPlan.data as any)?.reference_number))
+        if (!linerBrokerId) {
+          return { error: LINER_BROKER_REQUIRED_ERROR }
+        }
       }
     }
     // If awaiting MD approval (or null = legacy plans with no status set), lock the status
@@ -1509,7 +1517,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
       if (md_approval_status === "approved" && md_approval_rejection === "") {
         bookingStatus = "Awaiting Booking"
         shouldCreateShipmentAssignment = true
-        linerBrokerId = formData.get("liner_broker_approval") as string
+        linerBrokerId = ((formData.get("liner_broker_approval") as string) || "").trim() || null
+        if (!linerBrokerId) {
+          return { error: LINER_BROKER_REQUIRED_ERROR }
+        }
 
         // Check if the plan is in "Awaiting MD Approval" status
         // Also accept null booking_status (legacy plans created before status field was set)
