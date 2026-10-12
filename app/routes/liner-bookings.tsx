@@ -13,6 +13,7 @@ import {
   Link,
 } from "react-router"
 import { requireAuth } from "~/lib/auth.server"
+import { getEffectiveCarrierVessel } from "~/lib/carrier-vessel"
 import { prisma } from "~/lib/prisma.server"
 import { renderContainerStatusCell, renderShipperCell, getMilestoneStatus, getShippers } from "~/lib/container-status"
 import { sortByColumn, toSortNumber, type SortOrder } from "~/lib/sort-utils"
@@ -123,9 +124,9 @@ function getAssignmentSortValue(assignment: any, columnId: string): string | num
     case "buying_price":
       return toSortNumber(cm.buying_price)
     case "carrier":
-      return cm.carrier_and_vessel_preference?.carrier ?? null
+      return getEffectiveCarrierVessel(spData, assignment.data).carrier || null
     case "vessel":
-      return cm.carrier_and_vessel_preference?.vessel ?? null
+      return getEffectiveCarrierVessel(spData, assignment.data).vessel || null
     case "container_status":
       return getMilestoneStatus({ data: spData, shipmentAssignment: { data: assignment.data } })
     case "assigned_liner_broker":
@@ -133,7 +134,7 @@ function getAssignmentSortValue(assignment: any, columnId: string): string | num
     case "created_date":
       return toSortNumber(new Date(assignment.shipmentPlan?.createdAt ?? assignment.createdAt).getTime())
     case "created_by":
-      return assignment.shipmentPlan?.user?.name ?? assignment.user?.name ?? null
+      return assignment.shipmentPlan?.salesPerson?.name ?? null // column is labelled "Sales Person"
     case "updated_date":
       return toSortNumber(new Date(assignment.updatedAt).getTime())
     case "type":
@@ -619,12 +620,12 @@ export async function loader({ request }: LoaderFunctionArgs) {
           }
         }
 
-        // Search in the original shipment plan creator's name (assignments show this in "Created By")
+        // Search in the shipment plan's sales person name (assignments show this in "Sales Person")
         if (tab === "assignments") {
           const planCreatorMatches = await prisma.$queryRaw`
             SELECT sa.id FROM "shipment_assignments" sa
             JOIN "shipment_plans" sp ON sp."shipmentAssignmentId" = sa.id
-            JOIN "users" u ON sp."userId" = u.id
+            JOIN "users" u ON sp."salesPersonId" = u.id
             WHERE u.name ILIKE ${`%${search}%`}
           `;
           if ((planCreatorMatches as any[]).length > 0) {
@@ -782,7 +783,8 @@ export async function loader({ request }: LoaderFunctionArgs) {
               data: true,
               createdAt: true,
               shipmentAssignmentId: true,
-              user: { select: { id: true, name: true, email: true } }
+              user: { select: { id: true, name: true, email: true } },
+              salesPerson: { select: { id: true, name: true } }
             }
           },
         },
@@ -1368,10 +1370,12 @@ export default function LinerBookings() {
         )
       }
       case "carrier":
+        // Assignments: the carrier actually booked wins; the plan's preference is only the fallback
         const carrierValue = isAssignments 
-          ? (isOrphaned 
-              ? (booking.data as any)?._originalShipmentPlan?.container_movement?.carrier_and_vessel_preference?.carrier || details.carrier
-              : booking?.shipmentPlan?.data?.container_movement?.carrier_and_vessel_preference?.carrier || details.carrier)
+          ? (getEffectiveCarrierVessel(
+              isOrphaned ? (booking.data as any)?._originalShipmentPlan : booking?.shipmentPlan?.data,
+              booking.data,
+            ).carrier || details.carrier)
           : details.carrier
         return (
           <TableCell key={columnId} className="text-gray-700 font-medium">
@@ -1406,10 +1410,12 @@ export default function LinerBookings() {
         )
       }
       case "vessel":
+        // Assignments: the vessel actually booked wins; the plan's preference is only the fallback
         const vesselValue = isAssignments
-          ? (isOrphaned 
-              ? (booking.data as any)?._originalShipmentPlan?.container_movement?.carrier_and_vessel_preference?.vessel || details.vessel
-              : booking?.shipmentPlan?.data?.container_movement?.carrier_and_vessel_preference?.vessel || details.vessel)
+          ? (getEffectiveCarrierVessel(
+              isOrphaned ? (booking.data as any)?._originalShipmentPlan : booking?.shipmentPlan?.data,
+              booking.data,
+            ).vessel || details.vessel)
           : details.vessel
         return (
           <TableCell key={columnId} className="text-gray-700">
@@ -1503,10 +1509,10 @@ export default function LinerBookings() {
           </TableCell>
         )
       case "created_by":
-        // For assignments, show the original shipment plan creator
-        // For liner bookings, show the person who created the booking
-        const createdByUser = isAssignments && booking?.shipmentPlan?.user
-          ? booking.shipmentPlan.user
+        // For assignments ("Sales Person"), show the shipment plan's sales person, not the login user who created it
+        // For liner bookings ("Created By"), show the person who created the booking
+        const createdByUser = isAssignments
+          ? booking?.shipmentPlan?.salesPerson
           : booking.user
         
         return (

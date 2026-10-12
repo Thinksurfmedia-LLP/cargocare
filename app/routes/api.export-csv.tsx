@@ -9,6 +9,7 @@ import {
   type ExportReportType,
 } from "~/lib/export-columns";
 import type { ExportFilters } from "~/lib/export-filters";
+import { getEffectiveCarrierVessel } from "~/lib/carrier-vessel";
 
 const EXPORT_TYPES = ["shipment-plans", "liner-bookings", "shipment-assignments"] as const;
 
@@ -137,8 +138,8 @@ function shipmentPlanMatchesFilters(plan: any, filters: ExportFilters): boolean 
   if (!matchesFacet(cm.customer, filters.customers)) return false;
   if (!matchesAnyFacet(getShippers(data?.package_details), filters.shippers)) return false;
   if (!matchesFacet(data?.shipment_type, filters.shipmentTypes)) return false;
-  // "Sales Person" mirrors the list page's "Sales Person" column, which shows the creator.
-  if (filters.salesPersonIds?.length && !filters.salesPersonIds.includes(plan.userId)) return false;
+  // "Sales Person" is the plan's assigned sales person (salesPersonId), not the login user who created it.
+  if (filters.salesPersonIds?.length && !filters.salesPersonIds.includes(plan.salesPersonId)) return false;
   const assignedToId = plan.linerBooking?.assignBookingId || plan.shipmentAssignment?.assignBookingId;
   if (filters.assignedToIds?.length && !filters.assignedToIds.includes(assignedToId)) return false;
   return true;
@@ -168,7 +169,7 @@ function shipmentAssignmentMatchesFilters(assignment: any, filters: ExportFilter
   if (!matchesFacet(cm.customer, filters.customers)) return false;
   if (!matchesAnyFacet(getShippers(spData?.package_details), filters.shippers)) return false;
   if (!matchesFacet(spData?.shipment_type, filters.shipmentTypes)) return false;
-  const salesPersonId = assignment.shipmentPlan?.userId || assignment.userId;
+  const salesPersonId = assignment.shipmentPlan?.salesPersonId;
   if (filters.salesPersonIds?.length && !filters.salesPersonIds.includes(salesPersonId)) return false;
   if (filters.assignedToIds?.length && !filters.assignedToIds.includes(assignment.assignBookingId)) return false;
   return true;
@@ -198,10 +199,10 @@ function shipmentPlanColumnValue(plan: any, columnId: string): any {
     case "consignee": return cm.consignee;
     case "selling_price": return cm.selling_price;
     case "buying_price": return cm.buying_price;
-    case "carrier": return cvp.carrier;
-    case "vessel": return cvp.vessel;
+    case "carrier": return getEffectiveCarrierVessel(data, plan.linerBooking?.data || plan.shipmentAssignment?.data).carrier;
+    case "vessel": return getEffectiveCarrierVessel(data, plan.linerBooking?.data || plan.shipmentAssignment?.data).vessel;
     case "created_date": return formatDate(plan.createdAt);
-    case "created_by": return plan.user?.name;
+    case "created_by": return plan.salesPerson?.name; // labelled "Sales Person"
     case "assigned_to": return plan.assignedTo?.name;
     case "updated_date": return formatDate(plan.updatedAt);
     case "incoterm": return cm.incoterm;
@@ -284,12 +285,12 @@ function shipmentAssignmentColumnValue(assignment: any, columnId: string): any {
     case "consignee": return cm.consignee;
     case "selling_price": return cm.selling_price;
     case "buying_price": return cm.buying_price;
-    case "carrier": return cvp.carrier || d0.carrier;
-    case "vessel": return cvp.vessel || d0.original_planned_vessel;
+    case "carrier": return getEffectiveCarrierVessel(spData, data).carrier;
+    case "vessel": return getEffectiveCarrierVessel(spData, data).vessel;
     case "container_status": return getMilestoneStatus({ data: spData });
     case "assigned_to": return assignment.assignedLinerBroker?.name;
     case "created_date": return formatDate(assignment.shipmentPlan?.createdAt || assignment.createdAt);
-    case "created_by": return assignment.shipmentPlan?.user?.name || assignment.user?.name;
+    case "created_by": return assignment.shipmentPlan?.salesPerson?.name; // labelled "Sales Person"
     case "updated_date": return formatDate(assignment.updatedAt);
     case "type": return spData?.shipment_type;
     case "incoterm": return cm.incoterm;
@@ -424,6 +425,7 @@ function buildFullShipmentPlanReportCsv(shipmentPlans: any[]): string {
 
     const linkedBookingData = plan.linerBooking?.data || plan.shipmentAssignment?.data;
     const linerBookingDetails = (linkedBookingData as any)?.liner_booking_details || data.liner_booking_details || [];
+    const effectiveCarrierVessel = getEffectiveCarrierVessel(data, linkedBookingData as any);
 
     const packageDetails = data.package_details || [];
     const groupId = `${data.reference_number}-${planIndex}`;
@@ -449,8 +451,8 @@ function buildFullShipmentPlanReportCsv(shipmentPlans: any[]): string {
       containerMovement.rebate,
       containerMovement.credit_period,
       containerMovement.final_place_of_delivery,
-      carrierPreference.carrier,
-      carrierPreference.vessel,
+      effectiveCarrierVessel.carrier,
+      effectiveCarrierVessel.vessel,
       formatDate(carrierPreference.preferred_etd),
       containerMovement.specific_instructions,
       containerMovement.stuffing_instructions,
@@ -656,7 +658,12 @@ export async function action({ request }: ActionFunctionArgs) {
         where: createdAt ? { createdAt } : undefined,
         include: {
           user: { select: { name: true, email: true } },
-          shipmentPlan: { include: { user: { select: { name: true, email: true } } } },
+          shipmentPlan: {
+            include: {
+              user: { select: { name: true, email: true } },
+              salesPerson: { select: { name: true } },
+            },
+          },
         },
         orderBy: { createdAt: "desc" },
       });
@@ -682,8 +689,9 @@ export async function action({ request }: ActionFunctionArgs) {
       where: createdAt ? { createdAt } : undefined,
       include: {
         user: { select: { name: true, email: true } },
-        linerBooking: { select: { assignBookingId: true } },
-        shipmentAssignment: { select: { assignBookingId: true } },
+        salesPerson: { select: { name: true } },
+        linerBooking: { select: { assignBookingId: true, data: true } },
+        shipmentAssignment: { select: { assignBookingId: true, data: true } },
       },
       orderBy: { createdAt: "desc" },
     });

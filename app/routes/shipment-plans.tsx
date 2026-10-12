@@ -23,6 +23,7 @@ import {
   getShippers,
 } from "~/lib/container-status";
 import { sortByColumn, toSortNumber, type SortOrder } from "~/lib/sort-utils";
+import { getEffectiveCarrierVessel } from "~/lib/carrier-vessel";
 import { SortableHeader } from "~/components/ui/sortable-table-head";
 import { Card, CardContent } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
@@ -81,13 +82,13 @@ function getShipmentPlanSortValue(plan: any, columnId: string): string | number 
     case "buying_price":
       return toSortNumber(cm.buying_price);
     case "carrier":
-      return cm.carrier_and_vessel_preference?.carrier ?? null;
+      return getEffectiveCarrierVessel(plan.data, plan.linerBooking?.data || plan.shipmentAssignment?.data).carrier || null;
     case "vessel":
-      return cm.carrier_and_vessel_preference?.vessel ?? null;
+      return getEffectiveCarrierVessel(plan.data, plan.linerBooking?.data || plan.shipmentAssignment?.data).vessel || null;
     case "created_date":
       return toSortNumber(new Date(plan.createdAt).getTime());
     case "created_by":
-      return plan.user?.name ?? null;
+      return plan.salesPerson?.name ?? null; // column is labelled "Sales Person"
     case "updated_date":
       return toSortNumber(new Date(plan.updatedAt).getTime());
     case "incoterm":
@@ -307,6 +308,25 @@ export async function loader({ request }: LoaderFunctionArgs) {
           searchConditions.push({ id: { in: (vesselMatches as any[]).map((row: any) => row.id) } });
         }
 
+        // Search the carrier/vessel actually booked (liner booking / assignment details), since
+        // those are what the Carrier and Vessel columns show once a booking exists
+        const bookedLike = `%${search}%`;
+        const bookedCarrierVesselMatches = await prisma.$queryRaw`
+          SELECT sp.id FROM "shipment_plans" sp
+          LEFT JOIN "shipment_assignments" sa ON sa.id = sp."shipmentAssignmentId"
+          LEFT JOIN "liner_bookings" lb ON lb.id = sp."linerBookingId"
+          WHERE EXISTS (
+            SELECT 1 FROM jsonb_array_elements(COALESCE(sa.data::jsonb->'liner_booking_details', '[]'::jsonb)) d
+            WHERE d->>'carrier' ILIKE ${bookedLike} OR d->>'original_planned_vessel' ILIKE ${bookedLike}
+          ) OR EXISTS (
+            SELECT 1 FROM jsonb_array_elements(COALESCE(lb.data::jsonb->'liner_booking_details', '[]'::jsonb)) d
+            WHERE d->>'carrier' ILIKE ${bookedLike} OR d->>'original_planned_vessel' ILIKE ${bookedLike}
+          )
+        `;
+        if ((bookedCarrierVesselMatches as any[]).length > 0) {
+          searchConditions.push({ id: { in: (bookedCarrierVesselMatches as any[]).map((row: any) => row.id) } });
+        }
+
         // Search in package details - shipper (case-insensitive)
         const shipperMatches = await prisma.$queryRaw`
           SELECT id FROM "shipment_plans" 
@@ -374,9 +394,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
         console.error("Error in raw SQL search:", error);
       }
 
-      // Search in created user name (case-insensitive - Prisma native)
+      // Search in sales person name (case-insensitive - Prisma native)
       searchConditions.push({
-        user: {
+        salesPerson: {
           name: {
             contains: search,
             mode: "insensitive",
@@ -430,6 +450,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
               name: true,
               email: true,
             },
+          },
+          salesPerson: {
+            select: { id: true, name: true },
           },
           linerBooking: {
             select: { data: true },
@@ -1038,8 +1061,7 @@ export default function ShipmentPlans() {
             <div className="flex items-center space-x-2">
               <span className="text-gray-400">🚛</span>
               <span>
-                {plan.data.container_movement?.carrier_and_vessel_preference
-                  ?.carrier || "N/A"}
+                {getEffectiveCarrierVessel(plan.data, plan.linerBooking?.data || plan.shipmentAssignment?.data).carrier || "N/A"}
               </span>
             </div>
           </TableCell>
@@ -1050,8 +1072,7 @@ export default function ShipmentPlans() {
             <div className="flex items-center space-x-2">
               <span className="text-gray-400">🚢</span>
               <span>
-                {plan.data.container_movement?.carrier_and_vessel_preference
-                  ?.vessel || "N/A"}
+                {getEffectiveCarrierVessel(plan.data, plan.linerBooking?.data || plan.shipmentAssignment?.data).vessel || "N/A"}
               </span>
             </div>
           </TableCell>
@@ -1075,10 +1096,10 @@ export default function ShipmentPlans() {
             <div className="flex items-center space-x-2">
               <div className="w-6 h-6 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full flex items-center justify-center">
                 <span className="text-xs font-medium text-gray-600">
-                  {plan.user.name.charAt(0).toUpperCase()}
+                  {plan.salesPerson?.name?.charAt(0)?.toUpperCase() || "?"}
                 </span>
               </div>
-              <span>{plan.user.name}</span>
+              <span>{plan.salesPerson?.name || "N/A"}</span>
             </div>
           </TableCell>
         );

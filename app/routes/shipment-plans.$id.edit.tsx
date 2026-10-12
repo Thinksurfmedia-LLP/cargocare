@@ -2,6 +2,8 @@ import type { LoaderFunctionArgs, ActionFunctionArgs, MetaFunction } from "react
 import { useLoaderData, useNavigation, redirect, useActionData, Link } from "react-router"
 import { requireAuth } from "~/lib/auth.server"
 import { prisma } from "~/lib/prisma.server"
+import type { Prisma } from "@prisma/client"
+import { readBuyingPrice, readSellingPrice, recordPriceChanges } from "~/lib/price-fields"
 import { LINER_BROKER_REQUIRED_ERROR, findPreviousAssigneeId } from "~/lib/liner-broker.server"
 import { AdminLayout } from "~/components/AdminLayout"
 import { ShipmentPlanForm } from "~/components/ShipmentPlanForm"
@@ -1566,10 +1568,10 @@ export async function action({ request, params }: ActionFunctionArgs) {
         },
         customer,
         consignee: formData.get("consignee") as string,
-        selling_price: formData.get("selling_price") as string,
+        selling_price: readSellingPrice(formData, (existingPlan.data as any)?.container_movement?.selling_price),
         rebate: formData.get("rebate") as string,
         credit_period: Number.parseInt(formData.get("credit_period") as string) || 0,
-        buying_price: Number.parseFloat(formData.get("buying_price") as string) || 0,
+        buying_price: readBuyingPrice(formData, (existingPlan.data as any)?.container_movement?.buying_price),
         specific_stuffing_requirement: formData.get("specific_stuffing_requirement") === "true",
         stuffing_instructions: formData.get("stuffing_instructions") as string,
         specific_instructions: formData.get("specific_instructions") as string,
@@ -1596,6 +1598,13 @@ export async function action({ request, params }: ActionFunctionArgs) {
       },
     }
 
+    // This save rebuilds the plan data from the form, so carry the price history forward
+    // explicitly and add an entry for every price that changed. A lost price stays recoverable.
+    const priceHistory = recordPriceChanges(existingPlan.data as any, shipmentData as any, user.id)
+    const planDataToSave = (priceHistory.length > 0
+      ? { ...shipmentData, price_history: priceHistory }
+      : shipmentData) as unknown as Prisma.InputJsonObject
+
     try {
       if (shouldCreateShipmentAssignment) {
         await prisma.$transaction(async (tx) => {
@@ -1621,7 +1630,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
           await tx.shipmentPlan.update({
             where: { id: planId },
             data: {
-              data: shipmentData,
+              data: planDataToSave,
               salesPersonId: sales_person_id || existingPlan.salesPersonId || user.id,
               shipmentAssignmentId: assignment.id,
               linkedStatus: 1, // Set linked status
@@ -1632,7 +1641,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
         await prisma.shipmentPlan.update({
           where: { id: planId },
           data: {
-            data: shipmentData,
+            data: planDataToSave,
             salesPersonId: sales_person_id || existingPlan.salesPersonId || null,
           },
         })

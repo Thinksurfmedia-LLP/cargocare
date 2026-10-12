@@ -1,6 +1,7 @@
 import type { LoaderFunctionArgs, ActionFunctionArgs, MetaFunction } from "react-router"
 import { useLoaderData, redirect, useActionData } from "react-router"
 import { requireAuth } from "~/lib/auth.server"
+import { setBuyingPriceWithHistory } from "~/lib/price-fields"
 import { prisma } from "~/lib/prisma.server"
 import { AdminLayout } from "~/components/AdminLayout"
 import { LinerBookingForm } from "~/components/LinerBookingForm"
@@ -1599,10 +1600,7 @@ await prisma.$transaction(async (tx) => {
 
       // Update buying price if provided by liner booking team
       if (buyingPrice && buyingPrice.trim()) {
-        if (!spData.container_movement) {
-          spData.container_movement = {};
-        }
-        spData.container_movement.buying_price = buyingPrice.trim();
+        setBuyingPriceWithHistory(spData, buyingPrice.trim(), user.id);
         console.log("[DEBUG] Assignment All Booking Assigned - Updated buying price:", buyingPrice);
       }
 
@@ -1897,10 +1895,7 @@ await prisma.$transaction(async (tx) => {
 
         // Update buying price if provided by liner booking team
         if (buyingPrice && buyingPrice.trim()) {
-          if (!shipmentPlanData.container_movement) {
-            shipmentPlanData.container_movement = {};
-          }
-          shipmentPlanData.container_movement.buying_price = buyingPrice.trim();
+          setBuyingPriceWithHistory(shipmentPlanData, buyingPrice.trim(), user.id);
           console.log("[DEBUG] All Booking Assigned - Updated buying price:", buyingPrice);
         }
 
@@ -2076,10 +2071,7 @@ await prisma.$transaction(async (tx) => {
 
         // Update buying price if provided by liner booking team
         if (buyingPrice && buyingPrice.trim()) {
-          if (!shipmentPlanData.container_movement) {
-            shipmentPlanData.container_movement = {};
-          }
-          shipmentPlanData.container_movement.buying_price = buyingPrice.trim();
+          setBuyingPriceWithHistory(shipmentPlanData, buyingPrice.trim(), user.id);
           console.log("[DEBUG] Regular update - Updated buying price:", buyingPrice);
         }
         

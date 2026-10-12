@@ -2,6 +2,7 @@ import type { ActionFunctionArgs } from "react-router";
 import { Workbook } from "exceljs";
 import { requireAuth } from "~/lib/auth.server";
 import { prisma } from "~/lib/prisma.server";
+import { getEffectiveCarrierVessel } from "~/lib/carrier-vessel";
 
 function json(data: any, init?: ResponseInit) {
   return new Response(JSON.stringify(data), {
@@ -106,6 +107,7 @@ export async function action({ request }: ActionFunctionArgs) {
       // Get liner booking details from linked booking or assignment (matching webpage logic)
       const linkedBookingData = plan.linerBooking?.data || plan.shipmentAssignment?.data;
       const linerBookingDetails = (linkedBookingData as any)?.liner_booking_details || data.liner_booking_details || [];
+      const effectiveCarrierVessel = getEffectiveCarrierVessel(data, linkedBookingData as any);
       
       const packageDetails = data.package_details || [];
 
@@ -136,8 +138,8 @@ export async function action({ request }: ActionFunctionArgs) {
           containerMovement.rebate,
           containerMovement.credit_period,
           containerMovement.final_place_of_delivery,
-          carrierPreference.carrier,
-          carrierPreference.vessel,
+          effectiveCarrierVessel.carrier,
+          effectiveCarrierVessel.vessel,
           formatDate(carrierPreference.preferred_etd),
           containerMovement.specific_instructions,
           containerMovement.stuffing_instructions,
@@ -198,8 +200,8 @@ export async function action({ request }: ActionFunctionArgs) {
             containerMovement.rebate,
             containerMovement.credit_period,
             containerMovement.final_place_of_delivery,
-            carrierPreference.carrier,
-            carrierPreference.vessel,
+            effectiveCarrierVessel.carrier,
+            effectiveCarrierVessel.vessel,
             formatDate(carrierPreference.preferred_etd),
             containerMovement.specific_instructions,
             containerMovement.stuffing_instructions,
@@ -281,8 +283,8 @@ export async function action({ request }: ActionFunctionArgs) {
               containerMovement.rebate,
               containerMovement.credit_period,
               containerMovement.final_place_of_delivery,
-              carrierPreference.carrier,
-              carrierPreference.vessel,
+              effectiveCarrierVessel.carrier,
+              effectiveCarrierVessel.vessel,
               formatDate(carrierPreference.preferred_etd),
               containerMovement.specific_instructions,
               containerMovement.stuffing_instructions,
@@ -367,8 +369,8 @@ export async function action({ request }: ActionFunctionArgs) {
             containerMovement.rebate,
             containerMovement.credit_period,
             containerMovement.final_place_of_delivery,
-            carrierPreference.carrier,
-            carrierPreference.vessel,
+            effectiveCarrierVessel.carrier,
+            effectiveCarrierVessel.vessel,
             formatDate(carrierPreference.preferred_etd),
             containerMovement.specific_instructions,
             containerMovement.stuffing_instructions,

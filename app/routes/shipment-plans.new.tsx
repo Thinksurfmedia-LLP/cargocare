@@ -2,6 +2,7 @@ import type { LoaderFunctionArgs, ActionFunctionArgs, MetaFunction } from "react
 import { useLoaderData, useNavigation, redirect, useActionData, Link } from "react-router"
 import { requireAuth } from "~/lib/auth.server"
 import { prisma } from "~/lib/prisma.server"
+import { readBuyingPrice } from "~/lib/price-fields"
 import { getReferenceSequenceFloor } from "~/lib/reference-number"
 import { AdminLayout } from "~/components/AdminLayout"
 import { ShipmentPlanForm } from "~/components/ShipmentPlanForm"
@@ -350,7 +351,7 @@ export async function action({ request }: ActionFunctionArgs) {
         selling_price: formData.get("selling_price") as string,
         rebate: formData.get("rebate") as string,
         credit_period: Number.parseInt(formData.get("credit_period") as string) || 0,
-        buying_price: Number.parseFloat(formData.get("buying_price") as string) || 0,
+        buying_price: readBuyingPrice(formData),
         specific_stuffing_requirement: formData.get("specific_stuffing_requirement") === "true",
         stuffing_instructions: formData.get("stuffing_instructions") as string,
         specific_instructions: formData.get("specific_instructions") as string,

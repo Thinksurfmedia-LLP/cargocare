@@ -83,7 +83,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
               path: ["booking_status"],
               equals: "Awaiting MD Approval",
             },
-            user: {
+            salesPerson: {
               name: {
                 contains: search,
                 mode: "insensitive",
@@ -121,6 +121,9 @@ export async function loader({ request }: LoaderFunctionArgs) {
               name: true,
               email: true,
             },
+          },
+          salesPerson: {
+            select: { id: true, name: true },
           },
         },
         orderBy: {
@@ -753,9 +756,9 @@ export default function PendingApprovals() {
           <TableCell key={columnId} className="text-sm text-gray-600">
             <div className="flex items-center space-x-2">
               <div className="w-6 h-6 bg-gradient-to-br from-gray-100 to-gray-200 rounded-full flex items-center justify-center">
-                <span className="text-xs font-medium text-gray-600">{plan.user?.name?.charAt(0)?.toUpperCase() || "?"}</span>
+                <span className="text-xs font-medium text-gray-600">{plan.salesPerson?.name?.charAt(0)?.toUpperCase() || "?"}</span>
               </div>
-              <span>{plan.user?.name || "N/A"}</span>
+              <span>{plan.salesPerson?.name || "N/A"}</span>
             </div>
           </TableCell>
         );

@@ -2243,6 +2243,13 @@ export function ShipmentPlanForm({
                         defaultValue={planData.container_movement?.buying_price}
                         placeholder="Enter buying price (optional)"
                       />
+                      {/* Value this form was loaded with: lets the server tell "untouched" from "edited",
+                          so a stale form never overwrites a price entered by the liner team meanwhile. */}
+                      <input
+                        type="hidden"
+                        name="buying_price_original"
+                        value={String(planData.container_movement?.buying_price ?? "")}
+                      />
                     </div>
                     <div>
                       <Label htmlFor="rebate">Rebate</Label>
