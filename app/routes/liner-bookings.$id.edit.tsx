@@ -5,6 +5,7 @@ import { setBuyingPriceWithHistory } from "~/lib/price-fields"
 import { prisma } from "~/lib/prisma.server"
 import { AdminLayout } from "~/components/AdminLayout"
 import { LinerBookingForm } from "~/components/LinerBookingForm"
+import { CANCELLED_PLAN_ASSIGNMENT_ERROR, isPlanCancelled } from "~/lib/plan-cancellation"
 
 export const meta: MetaFunction = () => {
   return [{ title: "Edit Liner Booking - Cargo Care" }, { name: "description", content: "Edit liner booking details" }]
@@ -46,6 +47,11 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
       })
 
       if (!assignment) {
+        throw new Response("Shipment assignment not found", { status: 404 })
+      }
+
+      // Cancelled shipment plans are never shown to the Liner Booking team
+      if (user.role.name === "LINER_BOOKING_TEAM" && isPlanCancelled(assignment.shipmentPlan?.data)) {
         throw new Response("Shipment assignment not found", { status: 404 })
       }
 
@@ -484,6 +490,17 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const assignmentId = url.searchParams.get("assignmentId")
     const formData = await request.formData()
     const specialAction = (formData.get("_action") as string) || ""
+
+    // Assignments of cancelled shipment plans are frozen for everyone
+    if (assignmentId) {
+      const assignmentPlan = await prisma.shipmentPlan.findFirst({
+        where: { shipmentAssignmentId: assignmentId },
+        select: { data: true },
+      })
+      if (isPlanCancelled(assignmentPlan?.data)) {
+        return Response.json({ error: CANCELLED_PLAN_ASSIGNMENT_ERROR }, { status: 403 })
+      }
+    }
 
     // Parse common fields and details (shared by both flows)
     const carrier_booking_status = formData.get("current_status") as string

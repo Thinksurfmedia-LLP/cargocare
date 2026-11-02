@@ -15,7 +15,8 @@ import {
 import { requireAuth } from "~/lib/auth.server";
 import { prisma } from "~/lib/prisma.server";
 import { LINER_BROKER_REQUIRED_ERROR } from "~/lib/liner-broker.server";
-import { getReferenceNumberFloor } from "~/lib/reference-number";
+import { getReferenceNumberFloor, isPlaceholderReference } from "~/lib/reference-number";
+import { REFERENCE_TRANSACTION_OPTIONS, lockReferenceSequence } from "~/lib/reference-number.server";
 import {
   renderContainerStatusCell,
   renderShipperCell,
@@ -611,6 +612,11 @@ export async function action({ request }: ActionFunctionArgs) {
       // Create a new reference number for the copied plan
       const originalReference = existingData.reference_number;
 
+      // A copy of a DRAFT placeholder would get another placeholder reference
+      if (isPlaceholderReference(originalReference)) {
+        return { error: "This plan has a temporary DRAFT reference and cannot be copied until it has a proper reference number" };
+      }
+
       // Extract the prefix and numeric suffix from the reference number
       const referenceMatch = originalReference.match(/^(.+?)(\d+)$/);
 
@@ -622,85 +628,93 @@ export async function action({ request }: ActionFunctionArgs) {
       const currentNumber = parseInt(numberPart, 10);
       const numberLength = numberPart.length;
 
-      // Find all existing shipment plans with the same prefix
-      const existingPlans = await prisma.shipmentPlan.findMany({
-        where: {
-          data: {
-            path: ["reference_number"],
-            string_starts_with: prefix,
+      // Allocate under the same per-branch/year lock as new plans, so a copy and
+      // a new plan saved at the same moment cannot take the same number
+      const { newPlan, newReferenceNumber } = await prisma.$transaction(async (tx) => {
+        await lockReferenceSequence(tx, prefix, numberPart.slice(0, 4));
+
+        // Find all existing shipment plans with the same prefix
+        const existingPlans = await tx.shipmentPlan.findMany({
+          where: {
+            data: {
+              path: ["reference_number"],
+              string_starts_with: prefix,
+            },
           },
-        },
-        select: {
-          data: true,
-        },
-      });
+          select: {
+            data: true,
+          },
+        });
 
-      // Extract all existing numbers with the same prefix
-      const existingNumbers = new Set<number>();
-      for (const plan of existingPlans) {
-        const planData = plan.data as any;
-        const refNumber = planData?.reference_number || "";
-        const match = refNumber.match(
-          new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\d+)$`)
-        );
-        if (match) {
-          const num = parseInt(match[1], 10);
-          existingNumbers.add(num);
+        // Extract all existing numbers with the same prefix
+        const existingNumbers = new Set<number>();
+        for (const plan of existingPlans) {
+          const planData = plan.data as any;
+          const refNumber = planData?.reference_number || "";
+          const match = refNumber.match(
+            new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\d+)$`)
+          );
+          if (match) {
+            const num = parseInt(match[1], 10);
+            existingNumbers.add(num);
+          }
         }
-      }
 
-      // Find the next available number
-      let nextNumber = Math.max(
-        currentNumber + 1,
-        getReferenceNumberFloor(prefix, numberPart)
-      );
-      while (existingNumbers.has(nextNumber)) {
-        nextNumber++;
-      }
+        // Find the next available number
+        let nextNumber = Math.max(
+          currentNumber + 1,
+          getReferenceNumberFloor(prefix, numberPart)
+        );
+        while (existingNumbers.has(nextNumber)) {
+          nextNumber++;
+        }
 
-      const paddedNumber = nextNumber.toString().padStart(numberLength, "0");
-      const newReferenceNumber = `${prefix}${paddedNumber}`;
+        const paddedNumber = nextNumber.toString().padStart(numberLength, "0");
+        const newReferenceNumber = `${prefix}${paddedNumber}`;
 
-      // Create copied data with selective copying - preserve party names and equipment details
-      const copiedData = {
-        ...existingData,
-        reference_number: newReferenceNumber,
-        booking_status: "Awaiting MD Approval", // Reset to initial status
+        // Create copied data with selective copying - preserve party names and equipment details
+        const copiedData = {
+          ...existingData,
+          reference_number: newReferenceNumber,
+          booking_status: "Awaiting MD Approval", // Reset to initial status
 
-        // Reset financial data
-        selling_price: null,
-        buying_price: null,
+          // Reset financial data
+          selling_price: null,
+          buying_price: null,
 
-        // Reset container tracking to initial state
-        container_tracking: {
-          container_current_status: "Pending",
-          container_stuffing_completed: false,
-          container_stuffing_completed_date: null,
-          empty_container_picked_up_status: false,
-          empty_container_picked_up_date: null,
-          gated_in_status: false,
-          gated_in_date: null,
-          loaded_on_board_status: false,
-          loaded_on_board_date: null,
-        },
+          // Reset container tracking to initial state
+          container_tracking: {
+            container_current_status: "Pending",
+            container_stuffing_completed: false,
+            container_stuffing_completed_date: null,
+            empty_container_picked_up_status: false,
+            empty_container_picked_up_date: null,
+            gated_in_status: false,
+            gated_in_date: null,
+            loaded_on_board_status: false,
+            loaded_on_board_date: null,
+          },
 
-        // Preserve party names, equipment details, and other operational data
-        // These will be copied as-is:
-        // - container_movement (includes customer, consignee, shipper details)
-        // - package_details (includes shipper, commodity details)
-        // - equipment_details (includes equipment type, stuffing point, etc.)
-        // - carrier_and_vessel_preference
-        // - bussiness_branch, shipment_type, etc.
-      };
+          // Preserve party names, equipment details, and other operational data
+          // These will be copied as-is:
+          // - container_movement (includes customer, consignee, shipper details)
+          // - package_details (includes shipper, commodity details)
+          // - equipment_details (includes equipment type, stuffing point, etc.)
+          // - carrier_and_vessel_preference
+          // - bussiness_branch, shipment_type, etc.
+        };
 
-      // Create the new shipment plan (not linked to any liner booking)
-      const newPlan = await prisma.shipmentPlan.create({
-        data: {
-          data: copiedData,
-          userId: user.id,
-          // Explicitly not setting linerBookingId
-        },
-      });
+        // Create the new shipment plan (not linked to any liner booking)
+        const newPlan = await tx.shipmentPlan.create({
+          data: {
+            data: copiedData,
+            userId: user.id,
+            // Explicitly not setting linerBookingId
+          },
+        });
+
+        return { newPlan, newReferenceNumber };
+      }, REFERENCE_TRANSACTION_OPTIONS);
 
       return {
         success: `Shipment plan copied successfully with reference number: ${newReferenceNumber}. Party names and equipment details have been preserved.`,

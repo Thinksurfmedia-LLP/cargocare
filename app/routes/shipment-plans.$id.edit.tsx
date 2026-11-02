@@ -5,6 +5,18 @@ import { prisma } from "~/lib/prisma.server"
 import type { Prisma } from "@prisma/client"
 import { readBuyingPrice, readSellingPrice, recordPriceChanges } from "~/lib/price-fields"
 import { LINER_BROKER_REQUIRED_ERROR, findPreviousAssigneeId } from "~/lib/liner-broker.server"
+import { resolveEditPlanBranch } from "~/lib/business-branch-rules"
+import {
+  CANCEL_PERMISSION_ERROR,
+  canCancelPlan,
+  canDeletePlan,
+  countLinerBookingDetails,
+  getCancelBlocker,
+  validateCancellationRemark,
+} from "~/lib/plan-cancellation"
+import { notifyAssignmentWithdrawn } from "~/lib/plan-cancellation.server"
+import { isPlaceholderReference, replacePlaceholderInTrackingNumber } from "~/lib/reference-number"
+import { assignReferenceToPlan } from "~/lib/reference-number.server"
 import { AdminLayout } from "~/components/AdminLayout"
 import { ShipmentPlanForm } from "~/components/ShipmentPlanForm"
 import { Button } from "~/components/ui/button"
@@ -367,8 +379,8 @@ export async function action({ request, params }: ActionFunctionArgs) {
       console.log("[CANCEL] Cancel shipment plan requested for planId:", planId)
 
       // Only allow ADMIN to delete a shipment plan
-      if (user.role.name !== "ADMIN") {
-        return { error: "You don't have permission to cancel this shipment plan" }
+      if (!canDeletePlan(user.role.name)) {
+        return { error: "You don't have permission to delete this shipment plan" }
       }
 
       // Get the current plan with all related data
@@ -526,49 +538,103 @@ export async function action({ request, params }: ActionFunctionArgs) {
       console.log("[SOFT_CANCEL] Cancel shipment plan requested for planId:", planId)
 
       // Only ADMIN and SHIPMENT_PLAN_TEAM can cancel a shipment plan this way
-      if (user.role.name !== "ADMIN" && user.role.name !== "SHIPMENT_PLAN_TEAM") {
-        return { error: "You don't have permission to cancel this shipment plan" }
+      if (!canCancelPlan(user.role.name)) {
+        return { error: CANCEL_PERMISSION_ERROR }
       }
 
-      const currentPlan = await prisma.shipmentPlan.findUnique({
-        where: { id: planId },
+      const remarkResult = validateCancellationRemark(formData.get("cancellation_remark"))
+      if ("error" in remarkResult) {
+        return { error: remarkResult.error }
+      }
+
+      // Client requirement: a plan with booking activity must be unmapped before
+      // it can be cancelled, or its booking would point at a dead plan. A plan
+      // the MD only approved (an untouched "Awaiting Booking" assignment) can be
+      // cancelled: that assignment is withdrawn so the Liner Booking team no
+      // longer sees it. Checked under a row lock so a booking can't land midway.
+      const cancelResult = await prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT id FROM shipment_plans WHERE id = ${planId} FOR UPDATE`
+        const currentPlan = await tx.shipmentPlan.findUnique({ where: { id: planId } })
+        if (!currentPlan) {
+          return { error: "Shipment plan not found" }
+        }
+
+        const currentPlanData = currentPlan.data as any
+        if (currentPlanData?.booking_status === "Cancelled") {
+          return { alreadyCancelled: true }
+        }
+
+        // Lock the assignment row too, then read it: a Liner Booking save either
+        // lands first (and blocks the cancel below) or waits and then fails
+        // because the assignment is gone, so no booking data is silently lost
+        if (currentPlan.shipmentAssignmentId) {
+          await tx.$executeRaw`SELECT id FROM shipment_assignments WHERE id = ${currentPlan.shipmentAssignmentId} FOR UPDATE`
+        }
+        const assignment = currentPlan.shipmentAssignmentId
+          ? await tx.shipmentAssignment.findUnique({ where: { id: currentPlan.shipmentAssignmentId } })
+          : null
+        const pendingUnmappingRequests = await tx.individualEquipmentUnmappingRequest.count({
+          where: { shipmentPlanId: planId, status: "PENDING" },
+        })
+        const blocker = getCancelBlocker({
+          hasLinerBooking: Boolean(currentPlan.linerBookingId),
+          assignment: assignment
+            ? {
+                status: (assignment.data as any)?.carrier_booking_status,
+                linerBookingDetailsCount: countLinerBookingDetails(assignment.data),
+              }
+            : null,
+          pendingUnmappingRequests,
+        })
+        if (blocker) {
+          return { error: blocker }
+        }
+
+        await tx.shipmentPlan.update({
+          where: { id: planId },
+          data: {
+            shipmentAssignmentId: null,
+            linkedStatus: 0,
+            data: {
+              ...currentPlanData,
+              booking_status: "Cancelled",
+              status_before_cancellation: currentPlanData?.booking_status || null,
+              cancelled_at: new Date().toISOString(),
+              cancelled_by: user.id,
+              cancelled_by_name: user.name,
+              cancellation_remark: remarkResult.remark,
+              // Kept for review: the unbooked assignment withdrawn by this cancellation
+              ...(assignment
+                ? { withdrawn_assignment: { id: assignment.id, assign_booking_id: assignment.assignBookingId } }
+                : {}),
+            },
+          },
+        })
+        if (assignment) {
+          await tx.shipmentAssignment.delete({ where: { id: assignment.id } })
+        }
+        return { cancelled: true, planData: currentPlanData, withdrawnAssigneeId: assignment?.assignBookingId ?? null }
       })
 
-      if (!currentPlan) {
-        return { error: "Shipment plan not found" }
+      if ("error" in cancelResult) {
+        return { error: cancelResult.error }
       }
-
-      const currentPlanData = currentPlan.data as any
-
-      if (currentPlanData?.booking_status === "Cancelled") {
+      if ("alreadyCancelled" in cancelResult) {
         return redirect(`/shipment-plans/${planId}/edit`)
       }
 
-      // Client requirement: a booked plan must be unmapped before it can be
-      // cancelled — soft-cancel only flips the status, it doesn't touch the
-      // linked LinerBooking/ShipmentAssignment, so cancelling while still
-      // linked would leave that booking permanently stuck pointing at a dead
-      // plan. Reject here too (not just the UI) so a direct POST can't skip it.
-      if (currentPlan.linerBookingId || currentPlan.shipmentAssignmentId) {
-        return {
-          error:
-            "This shipment plan is still linked to a liner booking/shipment assignment. Unmap it first (approve unmapping for every container) before cancelling.",
-        }
-      }
-
-      await prisma.shipmentPlan.update({
-        where: { id: planId },
-        data: {
-          data: {
-            ...currentPlanData,
-            booking_status: "Cancelled",
-            cancelled_at: new Date().toISOString(),
-            cancelled_by: user.id,
-          },
-        },
-      })
-
       console.log("[SOFT_CANCEL] Shipment plan marked as Cancelled:", planId)
+
+      // Tell the liner broker their MD-approved assignment was withdrawn. Sent
+      // after the cancellation committed; a mail failure never undoes it.
+      if (cancelResult.withdrawnAssigneeId) {
+        await notifyAssignmentWithdrawn(
+          cancelResult.withdrawnAssigneeId,
+          cancelResult.planData,
+          user.name,
+          remarkResult.remark,
+        )
+      }
 
       return redirect("/shipment-plans?plan_cancelled=true")
     }
@@ -1341,8 +1407,18 @@ export async function action({ request, params }: ActionFunctionArgs) {
       return { error: "This shipment plan has been cancelled and can no longer be edited." }
     }
 
+    // Business branch is locked once set; a legacy branchless plan may set it once
+    const branchResult = resolveEditPlanBranch(
+      user,
+      (existingPlan.data as any).bussiness_branch,
+      formData.get("bussiness_branch"),
+    )
+    if ("error" in branchResult) {
+      return { error: branchResult.error }
+    }
+    const bussiness_branch = branchResult.branch
+
     // Get form values and preserve existing values if form fields are empty
-    const bussiness_branch = (formData.get("bussiness_branch") as string) || (existingPlan.data as any).bussiness_branch
     const shipment_type = (formData.get("shipment_type") as string) || (existingPlan.data as any).shipment_type
     const submitAction = formData.get("submitAction") as string
     const isDraft = submitAction === "draft"
@@ -1393,7 +1469,20 @@ export async function action({ request, params }: ActionFunctionArgs) {
     const equipmentDetails: any[] = []
     let equipmentIndex = 0
     const existingPlanData = existingPlan.data as any
-    const reference_number = existingPlanData.reference_number
+    const previousReferenceNumber = existingPlanData.reference_number
+    let reference_number = previousReferenceNumber
+
+    // Legacy drafts saved without a branch carry a DRAFT placeholder reference;
+    // reserve a real one now that the branch is known. Done up front under a lock,
+    // so the rest of this save (and its emails) uses the final reference.
+    // Plans past Draft keep their placeholder until handled deliberately.
+    if (isPlaceholderReference(previousReferenceNumber) && existingPlanData.booking_status === "Draft") {
+      const referenceResult = await assignReferenceToPlan(planId, bussiness_branch)
+      if ("error" in referenceResult) {
+        return { error: referenceResult.error }
+      }
+      reference_number = referenceResult.referenceNumber
+    }
 
     while (formData.get(`equipment_details[${equipmentIndex}][equipment_type]`) !== null) {
       const equipmentType = formData.get(`equipment_details[${equipmentIndex}][equipment_type]`) as string
@@ -1407,7 +1496,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
       const finalTrackingNumber =
         trackingNumber && trackingNumber.startsWith("TEMP-")
           ? trackingNumber.replace("TEMP", reference_number)
-          : trackingNumber || `${reference_number}-${equipmentCode}-${String(equipmentSequence).padStart(3, "0")}`
+          : (trackingNumber && replacePlaceholderInTrackingNumber(trackingNumber, reference_number)) || `${reference_number}-${equipmentCode}-${String(equipmentSequence).padStart(3, "0")}`
 
       // Get and validate container number
       const containerNumber = formData.get(`equipment_details[${equipmentIndex}][container_number]`) as string
@@ -1544,7 +1633,7 @@ export async function action({ request, params }: ActionFunctionArgs) {
     }
 
     const shipmentData = {
-      reference_number: (existingPlan.data as any).reference_number, // Keep existing reference number
+      reference_number, // Existing reference, or a real one replacing a DRAFT placeholder
       bussiness_branch,
       shipment_type,
       booking_status: bookingStatus,

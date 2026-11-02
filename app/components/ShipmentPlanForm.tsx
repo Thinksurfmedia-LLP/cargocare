@@ -11,6 +11,11 @@ import { Checkbox } from "~/components/ui/checkbox";
 import { Select } from "~/components/ui/select";
 import { Textarea } from "~/components/ui/textarea";
 import {
+  CANCELLATION_REMARK_MAX_LENGTH,
+  countLinerBookingDetails,
+  isUnbookedAssignment,
+} from "~/lib/plan-cancellation";
+import {
   Accordion,
   AccordionItem,
   AccordionTrigger,
@@ -266,7 +271,7 @@ export function ShipmentPlanForm({
   });
   const [openSections, setOpenSections] = useState({
     linkedBooking: false,
-    basic: false,
+    basic: mode === "create",
     packages: false,
     equipment: false,
     movement: false,
@@ -357,13 +362,21 @@ export function ShipmentPlanForm({
   // State for soft-cancel (mark as Cancelled, keep record) confirmation
   const [showSoftCancelConfirmation, setShowSoftCancelConfirmation] = useState<boolean>(false);
   const [isSoftCancelling, setIsSoftCancelling] = useState<boolean>(false);
+  const [cancellationRemark, setCancellationRemark] = useState<string>("");
 
-  // Shown instead of the normal cancel confirmation when the plan is still
-  // linked to a liner booking / shipment assignment — per client requirement,
-  // a booked plan must be unmapped first; cancelling can't silently leave the
-  // linked LinerBooking/ShipmentAssignment orphaned pointing at a dead plan.
+  // Shown instead of the normal cancel confirmation when the plan has booking
+  // activity — per client requirement, a booked plan must be unmapped first;
+  // cancelling can't leave a liner booking pointing at a dead plan. A plan the
+  // MD only approved (untouched assignment) can be cancelled directly.
   const [showCancelBlockedWarning, setShowCancelBlockedWarning] = useState<boolean>(false);
-  const isLinkedToBooking = Boolean(shipmentPlan?.linerBooking || shipmentPlan?.shipmentAssignment);
+  const linkedAssignment = shipmentPlan?.shipmentAssignment
+    ? {
+        status: (shipmentPlan.shipmentAssignment.data as any)?.carrier_booking_status,
+        linerBookingDetailsCount: countLinerBookingDetails(shipmentPlan.shipmentAssignment.data),
+      }
+    : null;
+  const hasOnlyUnbookedAssignment = !shipmentPlan?.linerBooking && isUnbookedAssignment(linkedAssignment);
+  const isCancelBlocked = Boolean(shipmentPlan?.linerBooking || (linkedAssignment && !hasOnlyUnbookedAssignment));
 
   // A cancelled plan is locked: no further edits, only visible to Admin and Shipment Planning team
   const isCancelled = mode === "edit" && bookingStatus === "Cancelled";
@@ -374,9 +387,16 @@ export function ShipmentPlanForm({
   const formRef = useRef<HTMLFormElement>(null);
   const submit = useSubmit();
 
-  // Add state to track the selected business branch:
+  // Business branch is locked once a plan has one; legacy branchless drafts may still pick it
+  const isBranchLocked = mode === "edit" && Boolean(planData.bussiness_branch);
+  // Users limited to a single branch (e.g. SHIPMENT_PLAN_TEAM) get it preselected
+  const onlyAvailableBranch: string =
+    dataPoints.businessBranches?.length === 1 ? dataPoints.businessBranches[0].name : "";
+
+  // Single source of truth for the business branch: drives the hidden form input,
+  // the picker, and every branch check, so they can never disagree
   const [selectedBusinessBranch, setSelectedBusinessBranch] = useState<string>(
-    actionData?.formData?.bussiness_branch || planData.bussiness_branch || ""
+    actionData?.formData?.bussiness_branch || planData.bussiness_branch || onlyAvailableBranch
   );
 
   // Add toast for validation
@@ -767,11 +787,8 @@ export function ShipmentPlanForm({
   const validateRequiredFields = () => {
     const errors: string[] = [];
 
-    // Check Business Branch - use state variable, hidden input, or planData
-    const businessBranchInput = document.querySelector<HTMLInputElement>('input[name="bussiness_branch"]');
-    const businessBranchValue = selectedBusinessBranch || businessBranchInput?.value || planData.bussiness_branch || '';
-    console.log("Validation - Business Branch:", { selectedBusinessBranch, inputValue: businessBranchInput?.value, planData: planData.bussiness_branch, final: businessBranchValue });
-    if (!businessBranchValue) {
+    // Check Business Branch - the state is exactly what the form submits
+    if (!selectedBusinessBranch) {
       errors.push("Business Branch is required");
     }
 
@@ -949,6 +966,14 @@ export function ShipmentPlanForm({
     return errors.length === 0;
   };
 
+  // Pressing Enter in a text field would implicitly submit the form through its
+  // first submit button (Save as Draft). Only explicit button clicks may submit.
+  const preventImplicitSubmit = (e: React.KeyboardEvent<HTMLFormElement>) => {
+    if (e.key === "Enter" && e.target instanceof HTMLInputElement) {
+      e.preventDefault();
+    }
+  };
+
   // Handle form submission with validation
   const handleFormSubmit = (e: React.FormEvent) => {
     console.log("handleFormSubmit called");
@@ -958,8 +983,20 @@ export function ShipmentPlanForm({
     console.log("Submit action:", submitAction);
     const isDraft = submitAction === "draft";
 
-    // For drafts, skip validation (formNoValidate on button handles native validation)
+    // For drafts, skip validation (formNoValidate on button handles native validation),
+    // except the business branch, which every save requires
     if (isDraft) {
+      if (!selectedBusinessBranch) {
+        e.preventDefault();
+        setOpenSections((prev) => ({ ...prev, basic: true }));
+        addToast({
+          type: "error",
+          title: "Validation Error",
+          description: "Please select a business branch before saving as draft.",
+          duration: 5000,
+        });
+        return;
+      }
       setIsFormSubmitting(true);
       return;
     }
@@ -1144,7 +1181,9 @@ export function ShipmentPlanForm({
 
   return (
     <div className="max-w-5xl mx-auto">
-      <Form ref={formRef} method="post" className="" onSubmit={handleFormSubmit}>
+      <Form ref={formRef} method="post" className="" onSubmit={handleFormSubmit} onKeyDown={preventImplicitSubmit}>
+        {/* Kept outside the collapsible sections so the branch is always submitted */}
+        <input type="hidden" name="bussiness_branch" value={selectedBusinessBranch} />
         {/* Sticky Header - Inside the form */}
         <div className="sticky z-40 bg-white rounded-t-xl shadow-lg border border-gray-200 px-6 py-4" style={{ top: '-25px' }}>
           <div className="flex items-center justify-between">
@@ -1229,6 +1268,20 @@ export function ShipmentPlanForm({
                     <p className="text-xs text-red-600 mt-1">
                       It is now read-only and visible only to Admin and Shipment Planning team.
                     </p>
+                    {(planData.cancelled_by_name || planData.cancelled_at) && (
+                      <p className="text-xs text-red-700 mt-2">
+                        Cancelled
+                        {planData.cancelled_by_name ? ` by ${planData.cancelled_by_name}` : ""}
+                        {planData.cancelled_at ? ` on ${new Date(planData.cancelled_at).toLocaleString()}` : ""}
+                        {planData.status_before_cancellation ? ` (was ${planData.status_before_cancellation})` : ""}
+                      </p>
+                    )}
+                    {planData.cancellation_remark && (
+                      <div className="mt-2 p-3 bg-white border border-red-200 rounded-lg">
+                        <p className="text-xs font-semibold text-red-800">Reason for cancellation</p>
+                        <p className="text-sm text-gray-800 mt-1 whitespace-pre-wrap">{planData.cancellation_remark}</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1988,8 +2041,8 @@ export function ShipmentPlanForm({
                 </div>
               </button>
 
-              {openSections.basic && (
-                <div className="px-6 pb-6 bg-gray-50/50">
+              {/* Hidden rather than unmounted when collapsed, so its fields are always submitted */}
+              <div className={`px-6 pb-6 bg-gray-50/50 ${openSections.basic ? "" : "hidden"}`}>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
                     <div className="space-y-2">
                       <Label
@@ -2029,18 +2082,14 @@ export function ShipmentPlanForm({
                         className="text-sm font-semibold text-gray-700"
                       >
                         Business Branch <span className="text-red-500">*</span>
-                        {mode === "edit" && (
+                        {isBranchLocked && (
                           <span className="ml-2 text-xs font-normal text-amber-600">🔒 Cannot be changed</span>
                         )}
                       </Label>
+                      {/* No name: the form submits the hidden bussiness_branch input above */}
                       <SearchableSelect
                         id="bussiness_branch"
-                        name="bussiness_branch"
-                        defaultValue={
-                          actionData?.formData?.bussiness_branch ||
-                          planData.bussiness_branch ||
-                          ""
-                        }
+                        value={selectedBusinessBranch}
                         options={dataPoints.businessBranches.map(
                           (branch: any) => ({
                             value: branch.name,
@@ -2048,7 +2097,7 @@ export function ShipmentPlanForm({
                           })
                         )}
                         placeholder="Select business branch"
-                        disabled={mode === "edit"}
+                        disabled={isBranchLocked}
                         className="border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
                         onChange={(value) => setSelectedBusinessBranch(value)}
                       />
@@ -2161,7 +2210,6 @@ export function ShipmentPlanForm({
                     </div>
                   </div>
                 </div>
-              )}
             </div>
 
             
@@ -4328,7 +4376,7 @@ export function ShipmentPlanForm({
                       <Button
                         type="button"
                         onClick={() =>
-                          isLinkedToBooking
+                          isCancelBlocked
                             ? setShowCancelBlockedWarning(true)
                             : setShowSoftCancelConfirmation(true)
                         }
@@ -4527,9 +4575,9 @@ export function ShipmentPlanForm({
         </div>
       )}
 
-      {/* Blocking warning: plan is still linked to a liner booking / shipment
-          assignment. Client requirement — must be unmapped first, no
-          override here. Shown instead of the normal cancel confirmation. */}
+      {/* Blocking warning: plan has booking activity. Client requirement —
+          booked containers must be unmapped first, no override here. Shown
+          instead of the normal cancel confirmation. */}
       {showCancelBlockedWarning && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 overflow-hidden">
@@ -4541,16 +4589,15 @@ export function ShipmentPlanForm({
             </div>
             <div className="p-6">
               <p className="text-gray-700 mb-3">
-                This shipment plan is still linked to a{" "}
-                {shipmentPlan?.linerBooking ? "liner booking" : "shipment assignment"}.
-                It must be unmapped before it can be cancelled.
+                Containers on this shipment plan have already been booked by the Liner Booking team.
+                They must be unmapped before the plan can be cancelled.
               </p>
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
                 <p className="font-semibold mb-2">To cancel this plan:</p>
                 <ol className="list-decimal list-inside space-y-1">
-                  <li>Request unmapping for each container on this plan (in the Liner Booking Details section below)</li>
-                  <li>Have the request approved</li>
-                  <li>Once the plan shows "Awaiting Booking" with nothing linked, come back and Cancel Plan</li>
+                  <li>Ask the Liner Booking team to request unmapping for each booked container (from the liner booking)</li>
+                  <li>Approve the unmapping request(s) on this plan</li>
+                  <li>Once nothing is booked against the plan, come back and Cancel Plan</li>
                 </ol>
               </div>
               <div className="bg-gray-50 rounded-lg p-3 mt-4">
@@ -4597,8 +4644,26 @@ export function ShipmentPlanForm({
                     <li>Make it read-only - no further edits will be possible</li>
                     <li>Keep it visible only to Admin and Shipment Planning team</li>
                     <li>Hide it from MD and the Liner Booking team</li>
+                    {hasOnlyUnbookedAssignment && (
+                      <li>Withdraw the MD-approved assignment from the Liner Booking team (nothing has been booked yet) and email the assigned liner broker with your reason</li>
+                    )}
                   </ul>
                 </div>
+              </div>
+              <div className="mb-4 space-y-1">
+                <Label htmlFor="cancellation_remark" className="text-sm font-semibold text-gray-700">
+                  Reason for cancellation <span className="text-red-500">*</span>
+                </Label>
+                <Textarea
+                  id="cancellation_remark"
+                  value={cancellationRemark}
+                  onChange={(e) => setCancellationRemark(e.target.value)}
+                  maxLength={CANCELLATION_REMARK_MAX_LENGTH}
+                  rows={3}
+                  placeholder="Why is this shipment plan being cancelled?"
+                  className="border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 resize-none"
+                />
+                <p className="text-xs text-gray-500">Visible to Admin and Shipment Planning team on the cancelled plan.</p>
               </div>
               <div className="bg-gray-50 rounded-lg p-3 mb-4">
                 <p className="text-sm text-gray-600">
@@ -4616,7 +4681,10 @@ export function ShipmentPlanForm({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setShowSoftCancelConfirmation(false)}
+                onClick={() => {
+                  setShowSoftCancelConfirmation(false);
+                  setCancellationRemark("");
+                }}
                 disabled={isSoftCancelling}
                 className="px-4 py-2 border-gray-300 rounded-lg hover:bg-gray-100"
               >
@@ -4635,10 +4703,15 @@ export function ShipmentPlanForm({
                   input.name = 'soft_cancel_plan';
                   input.value = 'true';
                   form.appendChild(input);
+                  const remarkInput = document.createElement('input');
+                  remarkInput.type = 'hidden';
+                  remarkInput.name = 'cancellation_remark';
+                  remarkInput.value = cancellationRemark.trim();
+                  form.appendChild(remarkInput);
                   document.body.appendChild(form);
                   form.submit();
                 }}
-                disabled={isSoftCancelling}
+                disabled={isSoftCancelling || !cancellationRemark.trim()}
                 className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg font-medium disabled:opacity-50"
               >
                 {isSoftCancelling ? (

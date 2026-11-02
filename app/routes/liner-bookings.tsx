@@ -25,6 +25,7 @@ import { Badge } from "~/components/ui/badge"
 import { AdminLayout } from "~/components/AdminLayout"
 import { ColumnSelectorModal } from "~/components/ui/column-selector-modal"
 import { useColumnPreferences } from "~/hooks/useColumnPreferences"
+import { EXCLUDE_CANCELLED_PLAN_ASSIGNMENTS } from "~/lib/plan-cancellation"
 import { useState } from "react"
 import { json } from "@remix-run/node"
 
@@ -774,7 +775,11 @@ export async function loader({ request }: LoaderFunctionArgs) {
     // Assignments branch: query prisma.shipmentAssignment and return same payload shape
     if (tab === "assignments") {
       const allRows = await prisma.shipmentAssignment.findMany({
-        where: whereCondition,
+        // Cancelled shipment plans are never shown to the Liner Booking team
+        where:
+          user.role.name === "LINER_BOOKING_TEAM"
+            ? { AND: [whereCondition, EXCLUDE_CANCELLED_PLAN_ASSIGNMENTS] }
+            : whereCondition,
         include: {
           user: { select: { id: true, name: true, email: true } },
           shipmentPlan: {

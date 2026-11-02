@@ -4,6 +4,7 @@ import { requireAuth } from "~/lib/auth.server"
 import { prisma } from "~/lib/prisma.server"
 import { AdminLayout } from "~/components/AdminLayout"
 import { LinerBookingForm } from "~/components/LinerBookingForm"
+import { CANCELLED_PLAN_ASSIGNMENT_ERROR, isPlanCancelled } from "~/lib/plan-cancellation"
 
 export const meta: MetaFunction = () => {
   return [
@@ -64,6 +65,14 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
     if (!assignment) {
       console.error("[v0] shipment-assignments loader: assignment not found", { id })
+      throw new Response("Shipment assignment not found", { status: 404 })
+    }
+
+    // Cancelled shipment plans are never shown to the Liner Booking team
+    if (
+      user.role.name === "LINER_BOOKING_TEAM" &&
+      isPlanCancelled(assignment.shipmentPlan?.data)
+    ) {
       throw new Response("Shipment assignment not found", { status: 404 })
     }
 
@@ -285,8 +294,14 @@ export async function action({ request, params }: ActionFunctionArgs) {
 
     // Check if assignment is view-only (orphaned) before allowing modifications
     const assignment = await prisma.shipmentAssignment.findUnique({
-      where: { id }
+      where: { id },
+      include: { shipmentPlan: { select: { data: true } } },
     });
+
+    // Assignments of cancelled shipment plans are frozen for everyone
+    if (isPlanCancelled(assignment?.shipmentPlan?.data)) {
+      return Response.json({ error: CANCELLED_PLAN_ASSIGNMENT_ERROR }, { status: 403 })
+    }
 
     // Check both new fields and fallback approach
     const isViewOnly = assignment?.isViewOnly || (assignment?.data as any)?._viewOnly === true;

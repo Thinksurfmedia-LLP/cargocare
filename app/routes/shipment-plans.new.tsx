@@ -3,7 +3,13 @@ import { useLoaderData, useNavigation, redirect, useActionData, Link } from "rea
 import { requireAuth } from "~/lib/auth.server"
 import { prisma } from "~/lib/prisma.server"
 import { readBuyingPrice } from "~/lib/price-fields"
-import { getReferenceSequenceFloor } from "~/lib/reference-number"
+import {
+  REFERENCE_TRANSACTION_OPTIONS,
+  generateReferenceNumber,
+  reserveReferenceNumber,
+} from "~/lib/reference-number.server"
+import { applyReferenceNumber } from "~/lib/reference-number"
+import { resolveNewPlanBranch } from "~/lib/business-branch-rules"
 import { AdminLayout } from "~/components/AdminLayout"
 import { ShipmentPlanForm } from "~/components/ShipmentPlanForm"
 
@@ -172,74 +178,20 @@ export async function action({ request }: ActionFunctionArgs) {
     const customer = formData.get("customer") as string
     const sales_person_id = formData.get("sales_person_id") as string
 
-    // Validate required fields - business branch is always required for reference number generation
-    // For drafts, we're more lenient with other fields
-    if (!bussiness_branch && !isDraft) {
-      return {
-        error: "Business branch is required to generate reference number",
-        formData: Object.fromEntries(formData),
-      }
+    // Business branch is required for every save, drafts included, and must be
+    // one the user is allowed to use. It drives the reference number.
+    const branchResult = resolveNewPlanBranch(user, bussiness_branch)
+    if ("error" in branchResult) {
+      return { error: branchResult.error, formData: Object.fromEntries(formData) }
     }
 
-    // For drafts without business branch, use a temporary reference number
-    let reference_number = ""
-    let branchCode = "DRAFT"
-    
-    if (bussiness_branch) {
-      // Get business branch details to extract code
-      const businessBranch = await prisma.businessBranch.findFirst({
-        where: { name: bussiness_branch },
-      })
-
-      if (!businessBranch) {
-        return { error: "Invalid business branch selected", formData: Object.fromEntries(formData) }
-      }
-
-      branchCode = businessBranch.code.toUpperCase()
-
-      // Generate reference number: {BusinessCode}{Year}{4-digit sequence}
-      const currentYear = new Date().getFullYear()
-
-      // Find the highest sequence number for this branch and year
-      const existingPlans = await prisma.shipmentPlan.findMany({
-        where: {
-          data: {
-            path: ["reference_number"],
-            string_starts_with: `${branchCode}${currentYear}`,
-          },
-        },
-        orderBy: { createdAt: "desc" },
-      })
-
-      let nextSequence = getReferenceSequenceFloor(branchCode, currentYear)
-      if (existingPlans.length > 0) {
-        // Extract sequence numbers from existing reference numbers
-        const sequences = existingPlans
-          .map((plan: any) => {
-            const refNum = plan.data?.reference_number
-            if (refNum && typeof refNum === "string") {
-              const sequencePart = refNum.slice(`${branchCode}${currentYear}`.length)
-              const num = Number.parseInt(sequencePart, 10)
-              return isNaN(num) ? 0 : num
-            }
-            return 0
-          })
-          .filter((num) => num > 0)
-
-        if (sequences.length > 0) {
-          nextSequence = Math.max(nextSequence, Math.max(...sequences) + 1)
-        }
-      }
-
-      // Format sequence as 4-digit number
-      const sequenceString = nextSequence.toString().padStart(4, "0")
-      reference_number = `${branchCode}${currentYear}${sequenceString}`
-    } else {
-      // For drafts without business branch, generate a temporary reference number
-      const currentYear = new Date().getFullYear()
-      const timestamp = Date.now().toString().slice(-6)
-      reference_number = `DRAFT${currentYear}${timestamp}`
+    // Preview reference number: {BusinessCode}{Year}{4-digit sequence}. The final
+    // one is reserved under a lock when the plan is inserted below.
+    const referenceResult = await generateReferenceNumber(branchResult.branch)
+    if ("error" in referenceResult) {
+      return { error: referenceResult.error, formData: Object.fromEntries(formData) }
     }
+    const reference_number = referenceResult.referenceNumber
 
     console.log(`Generated reference number: ${reference_number}`)
 
@@ -329,7 +281,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
     const shipmentData = {
       reference_number,
-      bussiness_branch,
+      bussiness_branch: branchResult.branch,
       shipment_type,
       booking_status,
       package_details: packageDetails,
@@ -380,14 +332,24 @@ export async function action({ request }: ActionFunctionArgs) {
 
     try {
       console.log("Attempting to create shipment plan in database")
-      const shipmentPlan = await prisma.shipmentPlan.create({
-        data: {
-          data: shipmentData,
-          userId: user.id,
-          salesPersonId: sales_person_id || null,
-          linkedStatus: 0,
-        },
-      })
+      // Re-take the reference under a per-branch/year lock in the same transaction
+      // as the insert, so concurrent saves can never share a reference number
+      const { shipmentPlan, savedData } = await prisma.$transaction(async (tx) => {
+        const reserved = await reserveReferenceNumber(tx, branchResult.branch)
+        if ("error" in reserved) {
+          throw new Error(reserved.error)
+        }
+        const data = applyReferenceNumber(shipmentData, reserved.referenceNumber)
+        const created = await tx.shipmentPlan.create({
+          data: {
+            data,
+            userId: user.id,
+            salesPersonId: sales_person_id || null,
+            linkedStatus: 0,
+          },
+        })
+        return { shipmentPlan: created, savedData: data }
+      }, REFERENCE_TRANSACTION_OPTIONS)
       console.log("Shipment plan created successfully:", shipmentPlan.id)
 
       // Send email notification to MDs if this is a new approval request (not for drafts)
@@ -427,7 +389,7 @@ export async function action({ request }: ActionFunctionArgs) {
             const baseUrl = process.env.BASE_URL || "http://localhost:5173";
 
             const containerMovement = shipmentData.container_movement || {};
-            const equipmentDetails = shipmentData.equipment_details || [];
+            const equipmentDetails = savedData.equipment_details || [];
 
             // Group equipment by type and count
             const equipmentCounts = equipmentDetails.reduce((acc: any, eq: any) => {
@@ -459,7 +421,7 @@ export async function action({ request }: ActionFunctionArgs) {
               .join(', ') || 'N/A';
 
             await emailService.sendNewApprovalNotification(allRecipientEmails, {
-              referenceNumber: shipmentData.reference_number || "N/A",
+              referenceNumber: savedData.reference_number || "N/A",
               customer: containerMovement.customer || "N/A",
               businessBranch: shipmentData.bussiness_branch || "N/A",
               createdBy: user.name,
